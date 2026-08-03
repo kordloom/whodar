@@ -41,7 +41,7 @@ dockers:
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
       - "--label=org.opencontainers.image.source=https://github.com/dcadolph/whodar"
-      - "--label=org.opencontainers.image.licenses=AGPL-3.0-or-later"
+      - "--label=org.opencontainers.image.licenses=BUSL-1.1"
   - image_templates:
       - "ghcr.io/dcadolph/whodar:{{ .Version }}-arm64"
     dockerfile: Dockerfile.release
@@ -53,7 +53,7 @@ dockers:
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
       - "--label=org.opencontainers.image.source=https://github.com/dcadolph/whodar"
-      - "--label=org.opencontainers.image.licenses=AGPL-3.0-or-later"
+      - "--label=org.opencontainers.image.licenses=BUSL-1.1"
 
 docker_manifests:
   - name_template: "ghcr.io/dcadolph/whodar:{{ .Version }}"

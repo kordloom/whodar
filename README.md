@@ -109,5 +109,12 @@ environment variables cannot override.
 
 ## License
 
-Licensed under the GNU Affero General Public License v3.0. See [LICENSE](LICENSE).
+Business Source License 1.1 (see [LICENSE](LICENSE)). Source-available: run whodar in
+production inside your company on your own infrastructure, with no seat count and no
+license key. The one restriction is offering whodar to third parties as a hosted service
+that provides its primary functionality. It converts to Apache 2.0 on 2030-08-03.
+
+Hosting it for others, embedding it in something you sell, or bound by a policy that
+rejects source-available licenses? See [COMMERCIAL.md](COMMERCIAL.md).
+
 Copyright 2026 dcadolph.
