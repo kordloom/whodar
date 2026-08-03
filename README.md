@@ -100,6 +100,13 @@ environment variables cannot override.
 - [Architecture](docs/ARCHITECTURE.md), [deploying](docs/DEPLOY.md),
   [roadmap](docs/ROADMAP.md), and [contributing](CONTRIBUTING.md).
 
+## More tools
+
+- [kibble](https://github.com/dcadolph/kibble), test your README's install steps in a clean container
+- [preen](https://github.com/dcadolph/preen), split a messy working tree into clean, atomic git commits
+- [slop-chop](https://github.com/dcadolph/slop-chop), strip the AI tells out of your writing
+- [vamoose](https://github.com/dcadolph/vamoose), route time off through approval, then tell the team
+
 ## License
 
 Licensed under the GNU Affero General Public License v3.0. See [LICENSE](LICENSE).
