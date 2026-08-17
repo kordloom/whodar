@@ -44,17 +44,27 @@ default and stays that way.
 
 ## Memory
 
-One capability is licensed. Memory keeps the words of each conversation on your own
-machines, so whodar can show how something was fixed long after Slack has aged the
-messages out. Without a license, whodar keeps a pointer to the conversation and
-nothing more.
+The line is between your history and the organization's. Finding people, and
+finding the conversations you took part in, are free forever. Memory is the
+organization's memory: it keeps the words of Slack conversations on your own
+machines, so whodar can still show how something was fixed after the messages
+themselves are gone. Without a license, whodar keeps a pointer and nothing more.
+
+Most companies delete their own chat on a schedule, for good legal reasons. That
+purge also deletes the engineering record: why a workaround shipped, how an
+outage was really fixed, what the person who left knew. Memory sits on the other
+side of that boundary, on hardware you control.
 
 **$5,000 a year, flat, per organization.** Any number of people, any number of
 sources. There is no seat count to true up, no per-user pricing, and no audit,
 because whodar cannot phone home and does not know your headcount. Paid annually.
 
-Optional: a $5,000 setup engagement to connect your sources, tune ranking to your
-organization, and run the first backfill. Most teams do not need it.
+Larger organizations, several workspaces, air-gapped installs, or a support
+commitment in writing: talk to us. Still flat, still no seat count.
+
+Optional: a $5,000 deployment engagement to connect your sources, tune ranking to
+your organization, and run the first backfill. Included at no charge for selected
+early customers. Most teams do not need it.
 
 The license is a small signed file, verified against a key compiled into the binary.
 Nothing is checked over the network, so a licensed install works air-gapped. If a

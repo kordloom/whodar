@@ -195,11 +195,12 @@ Put it at `license.json` in the data directory, or point `WHODAR_LICENSE` at it
 (the file itself or a path to it).
 
 Without one the free tier is in force: the people graph, and recall pointing back
-at past conversations. A Memory license adds the archive, which keeps the words of
-each conversation on your own machines and can show how something was solved. It
-is $5,000 a year, flat per organization, with no seat count; see
-[COMMERCIAL.md](../COMMERCIAL.md). An expired license drops to the free tier and
-leaves every byte already indexed on disk.
+at the conversations you took part in. A Memory license adds the organization's
+memory: it keeps the words of Slack conversations on your own machines, so an
+answer can still show how something was solved after the messages are gone. It is
+$5,000 a year, flat per organization, with no seat count; larger organizations
+talk to us. See [COMMERCIAL.md](../COMMERCIAL.md). An expired license drops to the
+free tier and leaves every byte already indexed on disk.
 
 ## whodar feedback
 
