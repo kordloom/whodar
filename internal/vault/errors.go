@@ -14,6 +14,8 @@ var ErrKeySize = errors.New("vault: key must be 32 bytes")
 // for a key-sealed file, or a key for a passphrase-sealed file.
 var ErrKeyMode = errors.New("vault: wrong key type for this file")
 
-// ErrCorrupt indicates the data is truncated, tampered with, or the key is
-// wrong, so authentication failed.
-var ErrCorrupt = errors.New("vault: data is corrupt or the key is wrong")
+// ErrCorrupt indicates authentication failed on decryption. The everyday cause
+// is a wrong key or passphrase, so the message leads with that rather than with
+// data corruption, which is rare and indistinguishable at this layer.
+var ErrCorrupt = errors.New(
+	"vault: wrong key or passphrase (or the file was damaged); could not decrypt")

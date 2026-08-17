@@ -203,7 +203,9 @@ func (c *Cipher) Decode(stored []byte) ([]byte, error) {
 	ciphertext := buf[gcm.NonceSize():]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, header(version, mode, salt))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrCorrupt, err)
+		// The underlying error is always "message authentication failed",
+		// which is crypto-internal noise to a user, so it is not surfaced.
+		return nil, ErrCorrupt
 	}
 	return plaintext, nil
 }

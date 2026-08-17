@@ -76,7 +76,7 @@ func (o *Ollama) Embed(ctx context.Context, text string) ([]float32, error) {
 
 	resp, err := o.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("llm: %w: embed request to %s: %w", ErrModel, o.baseURL, err)
+		return nil, o.unreachable(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 

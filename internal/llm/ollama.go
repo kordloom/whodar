@@ -119,6 +119,16 @@ type chatResponse struct {
 
 // Chat sends a system and user message and returns the assistant content. It
 // requests a JSON-formatted reply.
+// unreachable turns a transport error into an actionable message. A refused or
+// timed-out connection almost always means Ollama is not running, so it says so
+// plainly instead of surfacing a raw dial error under a doubled prefix. ErrModel
+// already carries the "llm:" prefix, so this adds none.
+func (o *Ollama) unreachable(err error) error {
+	return fmt.Errorf(
+		"%w: cannot reach a local model at %s. Is Ollama running? Start it with `ollama serve`, "+
+			"pull a model, or pass --ollama-url to point elsewhere (%v)", ErrModel, o.baseURL, err)
+}
+
 func (o *Ollama) Chat(ctx context.Context, system, user string) (string, error) {
 	body, err := json.Marshal(chatRequest{
 		Model:  o.model,
@@ -141,7 +151,7 @@ func (o *Ollama) Chat(ctx context.Context, system, user string) (string, error) 
 
 	resp, err := o.http.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("llm: %w: request to %s: %w", ErrModel, o.baseURL, err)
+		return "", o.unreachable(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
