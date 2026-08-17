@@ -218,6 +218,13 @@ func (ix *Index) identityResolver() *identity.Resolver {
 	return ix.resolver
 }
 
+// Canonical resolves an identifier a source used, such as a Slack user ID or
+// a GitHub login, to the person it belongs to. An identifier the index has
+// never seen comes back unchanged.
+func (ix *Index) Canonical(id model.ID) model.ID {
+	return ix.identityResolver().Canonical(id)
+}
+
 // buildPerson merges one person record into the graph and postings.
 func (ix *Index) buildPerson(rec connector.Record) {
 	g, postings, texts, r := ix.Graph, ix.postings, ix.texts, ix.identityResolver()

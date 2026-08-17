@@ -188,13 +188,16 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 	return records, nil
 }
 
-// personRecord builds a person record from a Slack user.
+// personRecord builds a person record from a Slack user. The record carries
+// the Slack user ID as its identifier and the email alongside it, so the
+// indexer joins the two. Without that join a Slack user ID resolves to nobody,
+// and the bot cannot tell which person is asking.
 func personRecord(u slack.User) Record {
 	return Record{
 		Kind:     KindPerson,
 		Source:   "slack",
 		Weight:   1,
-		PersonID: slackPersonID(u),
+		PersonID: "slack:" + u.ID,
 		Name:     u.Profile.RealName,
 		Email:    u.Profile.Email,
 		Title:    u.Profile.Title,

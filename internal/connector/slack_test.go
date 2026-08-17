@@ -61,7 +61,7 @@ func TestSlackFetch(t *testing.T) {
 			channel = &recs[i]
 		case KindPerson:
 			if r.Name != "" {
-				people[r.PersonID] = r
+				people[r.Email] = r
 			}
 			if r.PersonID == "jane@x.com" && strings.Contains(r.Text, "retries") {
 				janeTalksRetries = true
@@ -84,6 +84,11 @@ func TestSlackFetch(t *testing.T) {
 	}
 	if people["jane@x.com"].Email != "jane@x.com" || people["jane@x.com"].Title != "Staff Engineer" {
 		t.Errorf("jane person record = %+v", people["jane@x.com"])
+	}
+	// The Slack user ID travels with the email so the indexer can join them,
+	// which is what lets the bot tell who is asking.
+	if got := people["jane@x.com"].PersonID; got != "slack:U1" {
+		t.Errorf("jane person id = %q, want slack:U1", got)
 	}
 	if !janeTalksRetries {
 		t.Error("expected a person record giving Jane retries affinity from her messages")
