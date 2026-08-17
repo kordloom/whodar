@@ -49,6 +49,9 @@ WHODAR_ANTHROPIC_KEY) and add --policy redacted.`,
 			if err != nil {
 				return err
 			}
+			if cfg.episodes, err = simorg.BuildEpisodes(); err != nil {
+				return err
+			}
 
 			link := "http://" + cfg.addr + "/?q=" + url.QueryEscape(demoQuery)
 			fmt.Fprintf(cmd.ErrOrStderr(),

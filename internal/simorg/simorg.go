@@ -20,6 +20,7 @@ import (
 
 	"github.com/kordloom/whodar/internal/confluence"
 	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/github"
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/jira"
@@ -90,9 +91,27 @@ func SlackServer() *httptest.Server {
 		"C3": {
 			slackMessage("U3", "terraform plan for the new cluster is up", daysAgo(2)),
 			slackMessage("U5", "paging policy updated after the incident", daysAgo(4)),
+			// A thread: Angela hit a problem, Carol and Grace worked it out with
+			// her. This is what recall finds months later.
+			slackThread("U1", "the staging certificate renewal keeps failing, anyone seen this",
+				daysAgo(90), 4, []string{"U3", "U5"}, daysAgo(90).Add(20*time.Minute)),
 		},
 		"C4": {
 			slackMessage("U4", "sso login flow now enforces mfa", daysAgo(5)),
+		},
+	}
+
+	// Replies to the certificate thread, which only the archive reads.
+	replies := map[string][]map[string]any{
+		threadKey(daysAgo(90)): {
+			slackMessage("U1", "the staging certificate renewal keeps failing, anyone seen this",
+				daysAgo(90)),
+			slackMessage("U3", "the dns challenge needs the wildcard record on the staging zone",
+				daysAgo(90).Add(5*time.Minute)),
+			slackMessage("U5", "add it, then rerun certbot with --force-renewal",
+				daysAgo(90).Add(12*time.Minute)),
+			slackMessage("U1", "that did it, renewed and staging is green",
+				daysAgo(90).Add(20*time.Minute)),
 		},
 	}
 
@@ -103,6 +122,17 @@ func SlackServer() *httptest.Server {
 	})
 	mux.HandleFunc("/conversations.list", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{"ok": true, "channels": channels})
+	})
+	mux.HandleFunc("/auth.test", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{
+			"ok": true, "user_id": "U0", "url": "https://corp.slack.com/", "team": "Corp",
+		})
+	})
+	mux.HandleFunc("/conversations.replies", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		writeJSON(w, map[string]any{
+			"ok": true, "has_more": false, "messages": replies[r.Form.Get("ts")],
+		})
 	})
 	mux.HandleFunc("/conversations.history", func(w http.ResponseWriter, r *http.Request) {
 		limited := false
@@ -352,14 +382,17 @@ func BuildIndex(dir string) (*index.Index, error) {
 	pagerdutySrv := PagerDutyServer()
 	defer pagerdutySrv.Close()
 
+	slackSource := connector.NewSlackWithClient(
+		slack.New("xoxb-demo", slack.WithBaseURL(slackSrv.URL)),
+		connector.SlackOptions{Episodes: true, Archive: true})
+
 	sources := []struct {
 		Name   string
 		Source connector.Source
 	}{
 		{"org-csv", connector.NewOrgCSV(csvPath)},
 		{"codeowners", connector.NewCodeOwners(ownersPath)},
-		{"slack", connector.NewSlackWithClient(
-			slack.New("xoxb-demo", slack.WithBaseURL(slackSrv.URL)), connector.SlackOptions{})},
+		{"slack", slackSource},
 		{"github", connector.NewGitHubWithClient(
 			github.New("ghp-demo", github.WithBaseURL(githubSrv.URL)),
 			connector.GitHubOptions{
@@ -397,6 +430,25 @@ func BuildIndex(dir string) (*index.Index, error) {
 	return ix, nil
 }
 
+// BuildEpisodes returns the conversations the simulated Slack workspace holds,
+// with their content, so the demo can show recall without credentials. It must
+// run after BuildIndex, which is what fetches them.
+func BuildEpisodes() (*episode.Store, error) {
+	srv := SlackServer()
+	defer srv.Close()
+	src := connector.NewSlackWithClient(
+		slack.New("xoxb-demo", slack.WithBaseURL(srv.URL)),
+		connector.SlackOptions{Episodes: true, Archive: true})
+	if _, err := src.Fetch(context.Background()); err != nil {
+		return nil, fmt.Errorf("simorg: slack episodes: %w", err)
+	}
+	store := episode.New()
+	for _, ep := range src.Episodes() {
+		store.Add(ep)
+	}
+	return store, nil
+}
+
 // slackUser builds one users.list member.
 func slackUser(id, name, email, title string) map[string]any {
 	return map[string]any{"id": id, "profile": map[string]any{
@@ -420,6 +472,22 @@ func slackMessage(user, text string, when time.Time) map[string]any {
 		"ts": fmt.Sprintf("%d.000100", when.Unix()),
 	}
 }
+
+// slackThread builds a history parent that drew replies, carrying the thread
+// shape Slack reports without a second call.
+func slackThread(
+	user, text string, when time.Time, replyCount int, replyUsers []string, latest time.Time,
+) map[string]any {
+	m := slackMessage(user, text, when)
+	m["thread_ts"] = m["ts"]
+	m["reply_count"] = replyCount
+	m["reply_users"] = replyUsers
+	m["latest_reply"] = fmt.Sprintf("%d.000100", latest.Unix())
+	return m
+}
+
+// threadKey is the timestamp a thread's replies are keyed by.
+func threadKey(when time.Time) string { return fmt.Sprintf("%d.000100", when.Unix()) }
 
 // daysAgo returns a time n days in the past.
 func daysAgo(n int) time.Time { return time.Now().AddDate(0, 0, -n) }

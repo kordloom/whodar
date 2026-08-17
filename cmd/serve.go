@@ -13,10 +13,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/feedback"
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/policy"
+	"github.com/kordloom/whodar/internal/recall"
 	"github.com/kordloom/whodar/internal/resolve"
 	"github.com/kordloom/whodar/internal/web"
 )
@@ -44,6 +46,8 @@ type webConfig struct {
 	provider string
 	// openaiURL is an OpenAI-compatible base URL for the openai provider.
 	openaiURL string
+	// episodes holds the conversations recall answers from; nil disables it.
+	episodes *episode.Store
 	// fbStrength is how hard votes move ranking.
 	fbStrength string
 }
@@ -72,6 +76,9 @@ session cookie. Put TLS in front of it for anything beyond a trusted network.`,
 			if err != nil {
 				return noIndexError(err)
 			}
+			if cfg.episodes, err = opts.loadEpisodes(); err != nil {
+				return err
+			}
 			store := applyFeedback(ix, opts, cmd.ErrOrStderr())
 			return serveWeb(cmd, opts, ix, store, cfg)
 		},
@@ -99,6 +106,24 @@ func addWebFlags(cmd *cobra.Command, cfg *webConfig, defaultAddr string) {
 // serveWeb runs the web UI over ix until interrupted. A nil store disables
 // the feedback API. Binding beyond localhost requires the serve token, which
 // then gates every request.
+// recallFn returns the web recall handler, or nil when no conversations have
+// been recorded. Every answer is scoped to the person the request names, so it
+// can only ever return conversations that person took part in.
+func recallFn(opts *options, ix *index.Index, cfg webConfig) web.RecallFunc {
+	store := cfg.episodes
+	if store == nil || store.Len() == 0 {
+		return nil
+	}
+	res := recall.New(store, ix)
+	return func(ctx context.Context, person, query string, limit int) (recall.Answer, error) {
+		who := res.Who(person)
+		if who == "" {
+			return recall.Answer{}, fmt.Errorf("%w: name who is asking", web.ErrBadRequest)
+		}
+		return res.Resolve(ctx, recall.Query{Text: query, Person: who, Limit: limit}), nil
+	}
+}
+
 func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedback.Store, cfg webConfig) error {
 	token := os.Getenv(serveTokenEnv)
 	if !loopbackAddr(cfg.addr) && token == "" {
@@ -149,7 +174,7 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 
 	handler, err := web.Handler(web.Config{
 		Ask: ask, Feedback: vote, Person: person, Version: version, AuthToken: token,
-		Directory: &dir, Modes: modes, Log: cmd.ErrOrStderr(),
+		Directory: &dir, Modes: modes, Recall: recallFn(opts, ix, cfg), Log: cmd.ErrOrStderr(),
 	})
 	if err != nil {
 		return err
