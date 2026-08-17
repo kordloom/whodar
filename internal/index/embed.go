@@ -106,7 +106,13 @@ type scoredID struct {
 func rankByCosine(vecs map[model.ID][]float32, query []float32, limit int) []scoredID {
 	ranked := make([]scoredID, 0, len(vecs))
 	for id, vec := range vecs {
-		ranked = append(ranked, scoredID{id: id, score: cosine(query, vec)})
+		// Anything at or below zero is unrelated, not merely a weak match.
+		// Keeping those would fill the answer with whoever sorts first, and a
+		// query embedded by a different model than the index scores every
+		// entity zero, so without this the top result is a stranger.
+		if score := cosine(query, vec); score > 0 {
+			ranked = append(ranked, scoredID{id: id, score: score})
+		}
 	}
 	sort.Slice(ranked, func(i, j int) bool {
 		if ranked[i].score != ranked[j].score {

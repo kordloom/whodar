@@ -1,6 +1,7 @@
 package index
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -324,5 +325,78 @@ func TestProfile(t *testing.T) {
 	}
 	if _, ok := ix.Profile("nobody@corp.com"); ok {
 		t.Error("Profile(nobody) = ok, want false")
+	}
+}
+
+// TestMergeIsIdempotent verifies re-reading a source replaces its earlier
+// contribution instead of stacking a second copy on top. The command whodar's
+// own help recommends for a schedule is `index --source X --merge`, so a run
+// that inflated its own weights would drift the ranking a little further every
+// night until an explicit topic owner lost to a passing mention.
+func TestMergeIsIdempotent(t *testing.T) {
+	t.Parallel()
+	base := []connector.Record{
+		{Source: "org-csv", Name: "Owner", Email: "owner@x.com", Topics: []string{"billing"}},
+		{Source: "org-csv", Name: "Bystander", Email: "bystander@x.com"},
+	}
+	slack := []connector.Record{
+		{Source: "slack", Email: "bystander@x.com", Text: "billing"},
+		{Source: "slack", Email: "owner@x.com", Text: "deploy pipeline dashboard"},
+	}
+
+	once := New()
+	once.Build(base)
+	once.Add(slack)
+	want := once.Search("billing", 5)
+
+	many := New()
+	many.Build(base)
+	for range 20 {
+		many.Add(slack)
+	}
+	got := many.Search("billing", 5)
+
+	if len(got) != len(want) {
+		t.Fatalf("after 20 merges: %d results, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i].Person.ID != want[i].Person.ID {
+			t.Errorf("rank %d after 20 merges = %s, want %s",
+				i, got[i].Person.ID, want[i].Person.ID)
+		}
+		if math.Abs(got[i].Score-want[i].Score) > 1e-9 {
+			t.Errorf("rank %d score after 20 merges = %.6f, want %.6f (weights inflated)",
+				i, got[i].Score, want[i].Score)
+		}
+	}
+	if len(got) > 0 && got[0].Person.ID != "owner@x.com" {
+		t.Errorf("top result after 20 merges = %s, want the topic owner", got[0].Person.ID)
+	}
+}
+
+// TestMergeReplacesOnlyItsOwnSource verifies merging one source leaves the
+// others exactly as they were, so re-reading Slack does not disturb the org
+// chart or the tickets already indexed.
+func TestMergeReplacesOnlyItsOwnSource(t *testing.T) {
+	t.Parallel()
+	ix := New()
+	ix.Build([]connector.Record{
+		{Source: "org-csv", Name: "Jane", Email: "jane@x.com", Topics: []string{"billing"}},
+	})
+	ix.Add([]connector.Record{
+		{Source: "jira", Email: "bob@x.com", Name: "Bob", Topics: []string{"kafka"}},
+	})
+	// Slack arrives, then is re-read with different content.
+	ix.Add([]connector.Record{{Source: "slack", Email: "cy@x.com", Name: "Cy", Text: "latency"}})
+	ix.Add([]connector.Record{{Source: "slack", Email: "cy@x.com", Name: "Cy", Text: "throughput"}})
+
+	for _, q := range []string{"billing", "kafka", "throughput"} {
+		if got := ix.Search(q, 1); len(got) != 1 {
+			t.Errorf("query %q returned %d results, want the untouched source kept", q, len(got))
+		}
+	}
+	// The replaced Slack content is gone rather than lingering beside the new.
+	if got := ix.Search("latency", 1); len(got) != 0 {
+		t.Errorf("replaced source content survived: %v", got)
 	}
 }

@@ -5,6 +5,7 @@ package index
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -111,6 +112,11 @@ type Index struct {
 	fbStep float64
 	// fbMax clamps net votes per result; zero means the default, negative off.
 	fbMax int
+	// sources holds the records each source contributed, keyed by source name.
+	// They are the index's source of truth: everything else here is derived
+	// from them, so re-reading a source replaces its contribution instead of
+	// piling a second copy on top of the first.
+	sources map[string][]connector.Record
 	// personLens and channelLens cache BM25 document lengths, refreshed when
 	// postings change so a query never rescans every posting.
 	personLens  entityLens
@@ -168,29 +174,66 @@ func (ix *Index) decay(t time.Time) float64 {
 	return math.Exp2(-float64(age) / float64(ix.halfLife))
 }
 
-// Build replaces the index contents with data derived from records.
+// Build replaces the index contents with data derived from records, forgetting
+// every source read before.
 func (ix *Index) Build(records []connector.Record) {
+	ix.sources = make(map[string][]connector.Record)
+	ix.personVecs = make(map[model.ID][]float32)
+	ix.channelVecs = make(map[model.ID][]float32)
+	ix.take(records)
+	ix.rebuild()
+}
+
+// Add merges records into the current index. Each source named in records
+// replaces whatever that source contributed before, so re-reading a source is
+// idempotent: indexing Slack twice leaves the same index as indexing it once,
+// and a scheduled merge does not inflate its own weights over time. Sources
+// not named are left as they are. Person records merge by email or id, channel
+// records by name. Embeddings are left alone; call Embed to refresh vectors.
+func (ix *Index) Add(records []connector.Record) {
+	ix.take(records)
+	ix.rebuild()
+}
+
+// take files records under the source that produced them, replacing that
+// source's previous contribution. Records that name no source cannot be told
+// apart from the ones already held, so they accumulate instead: every
+// connector names itself, and refusing to guess keeps a hand-assembled record
+// set from silently erasing another.
+func (ix *Index) take(records []connector.Record) {
+	if ix.sources == nil {
+		ix.sources = make(map[string][]connector.Record)
+	}
+	incoming := make(map[string][]connector.Record)
+	for _, rec := range records {
+		incoming[rec.Source] = append(incoming[rec.Source], rec)
+	}
+	for name, recs := range incoming {
+		if name == "" {
+			ix.sources[name] = append(ix.sources[name], recs...)
+			continue
+		}
+		ix.sources[name] = recs
+	}
+}
+
+// rebuild derives the graph, postings, and texts from every retained record.
+// Sources are replayed in name order so the same set of records always
+// produces the same index, whatever order the runs happened in.
+func (ix *Index) rebuild() {
 	ix.Graph = model.NewGraph()
 	ix.postings = make(map[string]map[model.ID]float64)
 	ix.texts = make(map[model.ID]*personText)
 	ix.channelPostings = make(map[string]map[model.ID]float64)
 	ix.channelTexts = make(map[model.ID]*channelText)
-	ix.personVecs = make(map[model.ID][]float32)
-	ix.channelVecs = make(map[model.ID][]float32)
-	ix.Add(records)
-}
-
-// Add merges records into the current index, accumulating onto whatever is
-// already present. Person records merge by email or id, channel records by
-// name. It leaves embeddings unchanged; call Embed to refresh vectors after
-// adding.
-func (ix *Index) Add(records []connector.Record) {
-	for _, rec := range records {
-		switch rec.Kind {
-		case connector.KindChannel:
-			ix.buildChannel(rec)
-		default:
-			ix.buildPerson(rec)
+	for _, name := range slices.Sorted(maps.Keys(ix.sources)) {
+		for _, rec := range ix.sources[name] {
+			switch rec.Kind {
+			case connector.KindChannel:
+				ix.buildChannel(rec)
+			default:
+				ix.buildPerson(rec)
+			}
 		}
 	}
 	ix.refreshStats()
@@ -472,6 +515,13 @@ const (
 	bm25K1        = 1.2
 	bm25B         = 0.75
 	termWeightCap = 4.0
+	// normCap bounds the verbosity discount. A term's weight is capped, so
+	// letting the length normalizer grow without limit eventually divides an
+	// explicit topic tag below a single passing mention, which would mean the
+	// more work someone does, the worse they rank on what they own. The
+	// discount still applies in full up to this point; past it, talking more
+	// stops counting against you.
+	normCap = 3.0
 )
 
 // Fuzzy matching bounds. Terms shorter than fuzzyMinLen never fuzz, one edit
@@ -643,7 +693,8 @@ func scoreByTerms(
 			// The normalizer floors at one: an above-average profile is
 			// discounted for verbosity, but a sparse or decayed profile gets
 			// no boost, since its raw weight already says how little is there.
-			norm := max(1, 1-bm25B+bm25B*(lens.byID[id]/lens.avg))
+			// It is capped at the other end for the reason normCap gives.
+			norm := min(max(1, 1-bm25B+bm25B*(lens.byID[id]/lens.avg)), normCap)
 			scores[id] += hit.penalty * idf * (w * (bm25K1 + 1)) / (w + bm25K1*norm)
 		}
 	}
@@ -751,6 +802,9 @@ type snapshot struct {
 	ChannelVecs map[model.ID][]float32 `json:"channel_vecs,omitempty"`
 	// Aliases maps each known alias identifier to its canonical form.
 	Aliases map[model.ID]model.ID `json:"aliases,omitempty"`
+	// Sources holds the records each source contributed, so a later merge can
+	// replace one source without re-reading the others.
+	Sources map[string][]connector.Record `json:"sources,omitempty"`
 }
 
 // Option configures Load and Save. With no option the index is read and written
@@ -800,6 +854,7 @@ func (ix *Index) Save(path string, opts ...Option) error {
 		PersonVecs:      ix.personVecs,
 		ChannelVecs:     ix.channelVecs,
 		Aliases:         ix.identityResolver().Pairs(),
+		Sources:         ix.sources,
 	}
 	raw, err := json.Marshal(snap)
 	if err != nil {
@@ -840,6 +895,7 @@ func Load(path string, opts ...Option) (*Index, error) {
 		channelTexts:    snap.ChannelTexts,
 		personVecs:      snap.PersonVecs,
 		channelVecs:     snap.ChannelVecs,
+		sources:         snap.Sources,
 		resolver:        identity.NewResolver(),
 		halfLife:        DefaultHalfLife,
 		now:             time.Now,
