@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kordloom/whodar/internal/bot"
+	"github.com/kordloom/whodar/internal/recall"
 	"github.com/kordloom/whodar/internal/resolve"
 	"github.com/kordloom/whodar/internal/slack"
 )
@@ -32,6 +33,26 @@ type slackReplier struct {
 // Reply posts text to channel, threading under threadTS when set.
 func (s slackReplier) Reply(ctx context.Context, channel, threadTS, text string) error {
 	return s.client.PostMessage(ctx, channel, threadTS, text)
+}
+
+// ReplyPrivately posts text visible only to user, which is how recall answers
+// are delivered so one person's history is never shown to a channel.
+func (s slackReplier) ReplyPrivately(ctx context.Context, channel, user, text string) error {
+	return s.client.PostEphemeral(ctx, channel, user, text)
+}
+
+// slackResponder posts slash-command answers, publicly for questions about who
+// knows something and privately for recall.
+type slackResponder struct{}
+
+// Respond posts text to a response URL for the whole channel to see.
+func (slackResponder) Respond(ctx context.Context, responseURL, text string) error {
+	return slack.Respond(ctx, responseURL, text)
+}
+
+// RespondPrivately posts text to a response URL for the caller alone.
+func (slackResponder) RespondPrivately(ctx context.Context, responseURL, text string) error {
+	return slack.RespondPrivately(ctx, responseURL, text)
 }
 
 // newBotCmd builds the bot command, which answers questions from Slack over
@@ -89,7 +110,22 @@ Transports and their credentials:
 				}
 				return res.Resolve(ctx, query, n)
 			}
-			engine := bot.New(ask, mode, botUserID, limit)
+			// Recall is scoped to whoever typed the message: the Slack user
+			// id resolves to a person, and the store only returns
+			// conversations that person took part in.
+			store, err := opts.loadEpisodes()
+			if err != nil {
+				return err
+			}
+			res := recall.New(store, ix)
+			recallFn := func(ctx context.Context, user, query string, n int) (recall.Answer, error) {
+				person := res.Who("slack:" + user)
+				if person == "" {
+					return recall.Answer{}, nil
+				}
+				return res.Resolve(recall.Query{Text: query, Person: person, Limit: n}), nil
+			}
+			engine := bot.New(ask, mode, botUserID, limit, bot.WithRecall(recallFn))
 			replier := slackReplier{client: botClient}
 
 			switch transport {
@@ -126,7 +162,7 @@ func runSocketBot(cmd *cobra.Command, engine *bot.Engine, replier bot.Replier, b
 		return fmt.Errorf("%w: set %s for socket transport", ErrBadArgs, slackAppTokenEnv)
 	}
 	runner := bot.NewSocketRunner(slack.New(appToken), engine, replier, botUserID,
-		bot.WithLog(cmd.ErrOrStderr()), bot.WithResponder(bot.ResponderFunc(slack.Respond)))
+		bot.WithLog(cmd.ErrOrStderr()), bot.WithResponder(slackResponder{}))
 	fmt.Fprintln(cmd.ErrOrStderr(), "whodar bot: connected over socket mode (Ctrl-C to stop)")
 	return runner.Run(cmd.Context())
 }
@@ -138,7 +174,7 @@ func runEventsBot(cmd *cobra.Command, engine *bot.Engine, replier bot.Replier, b
 		return fmt.Errorf("%w: set %s for events transport", ErrBadArgs, slackSigningSecretEnv)
 	}
 	handler := bot.NewEventsHandler(engine, replier, botUserID, secret, bot.WithEventsLog(cmd.ErrOrStderr()))
-	slash := bot.NewSlashHandler(engine, bot.ResponderFunc(slack.Respond), secret,
+	slash := bot.NewSlashHandler(engine, slackResponder{}, secret,
 		bot.WithSlashLog(cmd.ErrOrStderr()))
 	mux := http.NewServeMux()
 	mux.Handle("/slack/events", handler)

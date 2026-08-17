@@ -27,6 +27,15 @@ func (c *Client) PostMessage(ctx context.Context, channel, threadTS, text string
 	return c.do(ctx, "chat.postMessage", params, &resp)
 }
 
+// PostEphemeral posts text visible only to one user in a channel. Recall
+// answers use it: they name the conversations one person took part in, which
+// is nobody else's business even in a channel they share.
+func (c *Client) PostEphemeral(ctx context.Context, channel, user, text string) error {
+	params := url.Values{"channel": {channel}, "user": {user}, "text": {text}}
+	var resp okResp
+	return c.do(ctx, "chat.postEphemeral", params, &resp)
+}
+
 // authTestResp decodes auth.test.
 type authTestResp struct {
 	apiMeta
@@ -64,13 +73,25 @@ func (c *Client) AuthTest(ctx context.Context) (Auth, error) {
 // so a forged payload cannot point the bot's POST anywhere else.
 const responseURLPrefix = "https://hooks.slack.com/"
 
-// Respond posts text to a slash-command response URL. The URL is minted by
-// Slack per invocation and needs no token.
+// Respond posts text to a slash-command response URL, visible to the whole
+// channel. The URL is minted by Slack per invocation and needs no token.
 func Respond(ctx context.Context, responseURL, text string) error {
+	return respond(ctx, responseURL, text, "in_channel")
+}
+
+// RespondPrivately posts text to a slash-command response URL so only the
+// person who ran the command sees it.
+func RespondPrivately(ctx context.Context, responseURL, text string) error {
+	return respond(ctx, responseURL, text, "ephemeral")
+}
+
+// respond posts text to a slash-command response URL with the given
+// visibility.
+func respond(ctx context.Context, responseURL, text, responseType string) error {
 	if !strings.HasPrefix(responseURL, responseURLPrefix) {
 		return fmt.Errorf("slack: respond: unexpected response url host")
 	}
-	body, err := json.Marshal(map[string]string{"response_type": "in_channel", "text": text})
+	body, err := json.Marshal(map[string]string{"response_type": responseType, "text": text})
 	if err != nil {
 		return fmt.Errorf("slack: respond: encode: %w", err)
 	}

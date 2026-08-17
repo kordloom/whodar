@@ -22,6 +22,13 @@ type Responder interface {
 	Respond(ctx context.Context, responseURL, text string) error
 }
 
+// PrivateResponder posts a slash-command answer only the person who ran the
+// command can see. A responder without it gets no recall answers.
+type PrivateResponder interface {
+	// RespondPrivately posts text to responseURL, visible only to the caller.
+	RespondPrivately(ctx context.Context, responseURL, text string) error
+}
+
 // ResponderFunc adapts a function to the Responder interface.
 type ResponderFunc func(ctx context.Context, responseURL, text string) error
 
@@ -54,6 +61,11 @@ func routeSlash(ctx context.Context, e *Engine, respond Responder, cmd slashComm
 	ctx, cancel := context.WithTimeout(ctx, handleTimeout)
 	defer cancel()
 
+	if query, ok := parseRecall(cmd.Text); ok {
+		routeSlashRecall(ctx, e, respond, cmd, query, log)
+		return
+	}
+
 	text, err := e.Answer(ctx, cmd.UserID, cmd.Text)
 	if err != nil {
 		fmt.Fprintf(log, "whodar bot: slash: %v\n", err)
@@ -62,6 +74,34 @@ func routeSlash(ctx context.Context, e *Engine, respond Responder, cmd slashComm
 		text = slashUsage
 	}
 	if err := respond.Respond(ctx, cmd.ResponseURL, text); err != nil {
+		fmt.Fprintf(log, "whodar bot: slash respond: %v\n", err)
+	}
+}
+
+// routeSlashRecall answers a recall request so only the person who ran the
+// command sees it. A responder that cannot answer privately gets a refusal,
+// since the answer describes that person's own conversations.
+func routeSlashRecall(
+	ctx context.Context, e *Engine, respond Responder, cmd slashCommand, query string, log io.Writer,
+) {
+	private, ok := respond.(PrivateResponder)
+	if !ok {
+		if err := respond.Respond(ctx, cmd.ResponseURL, noPrivateReply); err != nil {
+			fmt.Fprintf(log, "whodar bot: slash respond: %v\n", err)
+		}
+		return
+	}
+	text := "Tell me what to look for, like `/whodar recall certificate renewal`."
+	if query != "" {
+		answer, err := e.Recall(ctx, cmd.UserID, query, recallLimit)
+		if err != nil {
+			fmt.Fprintf(log, "whodar bot: slash recall: %v\n", err)
+		}
+		if answer != "" {
+			text = answer
+		}
+	}
+	if err := private.RespondPrivately(ctx, cmd.ResponseURL, text); err != nil {
 		fmt.Fprintf(log, "whodar bot: slash respond: %v\n", err)
 	}
 }
