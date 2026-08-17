@@ -123,7 +123,7 @@ Transports and their credentials:
 				if person == "" {
 					return recall.Answer{}, nil
 				}
-				return res.Resolve(recall.Query{Text: query, Person: person, Limit: n}), nil
+				return res.Resolve(ctx, recall.Query{Text: query, Person: person, Limit: n}), nil
 			}
 			engine := bot.New(ask, mode, botUserID, limit, bot.WithRecall(recallFn))
 			replier := slackReplier{client: botClient}

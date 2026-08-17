@@ -16,6 +16,7 @@ import (
 	"github.com/kordloom/whodar/internal/connector"
 	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/llm"
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/util"
 )
@@ -263,7 +264,7 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 	if err := opts.saveIndex(ix); err != nil {
 		return err
 	}
-	if err := saveEpisodes(cmd, opts, p.episodes); err != nil {
+	if err := saveEpisodes(cmd, opts, p); err != nil {
 		return err
 	}
 
@@ -285,7 +286,8 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 // Episodes always merge, even when the index itself is rebuilt: a source stops
 // serving old messages long before they stop being worth remembering, so
 // dropping them would throw away history whodar may be the last to hold.
-func saveEpisodes(cmd *cobra.Command, opts *options, eps []episode.Episode) error {
+func saveEpisodes(cmd *cobra.Command, opts *options, p indexParams) error {
+	eps := p.episodes
 	if len(eps) == 0 {
 		return nil
 	}
@@ -293,9 +295,26 @@ func saveEpisodes(cmd *cobra.Command, opts *options, eps []episode.Episode) erro
 	if err != nil {
 		return err
 	}
+	// A conversation can only be embedded while its text is in hand: the store
+	// keeps terms, not messages, so an episode indexed without embeddings can
+	// never gain them later.
+	var embedder *llm.Ollama
+	if p.embed {
+		embedder = newOllama("", p.embedModel, p.ollamaURL)
+		fmt.Fprintf(cmd.ErrOrStderr(), "embedding %d conversations via Ollama...\n", len(eps))
+	}
 	before := store.Len()
 	for _, ep := range eps {
+		body := strings.TrimSpace(ep.Body + " " + ep.Text())
 		store.Add(ep)
+		if embedder == nil || body == "" {
+			continue
+		}
+		vec, err := embedder.Embed(cmd.Context(), body)
+		if err != nil {
+			return fmt.Errorf("embed conversation: %w", err)
+		}
+		store.SetVector(ep.ID, vec)
 	}
 	if err := opts.saveEpisodes(store); err != nil {
 		return err

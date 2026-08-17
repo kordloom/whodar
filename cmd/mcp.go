@@ -88,7 +88,7 @@ func registerRecallTool(srv *mcp.Server, res *recall.Resolver) {
 			"required": ["question", "person"],
 			"additionalProperties": false
 		}`),
-	}, func(_ context.Context, args json.RawMessage) (string, error) {
+	}, func(ctx context.Context, args json.RawMessage) (string, error) {
 		var in struct {
 			// Question is what the caller is trying to remember.
 			Question string `json:"question"`
@@ -107,7 +107,8 @@ func registerRecallTool(srv *mcp.Server, res *recall.Resolver) {
 		if in.Limit <= 0 || in.Limit > mcpAskLimit {
 			in.Limit = 5
 		}
-		return marshalMCP(res.Resolve(recall.Query{Text: in.Question, Person: person, Limit: in.Limit}))
+		return marshalMCP(res.Resolve(ctx,
+			recall.Query{Text: in.Question, Person: person, Limit: in.Limit}))
 	})
 }
 

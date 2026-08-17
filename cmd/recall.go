@@ -21,9 +21,12 @@ const meEnv = "WHODAR_ME"
 // something was worked out before.
 func newRecallCmd(opts *options) *cobra.Command {
 	var (
-		limit   int
-		me      string
-		horizon int
+		limit      int
+		me         string
+		horizon    int
+		meaning    bool
+		embedModel string
+		ollamaURL  string
 	)
 	cmd := &cobra.Command{
 		Use:   "recall [question]",
@@ -51,6 +54,16 @@ Examples:
 				return err
 			}
 			res := recall.New(store, ix)
+			if meaning {
+				if err := guardLLMHost(opts.pol, ollamaURL); err != nil {
+					return err
+				}
+				res.SetEmbedder(newOllama("", embedModel, ollamaURL))
+				if !res.Semantic() {
+					return fmt.Errorf(
+						"%w: no conversation was embedded; re-index with --episodes --embed", ErrBadArgs)
+				}
+			}
 			if horizon > 0 {
 				res.SetHorizon(time.Duration(horizon) * 24 * time.Hour)
 			}
@@ -59,7 +72,8 @@ Examples:
 				return err
 			}
 			query := strings.Join(args, " ")
-			ans := res.Resolve(recall.Query{Text: query, Person: person, Limit: limit})
+			ans := res.Resolve(cmd.Context(),
+				recall.Query{Text: query, Person: person, Limit: limit, Meaning: meaning})
 			warnEmptyRecall(cmd, res, ans, person)
 			return writeJSON(cmd.OutOrStdout(), ans, opts.pretty)
 		},
@@ -67,6 +81,10 @@ Examples:
 	cmd.Flags().IntVar(&limit, "limit", 5, "Maximum conversations to return.")
 	cmd.Flags().StringVar(&me, "me", "",
 		"Who is asking: an email or a source identifier. Defaults to "+meEnv+", then your git email.")
+	cmd.Flags().BoolVar(&meaning, "meaning", false,
+		"Match by meaning instead of exact words. Needs an index built with --episodes --embed.")
+	cmd.Flags().StringVar(&embedModel, "embed-model", "", "Ollama embed model for --meaning.")
+	cmd.Flags().StringVar(&ollamaURL, "ollama-url", "http://localhost:11434", "Ollama base URL.")
 	cmd.Flags().IntVar(&horizon, "link-horizon-days", 0,
 		"Warn that links older than this many days may have expired. Zero makes no claim.")
 	return cmd

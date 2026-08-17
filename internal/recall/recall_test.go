@@ -1,6 +1,7 @@
 package recall
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -47,7 +48,7 @@ func newFixture(t *testing.T) *Resolver {
 func TestResolveNamesTheHelper(t *testing.T) {
 	t.Parallel()
 	r := newFixture(t)
-	ans := r.Resolve(Query{Text: "certificate renewal", Person: "jane@x.com"})
+	ans := r.Resolve(context.Background(), Query{Text: "certificate renewal", Person: "jane@x.com"})
 	if len(ans.Episodes) != 1 {
 		t.Fatalf("episodes = %+v, want one", ans.Episodes)
 	}
@@ -72,7 +73,7 @@ func TestResolveNamesTheHelper(t *testing.T) {
 func TestResolveScopesToAsker(t *testing.T) {
 	t.Parallel()
 	r := newFixture(t)
-	ans := r.Resolve(Query{Text: "certificate renewal", Person: "stranger@x.com"})
+	ans := r.Resolve(context.Background(), Query{Text: "certificate renewal", Person: "stranger@x.com"})
 	if len(ans.Episodes) != 0 {
 		t.Errorf("episodes = %+v, want none for a stranger", ans.Episodes)
 	}
@@ -87,7 +88,7 @@ func TestHorizonFlagsOldLinks(t *testing.T) {
 	t.Parallel()
 	r := newFixture(t)
 	r.SetHorizon(30 * 24 * time.Hour)
-	ans := r.Resolve(Query{Text: "certificate renewal", Person: "jane@x.com"})
+	ans := r.Resolve(context.Background(), Query{Text: "certificate renewal", Person: "jane@x.com"})
 	if len(ans.Episodes) != 1 || !ans.Episodes[0].LinkMayHaveExpired {
 		t.Errorf("episodes = %+v, want the old link flagged", ans.Episodes)
 	}
@@ -145,7 +146,7 @@ func TestUnknownParticipantStillNamed(t *testing.T) {
 		Occurred:     time.Now().AddDate(0, 0, -5),
 		Body:         "kafka lag",
 	})
-	ans := New(store, ix).Resolve(Query{Text: "kafka lag", Person: "me@x.com"})
+	ans := New(store, ix).Resolve(context.Background(), Query{Text: "kafka lag", Person: "me@x.com"})
 	if len(ans.Episodes) != 1 || len(ans.Episodes[0].People) != 1 {
 		t.Fatalf("episodes = %+v, want one with one other person", ans.Episodes)
 	}

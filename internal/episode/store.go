@@ -8,6 +8,7 @@ import (
 
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/text"
+	"github.com/kordloom/whodar/internal/vector"
 )
 
 // DefaultHalfLife is the age at which an episode's score halves. Recall
@@ -96,7 +97,7 @@ func (s *Store) Add(ep Episode) {
 	for _, p := range stored.Participants {
 		s.byParticipant[p] = append(s.byParticipant[p], stored.ID)
 	}
-	for _, term := range text.Terms(strings.TrimSpace(body+" "+stored.Text())) {
+	for _, term := range text.Terms(strings.TrimSpace(body + " " + stored.Text())) {
 		posting := s.postings[term]
 		if posting == nil {
 			posting = make(map[string]float64)
@@ -248,6 +249,64 @@ func (s *Store) Search(q Query) []Result {
 	}
 	return out
 }
+
+// SearchSemantic ranks episodes by how close their meaning is to a query
+// vector, which finds a conversation whose words you no longer remember. It
+// returns nothing when no episode was embedded.
+func (s *Store) SearchSemantic(query []float32, q Query) []Result {
+	if len(query) == 0 || len(s.vecs) == 0 {
+		return nil
+	}
+	limit := q.Limit
+	if limit <= 0 {
+		limit = 5
+	}
+	var scope map[string]bool
+	if q.Person != "" {
+		ids := s.byParticipant[q.Person]
+		if len(ids) == 0 {
+			return nil
+		}
+		scope = make(map[string]bool, len(ids))
+		for _, id := range ids {
+			scope[id] = true
+		}
+	}
+	out := make([]Result, 0, len(s.vecs))
+	for id, vec := range s.vecs {
+		if scope != nil && !scope[id] {
+			continue
+		}
+		ep := s.episodes[id]
+		if ep == nil {
+			continue
+		}
+		similarity := vector.Cosine(query, vec)
+		if similarity <= 0 {
+			continue
+		}
+		out = append(out, Result{
+			Episode:    ep,
+			Score:      similarity * s.decay(ep.Occurred),
+			Confidence: similarity,
+			Matched:    []string{"similar meaning"},
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Score == out[j].Score {
+			return out[i].Episode.ID < out[j].Episode.ID
+		}
+		return out[i].Score > out[j].Score
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out
+}
+
+// HasVectors reports whether any episode was embedded, which is what makes
+// semantic recall possible.
+func (s *Store) HasVectors() bool { return len(s.vecs) > 0 }
 
 // decay returns the recency multiplier for an episode, halving every
 // half-life. Undated episodes never decay.

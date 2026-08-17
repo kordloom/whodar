@@ -5,6 +5,7 @@
 package recall
 
 import (
+	"context"
 	"sort"
 	"strings"
 	"time"
@@ -25,6 +26,16 @@ type Resolver struct {
 	// link may no longer resolve, because the workspace may have aged the
 	// message out. Zero means no claim is made.
 	horizon time.Duration
+	// embedder turns a question into a vector for semantic recall; nil keeps
+	// matching to the words themselves.
+	embedder Embedder
+}
+
+// Embedder turns a question into a vector. Semantic recall needs one, and it
+// only helps against episodes embedded when they were indexed.
+type Embedder interface {
+	// Embed returns the embedding vector for text.
+	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
 // New returns a Resolver over store, naming people from ix. It panics on a nil
@@ -39,6 +50,14 @@ func New(store *episode.Store, ix *index.Index) *Resolver {
 // SetHorizon sets how far back links are trusted before an answer warns that
 // the source may have deleted the message.
 func (r *Resolver) SetHorizon(d time.Duration) { r.horizon = d }
+
+// SetEmbedder enables semantic recall, which matches a question by meaning
+// rather than by the words used at the time.
+func (r *Resolver) SetEmbedder(e Embedder) { r.embedder = e }
+
+// Semantic reports whether semantic recall can run: an embedder is configured
+// and the episodes were embedded when they were indexed.
+func (r *Resolver) Semantic() bool { return r.embedder != nil && r.store.HasVectors() }
 
 // Who resolves an identifier a person is known by, such as an email or a Slack
 // user ID, to their canonical identity. It returns an empty ID when the hint
@@ -68,6 +87,10 @@ type Query struct {
 	Person model.ID
 	// Limit caps episodes returned; zero means five.
 	Limit int
+	// Meaning matches by meaning instead of by words, which finds a
+	// conversation whose exact wording is long forgotten. It needs an embedder
+	// and episodes that were embedded when indexed.
+	Meaning bool
 }
 
 // Answer is a recall result, shaped for JSON so the CLI, the web app, and the
@@ -137,9 +160,20 @@ type Scope struct {
 	Note string `json:"note"`
 }
 
-// Resolve answers a recall query.
-func (r *Resolver) Resolve(q Query) Answer {
-	hits := r.store.Search(episode.Query{Text: q.Text, Person: q.Person, Limit: q.Limit})
+// Resolve answers a recall query. Matching is on the words of the question
+// unless Meaning is set and semantic recall is available, in which case a
+// failed embedding falls back to words rather than failing the answer.
+func (r *Resolver) Resolve(ctx context.Context, q Query) Answer {
+	sq := episode.Query{Text: q.Text, Person: q.Person, Limit: q.Limit}
+	var hits []episode.Result
+	if q.Meaning && r.Semantic() {
+		if vec, err := r.embedder.Embed(ctx, q.Text); err == nil {
+			hits = r.store.SearchSemantic(vec, sq)
+		}
+	}
+	if hits == nil {
+		hits = r.store.Search(sq)
+	}
 	ans := Answer{
 		Query:    q.Text,
 		Person:   string(q.Person),
