@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dcadolph/whodar/internal/github"
-	"github.com/dcadolph/whodar/internal/util"
+	"github.com/kordloom/whodar/internal/github"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // maxTopicWeight caps how many times one topic counts for a person, so a heavy

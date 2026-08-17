@@ -18,13 +18,13 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/dcadolph/whodar/internal/confluence"
-	"github.com/dcadolph/whodar/internal/connector"
-	"github.com/dcadolph/whodar/internal/github"
-	"github.com/dcadolph/whodar/internal/index"
-	"github.com/dcadolph/whodar/internal/jira"
-	"github.com/dcadolph/whodar/internal/pagerduty"
-	"github.com/dcadolph/whodar/internal/slack"
+	"github.com/kordloom/whodar/internal/confluence"
+	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/github"
+	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/jira"
+	"github.com/kordloom/whodar/internal/pagerduty"
+	"github.com/kordloom/whodar/internal/slack"
 )
 
 // The simulated cast. The Payments team is Angela, Oscar, Kevin, and Pam;

@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dcadolph/whodar/internal/index"
-	"github.com/dcadolph/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // Answer is a resolved response: ranked people, ranked channels, and an

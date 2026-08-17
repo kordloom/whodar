@@ -6,8 +6,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/dcadolph/whodar/internal/pagerduty"
-	"github.com/dcadolph/whodar/internal/util"
+	"github.com/kordloom/whodar/internal/pagerduty"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // PagerDutyOptions configures the PagerDuty connector.

@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dcadolph/whodar/internal/feedback"
-	"github.com/dcadolph/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/feedback"
+	"github.com/kordloom/whodar/internal/index"
 )
 
 // newFeedbackCmd builds the feedback command group: record a vote, review

@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dcadolph/whodar/cmd"
+	"github.com/kordloom/whodar/cmd"
 )
 
 // main runs the whodar CLI and maps any error to a non-zero exit code.

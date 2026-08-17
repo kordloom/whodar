@@ -18,9 +18,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dcadolph/whodar/internal/feedback"
-	"github.com/dcadolph/whodar/internal/llm"
-	"github.com/dcadolph/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/feedback"
+	"github.com/kordloom/whodar/internal/llm"
+	"github.com/kordloom/whodar/internal/resolve"
 )
 
 // assets holds the embedded templates and static files.

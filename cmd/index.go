@@ -13,10 +13,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dcadolph/whodar/internal/connector"
-	"github.com/dcadolph/whodar/internal/index"
-	"github.com/dcadolph/whodar/internal/model"
-	"github.com/dcadolph/whodar/internal/util"
+	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // slackTokenEnv is the environment variable holding the Slack bot token.

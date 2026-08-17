@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dcadolph/whodar/internal/feedback"
-	"github.com/dcadolph/whodar/internal/simorg"
+	"github.com/kordloom/whodar/internal/feedback"
+	"github.com/kordloom/whodar/internal/simorg"
 )
 
 // demoQuery is the question the demo opens with, so the first thing a new

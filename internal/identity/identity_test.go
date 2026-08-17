@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/dcadolph/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 func TestCanonical(t *testing.T) {

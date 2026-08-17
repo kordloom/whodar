@@ -5,8 +5,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/dcadolph/whodar/internal/connector"
-	"github.com/dcadolph/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/index"
 )
 
 // TestBuildDirectory verifies the directory lists people, channels, teams,

@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dcadolph/whodar/internal/index"
-	"github.com/dcadolph/whodar/internal/llm"
-	"github.com/dcadolph/whodar/internal/policy"
-	"github.com/dcadolph/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/llm"
+	"github.com/kordloom/whodar/internal/policy"
+	"github.com/kordloom/whodar/internal/resolve"
 )
 
 // Cloud provider credentials come only from the environment, never flags.

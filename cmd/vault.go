@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dcadolph/whodar/internal/keyring"
-	"github.com/dcadolph/whodar/internal/vault"
+	"github.com/kordloom/whodar/internal/keyring"
+	"github.com/kordloom/whodar/internal/vault"
 )
 
 // newVaultCmd builds the vault command group for index encryption at rest.

@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dcadolph/whodar/internal/policy"
-	"github.com/dcadolph/whodar/internal/vault"
+	"github.com/kordloom/whodar/internal/policy"
+	"github.com/kordloom/whodar/internal/vault"
 )
 
 // policyEnvVar names the environment variable pointing to an org policy file.

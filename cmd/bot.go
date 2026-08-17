@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dcadolph/whodar/internal/bot"
-	"github.com/dcadolph/whodar/internal/resolve"
-	"github.com/dcadolph/whodar/internal/slack"
+	"github.com/kordloom/whodar/internal/bot"
+	"github.com/kordloom/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/slack"
 )
 
 // Bot environment variables. The bot token is shared with the index command.

@@ -7,9 +7,9 @@
 <p align="center"><em>Know who knows.</em></p>
 
 <p align="center">
-  <a href="https://github.com/dcadolph/whodar/actions/workflows/ci.yml"><img src="https://github.com/dcadolph/whodar/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/dcadolph/whodar/releases"><img src="https://img.shields.io/github/v/release/dcadolph/whodar" alt="Latest release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/dcadolph/whodar" alt="License"></a>
+  <a href="https://github.com/kordloom/whodar/actions/workflows/ci.yml"><img src="https://github.com/kordloom/whodar/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/kordloom/whodar/releases"><img src="https://img.shields.io/github/v/release/kordloom/whodar" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/kordloom/whodar" alt="License"></a>
 </p>
 
 Someone at your company already knows the answer. whodar tells you who.
@@ -36,9 +36,9 @@ whole graph: people, channels, teams, and topics:
 
 ## Install
 
-    brew install dcadolph/whodar/whodar
+    brew install kordloom/tap/whodar
 
-Or `go install github.com/dcadolph/whodar@latest`, or grab a prebuilt binary
+Or `go install github.com/kordloom/whodar@latest`, or grab a prebuilt binary
 from the releases page.
 
 ## Quickstart
@@ -100,13 +100,6 @@ environment variables cannot override.
 - [Architecture](docs/ARCHITECTURE.md), [deploying](docs/DEPLOY.md),
   [roadmap](docs/ROADMAP.md), and [contributing](CONTRIBUTING.md).
 
-## More tools
-
-- [kibble](https://github.com/dcadolph/kibble), test your README's install steps in a clean container
-- [preen](https://github.com/dcadolph/preen), split a messy working tree into clean, atomic git commits
-- [slop-chop](https://github.com/dcadolph/slop-chop), strip the AI tells out of your writing
-- [vamoose](https://github.com/dcadolph/vamoose), route time off through approval, then tell the team
-
 ## License
 
 Business Source License 1.1 (see [LICENSE](LICENSE)). Source-available: run whodar in
@@ -117,4 +110,4 @@ that provides its primary functionality. It converts to Apache 2.0 on 2030-08-03
 Hosting it for others, embedding it in something you sell, or bound by a policy that
 rejects source-available licenses? See [COMMERCIAL.md](COMMERCIAL.md).
 
-Copyright 2026 dcadolph.
+Copyright 2026 KordLoom LLC.

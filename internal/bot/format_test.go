@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/model"
-	"github.com/dcadolph/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/resolve"
 )
 
 // TestFormatEscapesMrkdwn verifies user-derived text cannot inject Slack

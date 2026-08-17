@@ -4,9 +4,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/feedback"
-	"github.com/dcadolph/whodar/internal/index"
-	"github.com/dcadolph/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/feedback"
+	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // buildFullIndex ingests every source against the simulated org and returns

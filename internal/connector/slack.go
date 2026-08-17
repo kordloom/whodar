@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dcadolph/whodar/internal/slack"
+	"github.com/kordloom/whodar/internal/slack"
 )
 
 // Default Slack ingest bounds. Standard depth pulls roughly six months of

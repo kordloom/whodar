@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/connector"
 )
 
 // confidenceIndex builds a small graph with distinct evidence classes: an

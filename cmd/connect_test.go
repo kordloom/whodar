@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/httputil"
-	"github.com/dcadolph/whodar/internal/prompt"
-	"github.com/dcadolph/whodar/internal/slack"
+	"github.com/kordloom/whodar/internal/httputil"
+	"github.com/kordloom/whodar/internal/prompt"
+	"github.com/kordloom/whodar/internal/slack"
 )
 
 // TestConnectSpecs verifies each source description is internally consistent: a

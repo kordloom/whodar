@@ -3,7 +3,7 @@ package bot
 import (
 	"strings"
 
-	"github.com/dcadolph/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/resolve"
 )
 
 // Format renders an answer as Slack mrkdwn. Every value drawn from the query or

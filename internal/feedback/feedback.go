@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dcadolph/whodar/internal/util"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // Votes a user can cast on one result.

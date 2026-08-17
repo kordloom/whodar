@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/connector"
-	"github.com/dcadolph/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/index"
 )
 
 // fakeChat is a Chatter stub returning a canned reply and recording the prompt.

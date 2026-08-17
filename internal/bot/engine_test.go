@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dcadolph/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/resolve"
 )
 
 // okAsk returns a fixed answer and records the query and mode it was called

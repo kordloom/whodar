@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/httputil"
+	"github.com/kordloom/whodar/internal/httputil"
 )
 
 // TestPing verifies the auth check hits the current-user endpoint, returns nil

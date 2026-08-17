@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dcadolph/whodar/internal/util"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // codeStop are path segments and file extensions too generic to be topics.

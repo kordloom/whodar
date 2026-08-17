@@ -4,8 +4,8 @@ import (
 	"math"
 	"sort"
 
-	"github.com/dcadolph/whodar/internal/index"
-	"github.com/dcadolph/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // Confidence labels partition the zero-to-one confidence range for display.

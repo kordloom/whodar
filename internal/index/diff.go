@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dcadolph/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // Changes describes which people, teams, and channels entered or left the graph

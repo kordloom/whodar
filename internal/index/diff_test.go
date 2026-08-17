@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/connector"
 )
 
 // TestDiff verifies joiners, leavers, and channel changes are detected.

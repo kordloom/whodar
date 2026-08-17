@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dcadolph/whodar/internal/confluence"
-	"github.com/dcadolph/whodar/internal/util"
+	"github.com/kordloom/whodar/internal/confluence"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // ConfluenceOptions configures the Confluence connector.

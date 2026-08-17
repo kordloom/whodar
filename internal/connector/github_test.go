@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dcadolph/whodar/internal/github"
+	"github.com/kordloom/whodar/internal/github"
 )
 
 // TestGitHubFetch verifies topics come from repo metadata, PR labels and titles,

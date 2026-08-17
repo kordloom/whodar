@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/index"
-	"github.com/dcadolph/whodar/internal/policy"
+	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/policy"
 )
 
 // TestGuardLLMHost verifies the non-redacting model paths (semantic and Ollama)

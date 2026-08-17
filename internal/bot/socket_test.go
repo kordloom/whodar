@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dcadolph/whodar/internal/resolve"
-	"github.com/dcadolph/whodar/internal/slack"
+	"github.com/kordloom/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/slack"
 )
 
 // fakeConn yields canned frames then EOF, recording writes.

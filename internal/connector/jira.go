@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dcadolph/whodar/internal/jira"
-	"github.com/dcadolph/whodar/internal/util"
+	"github.com/kordloom/whodar/internal/jira"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // JiraOptions configures the Jira connector.

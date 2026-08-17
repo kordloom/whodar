@@ -7,10 +7,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dcadolph/whodar/internal/index"
-	"github.com/dcadolph/whodar/internal/keyring"
-	"github.com/dcadolph/whodar/internal/prompt"
-	"github.com/dcadolph/whodar/internal/vault"
+	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/keyring"
+	"github.com/kordloom/whodar/internal/prompt"
+	"github.com/kordloom/whodar/internal/vault"
 )
 
 // codec resolves the at-rest codec from the environment once and caches it on

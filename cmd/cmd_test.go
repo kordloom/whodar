@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/index"
-	"github.com/dcadolph/whodar/internal/policy"
-	"github.com/dcadolph/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/policy"
+	"github.com/kordloom/whodar/internal/resolve"
 )
 
 // TestIndexThenAsk runs the index and ask commands end to end over a temp CSV.

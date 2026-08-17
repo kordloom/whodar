@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dcadolph/whodar/internal/httputil"
+	"github.com/kordloom/whodar/internal/httputil"
 )
 
 // searchPath is the Jira Cloud issue search endpoint.

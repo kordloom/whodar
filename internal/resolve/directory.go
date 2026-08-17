@@ -4,8 +4,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dcadolph/whodar/internal/index"
-	"github.com/dcadolph/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // Directory is the browsable inventory of everything indexed, for the web

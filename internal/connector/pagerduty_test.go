@@ -8,7 +8,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/pagerduty"
+	"github.com/kordloom/whodar/internal/pagerduty"
 )
 
 // TestPagerDutyFetch verifies on-call users get the topics of the services they

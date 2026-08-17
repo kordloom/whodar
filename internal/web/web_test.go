@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/feedback"
-	"github.com/dcadolph/whodar/internal/llm"
-	"github.com/dcadolph/whodar/internal/model"
-	"github.com/dcadolph/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/feedback"
+	"github.com/kordloom/whodar/internal/llm"
+	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/resolve"
 )
 
 // testHandler builds a handler whose Ask returns one canned person.

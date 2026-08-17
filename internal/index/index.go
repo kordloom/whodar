@@ -16,11 +16,11 @@ import (
 
 	"github.com/agnivade/levenshtein"
 
-	"github.com/dcadolph/whodar/internal/connector"
-	"github.com/dcadolph/whodar/internal/identity"
-	"github.com/dcadolph/whodar/internal/model"
-	"github.com/dcadolph/whodar/internal/util"
-	"github.com/dcadolph/whodar/internal/vault"
+	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/identity"
+	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/util"
+	"github.com/kordloom/whodar/internal/vault"
 )
 
 // DefaultHalfLife is the age at which a dated record's weight halves.

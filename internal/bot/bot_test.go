@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dcadolph/whodar/internal/model"
-	"github.com/dcadolph/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/resolve"
 )
 
 // recorder captures the last reply for assertions.

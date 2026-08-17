@@ -223,6 +223,13 @@ reconnects with backoff.
 | `--openai-url`  |                  | OpenAI-compatible base URL including the version path.       |
 | `--feedback`    | `normal`         | How hard votes move ranking: `off`, `low`, `normal`, `high`. |
 
+## whodar version
+
+    whodar version
+
+Prints the version stamped at build time. Release binaries carry the tag; a plain
+`go build` or `go install` prints `dev`.
+
 ## Environment variables
 
 Credentials are read only from the environment, never from flags, and are
@@ -312,7 +319,7 @@ can be denied the same way. See `examples/policy.json`.
 
 Everything lives under `--data-dir` (default `~/.whodar`):
 
-| File            | What it holds                                            |
-| --------------- | -------------------------------------------------------- |
-| `index.json`    | The graph, postings, embeddings, and identity aliases.   |
-| `feedback.json` | User votes, kept apart so they survive re-indexing.&nbsp;&nbsp; |
+| File            | What it holds                                                                    |
+| --------------- | -------------------------------------------------------------------------------- |
+| `index.json`    | The graph, postings, embeddings, aliases, and a capped Slack text sample per person. |
+| `feedback.json` | Votes and the queries behind them, kept apart so they survive re-indexing. Not covered by `vault` encryption today. |

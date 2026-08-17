@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/feedback"
-	"github.com/dcadolph/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/feedback"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // TestServeConcurrent drives Profile, SetFeedback, and Search against one index

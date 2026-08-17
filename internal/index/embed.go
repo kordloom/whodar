@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dcadolph/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // Embedder turns text into a vector. The llm package's Ollama client satisfies

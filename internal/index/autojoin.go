@@ -3,7 +3,7 @@ package index
 import (
 	"strings"
 
-	"github.com/dcadolph/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // minHandleLen keeps trivially short handles from joining anyone.

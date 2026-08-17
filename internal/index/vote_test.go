@@ -3,8 +3,8 @@ package index
 import (
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/connector"
-	"github.com/dcadolph/whodar/internal/feedback"
+	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/feedback"
 )
 
 // voteIndex builds two equally weighted kafka owners and one kafka channel.

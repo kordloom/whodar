@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/vault"
+	"github.com/kordloom/whodar/internal/vault"
 )
 
 // TestFromEnvKey verifies a base64 key produces a working codec and is reported

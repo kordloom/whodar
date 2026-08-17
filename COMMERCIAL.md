@@ -31,9 +31,9 @@ agreement, so the review question becomes a purchasing question.
 
 ## Getting one
 
-Open an issue at https://github.com/dcadolph/whodar with the subject "Commercial
-license" and describe your use case and rough scale. Terms depend on deployment size
-and whether you need support commitments.
+Email hello@whodar.dev with the subject "Commercial license" and describe your use
+case and rough scale. Terms depend on deployment size and whether you need support
+commitments.
 
 ## What is not gated
 

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dcadolph/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // Resolver unions identifiers that belong to the same person and resolves any

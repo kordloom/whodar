@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dcadolph/whodar/internal/jira"
+	"github.com/kordloom/whodar/internal/jira"
 )
 
 // TestJiraFetch verifies the assignee and reporter get topics from components,

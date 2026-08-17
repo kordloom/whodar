@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/connector"
-	"github.com/dcadolph/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // TestAutoJoin covers the unique-match join, the ambiguity guard, the

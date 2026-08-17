@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/connector"
 )
 
 // fakeEmbedder maps text to a small vector over a fixed vocabulary, so cosine

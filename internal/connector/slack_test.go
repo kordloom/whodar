@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dcadolph/whodar/internal/slack"
+	"github.com/kordloom/whodar/internal/slack"
 )
 
 // TestSlackFetch verifies the connector turns Slack data into person and

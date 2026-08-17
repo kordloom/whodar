@@ -1,4 +1,4 @@
-module github.com/dcadolph/whodar
+module github.com/kordloom/whodar
 
 go 1.26.4
 

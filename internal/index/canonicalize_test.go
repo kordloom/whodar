@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/dcadolph/whodar/internal/connector"
-	"github.com/dcadolph/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // splitAliceRecords returns the same human seen by two sources that cannot

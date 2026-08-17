@@ -12,7 +12,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dcadolph/whodar/internal/vault"
+	"github.com/kordloom/whodar/internal/vault"
 )
 
 // Environment variables that supply the at-rest key.

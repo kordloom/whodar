@@ -4,8 +4,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/dcadolph/whodar/internal/identity"
-	"github.com/dcadolph/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/identity"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // Canonicalize rewrites the graph so every person appears once under their

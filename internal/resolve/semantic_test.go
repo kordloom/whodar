@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/connector"
-	"github.com/dcadolph/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/index"
 )
 
 // fakeEmbedder maps text to a small vector over a fixed vocabulary.

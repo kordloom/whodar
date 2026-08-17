@@ -13,12 +13,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dcadolph/whodar/internal/feedback"
-	"github.com/dcadolph/whodar/internal/index"
-	"github.com/dcadolph/whodar/internal/model"
-	"github.com/dcadolph/whodar/internal/policy"
-	"github.com/dcadolph/whodar/internal/resolve"
-	"github.com/dcadolph/whodar/internal/web"
+	"github.com/kordloom/whodar/internal/feedback"
+	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/policy"
+	"github.com/kordloom/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/web"
 )
 
 // shutdownTimeout bounds how long serve waits for in-flight requests to finish.

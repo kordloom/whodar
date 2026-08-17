@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/connector"
-	"github.com/dcadolph/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/index"
 )
 
 // TestKeywordResolve verifies the keyword resolver returns ranked matches.

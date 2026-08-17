@@ -9,7 +9,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 
-	"github.com/dcadolph/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/connector"
 )
 
 // sampleRecords returns a small set of people for ranking tests.

@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dcadolph/whodar/internal/httputil"
+	"github.com/kordloom/whodar/internal/httputil"
 )
 
 // defaultBaseURL is the PagerDuty REST API root.

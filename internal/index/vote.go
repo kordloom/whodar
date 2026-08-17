@@ -4,8 +4,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/dcadolph/whodar/internal/feedback"
-	"github.com/dcadolph/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/feedback"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // Feedback application defaults. A few votes adjust ranking; they never bury

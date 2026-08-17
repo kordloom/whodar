@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/keyring"
-	"github.com/dcadolph/whodar/internal/vault"
+	"github.com/kordloom/whodar/internal/keyring"
+	"github.com/kordloom/whodar/internal/vault"
 )
 
 // writeOrgCSV writes a small org chart and returns its path.

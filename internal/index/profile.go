@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/dcadolph/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // Profile is everything the index knows about one person: the person, their

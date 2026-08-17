@@ -11,7 +11,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/dcadolph/whodar/internal/slack"
+	"github.com/kordloom/whodar/internal/slack"
 )
 
 // wsConn is the minimal WebSocket the socket runner needs.

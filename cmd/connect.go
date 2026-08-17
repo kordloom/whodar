@@ -11,10 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dcadolph/whodar/internal/connector"
-	"github.com/dcadolph/whodar/internal/httputil"
-	"github.com/dcadolph/whodar/internal/prompt"
-	"github.com/dcadolph/whodar/internal/slack"
+	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/httputil"
+	"github.com/kordloom/whodar/internal/prompt"
+	"github.com/kordloom/whodar/internal/slack"
 )
 
 // credField describes one credential or config value connect collects.

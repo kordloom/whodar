@@ -3,7 +3,7 @@ package index
 import (
 	"testing"
 
-	"github.com/dcadolph/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/connector"
 )
 
 // TestProfileMinimal verifies a person with no team, org, manager, or channels

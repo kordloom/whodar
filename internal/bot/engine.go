@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dcadolph/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/resolve"
 )
 
 // Per-user rate limiting: rateMax questions per rateWindow. The bot answers

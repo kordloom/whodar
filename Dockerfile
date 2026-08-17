@@ -10,7 +10,7 @@ RUN go mod download
 COPY . .
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build \
-    -ldflags "-s -w -X github.com/dcadolph/whodar/cmd.version=${VERSION}" \
+    -ldflags "-s -w -X github.com/kordloom/whodar/cmd.version=${VERSION}" \
     -o /out/whodar .
 
 FROM gcr.io/distroless/static-debian12

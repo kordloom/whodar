@@ -8,7 +8,9 @@ guarantees in one place.
 ## Where your data lives
 
 - The index lives at `~/.whodar/index.json`, on your machine, created readable only
-  by you (mode `0600`). It is never uploaded.
+  by you (mode `0600`). It is never uploaded. Besides the graph and ranking signals
+  it holds a capped sample of each person's Slack messages, which is what ranking
+  matches against. No other source's message bodies are kept.
 - Credentials are read only from the environment, never from a flag. No token is
   written to disk and nothing is logged.
 - Indexing talks only to the sources you name, with your own tokens.
@@ -38,13 +40,15 @@ Manage it with the `vault` command:
     whodar vault encrypt    # encrypt an existing plain index in place
     whodar vault decrypt    # rewrite it back to plain JSON
 
-Two things to know:
+Three things to know:
 
 - Reading an encrypted index without the key fails cleanly. Nothing is exposed. On a
   terminal whodar prompts for the passphrase; in a script it points at the key
   variables and stops.
 - The key is the only way back in. Losing it makes an encrypted index unrecoverable,
   so store it as carefully as any other secret and keep a backup.
+- The vault covers the index only. `feedback.json`, which holds your queries and
+  votes, stays plain JSON today.
 
 ## Control what a model sees
 

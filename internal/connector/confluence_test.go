@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dcadolph/whodar/internal/confluence"
+	"github.com/kordloom/whodar/internal/confluence"
 )
 
 // TestConfluenceFetch verifies authors get topics from labels, title words, and

@@ -29,12 +29,11 @@ explicitly change the policy.
 
 Install with Homebrew:
 
-    brew tap dcadolph/whodar
-    brew install whodar
+    brew install kordloom/tap/whodar
 
 Or build from source, which needs Go 1.26 or newer:
 
-    git clone https://github.com/dcadolph/whodar.git
+    git clone https://github.com/kordloom/whodar.git
     cd whodar
     go build -o whodar .
     mkdir -p ~/bin && mv whodar ~/bin/

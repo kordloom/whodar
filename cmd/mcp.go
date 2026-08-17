@@ -7,10 +7,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dcadolph/whodar/internal/index"
-	"github.com/dcadolph/whodar/internal/mcp"
-	"github.com/dcadolph/whodar/internal/model"
-	"github.com/dcadolph/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/mcp"
+	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/resolve"
 )
 
 // mcpAskLimit bounds results per section for MCP answers.
