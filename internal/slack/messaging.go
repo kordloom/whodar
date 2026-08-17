@@ -32,16 +32,32 @@ type authTestResp struct {
 	apiMeta
 	// UserID is the authenticated bot's own user ID.
 	UserID string `json:"user_id"`
+	// URL is the workspace base URL.
+	URL string `json:"url"`
+	// Team is the workspace name.
+	Team string `json:"team"`
 }
 
-// AuthTest returns the authenticated bot's own user ID. The bot uses it to
-// ignore its own messages and to strip its mention from inbound text.
-func (c *Client) AuthTest(ctx context.Context) (string, error) {
+// Auth describes the authenticated identity and the workspace it belongs to.
+type Auth struct {
+	// UserID is the authenticated bot's own user ID.
+	UserID string
+	// URL is the workspace base URL, such as "https://acme.slack.com/", and is
+	// what message permalinks are built from.
+	URL string
+	// Team is the workspace name.
+	Team string
+}
+
+// AuthTest returns the authenticated identity and workspace. The bot uses the
+// user ID to ignore its own messages and to strip its mention from inbound
+// text; indexing uses the URL to build permalinks offline.
+func (c *Client) AuthTest(ctx context.Context) (Auth, error) {
 	var resp authTestResp
 	if err := c.do(ctx, "auth.test", url.Values{}, &resp); err != nil {
-		return "", err
+		return Auth{}, err
 	}
-	return resp.UserID, nil
+	return Auth{UserID: resp.UserID, URL: resp.URL, Team: resp.Team}, nil
 }
 
 // responseURLPrefix is the only host slash-command response URLs may name,

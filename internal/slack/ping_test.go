@@ -19,12 +19,15 @@ func TestPingAuthTest(t *testing.T) {
 		if !strings.HasSuffix(r.URL.Path, "/auth.test") {
 			t.Errorf("path = %q, want auth.test", r.URL.Path)
 		}
-		io.WriteString(w, `{"ok":true,"user_id":"U1"}`)
+		io.WriteString(w, `{"ok":true,"user_id":"U1","url":"https://acme.slack.com/","team":"Acme"}`)
 	}))
 	t.Cleanup(ok.Close)
-	id, err := New("t", WithBaseURL(ok.URL)).AuthTest(context.Background())
-	if err != nil || id != "U1" {
-		t.Errorf("AuthTest on ok = (%q, %v), want (U1, nil)", id, err)
+	auth, err := New("t", WithBaseURL(ok.URL)).AuthTest(context.Background())
+	if err != nil || auth.UserID != "U1" {
+		t.Errorf("AuthTest on ok = (%+v, %v), want UserID U1", auth, err)
+	}
+	if auth.URL != "https://acme.slack.com/" || auth.Team != "Acme" {
+		t.Errorf("AuthTest workspace = (%q, %q), want (https://acme.slack.com/, Acme)", auth.URL, auth.Team)
 	}
 
 	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

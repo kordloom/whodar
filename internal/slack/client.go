@@ -116,7 +116,9 @@ type Channel struct {
 	Purpose value `json:"purpose"`
 }
 
-// Message is a Slack message.
+// Message is a Slack message. The thread fields arrive on the parent of a
+// thread in conversations.history, so a thread's shape is known without
+// calling conversations.replies.
 type Message struct {
 	// Type is the message type, normally "message".
 	Type string `json:"type"`
@@ -130,6 +132,33 @@ type Message struct {
 	Text string `json:"text"`
 	// TS is the message timestamp.
 	TS string `json:"ts"`
+	// ThreadTS is the parent timestamp of the thread this message belongs to,
+	// equal to TS on the parent itself and empty when the message is not
+	// threaded.
+	ThreadTS string `json:"thread_ts"`
+	// ReplyCount is the number of replies on a thread parent.
+	ReplyCount int `json:"reply_count"`
+	// ReplyUsers lists up to five user IDs that replied in the thread.
+	ReplyUsers []string `json:"reply_users"`
+	// LatestReply is the timestamp of the most recent reply in the thread.
+	LatestReply string `json:"latest_reply"`
+}
+
+// Permalink builds the archive URL for a message from data every history page
+// already carries, so no chat.getPermalink call is needed. workspaceURL is the
+// url reported by auth.test. It returns an empty string when workspaceURL or
+// ts is missing. When threadTS names a different message, the link points at
+// the reply inside its thread.
+func Permalink(workspaceURL, channelID, ts, threadTS string) string {
+	if workspaceURL == "" || channelID == "" || ts == "" {
+		return ""
+	}
+	link := strings.TrimSuffix(workspaceURL, "/") +
+		"/archives/" + channelID + "/p" + strings.ReplaceAll(ts, ".", "")
+	if threadTS != "" && threadTS != ts {
+		link += "?thread_ts=" + threadTS + "&cid=" + channelID
+	}
+	return link
 }
 
 // apiMeta is the common envelope of every Slack Web API response.

@@ -37,7 +37,8 @@ func TestAuthTest(t *testing.T) {
 		"auth.test": {{status: 200, body: `{"ok":true,"user_id":"U999"}`}},
 	})
 	c := New("xoxb-test", WithBaseURL(srv.URL))
-	id, err := c.AuthTest(context.Background())
+	auth, err := c.AuthTest(context.Background())
+	id := auth.UserID
 	if err != nil || id != "U999" {
 		t.Fatalf("AuthTest = %q, %v; want U999", id, err)
 	}

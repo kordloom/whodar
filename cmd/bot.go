@@ -73,10 +73,11 @@ Transports and their credentials:
 			}
 
 			botClient := slack.New(botToken)
-			botUserID, err := botClient.AuthTest(cmd.Context())
+			auth, err := botClient.AuthTest(cmd.Context())
 			if err != nil {
 				return fmt.Errorf("slack auth: %w", err)
 			}
+			botUserID := auth.UserID
 
 			ask := func(ctx context.Context, query, reqMode string, n int) (resolve.Answer, error) {
 				if reqMode == "" {

@@ -120,6 +120,14 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 			break
 		}
 		msgs, err := s.client.History(ctx, ch.ID, oldest, s.opts.MaxMessages)
+		if errors.Is(err, slack.ErrRateLimited) {
+			// Retries are already exhausted, so every remaining channel would
+			// meet the same throttle. Stop and keep what was read rather than
+			// discarding an entire long run.
+			fmt.Fprintf(s.opts.Log,
+				"slack: rate limited at #%s; keeping the %d channels read so far\n", ch.Name, i)
+			break
+		}
 		if errors.Is(err, slack.ErrAPI) {
 			// Any per-channel API error, such as not_in_channel on a public
 			// channel the bot was never invited to, is skipped so one
