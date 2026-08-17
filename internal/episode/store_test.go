@@ -1,0 +1,183 @@
+package episode
+
+import (
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
+
+	"github.com/kordloom/whodar/internal/model"
+)
+
+// fixedNow pins the clock so recency decay is deterministic.
+var fixedNow = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+// newTestStore returns a store with a pinned clock.
+func newTestStore() *Store {
+	s := New()
+	s.now = func() time.Time { return fixedNow }
+	return s
+}
+
+// testEpisode returns an episode with the given id, participants, and age.
+func testEpisode(id string, daysAgo int, participants ...model.ID) Episode {
+	return Episode{
+		ID:           id,
+		Source:       "slack",
+		Kind:         KindThread,
+		Place:        "payments",
+		Participants: participants,
+		Occurred:     fixedNow.AddDate(0, 0, -daysAgo),
+		Permalink:    "https://acme.slack.com/archives/C1/p1",
+		Messages:     4,
+	}
+}
+
+// TestSearchScopesToParticipant verifies that a person-scoped query returns
+// only episodes that person took part in, which is the whole access model for
+// personal recall.
+func TestSearchScopesToParticipant(t *testing.T) {
+	t.Parallel()
+	s := newTestStore()
+	s.Add(testEpisode("a", 10, "me@x.com", "billy@x.com"), "certificate renewal expired")
+	s.Add(testEpisode("b", 10, "someone@x.com"), "certificate renewal expired")
+
+	got := s.Search(Query{Text: "certificate renewal", Person: "me@x.com"})
+	if len(got) != 1 || got[0].Episode.ID != "a" {
+		t.Fatalf("scoped search = %+v, want only episode a", got)
+	}
+
+	if all := s.Search(Query{Text: "certificate renewal"}); len(all) != 2 {
+		t.Errorf("unscoped search = %d results, want 2", len(all))
+	}
+	if none := s.Search(Query{Text: "certificate", Person: "nobody@x.com"}); len(none) != 0 {
+		t.Errorf("search for a stranger = %+v, want no results", none)
+	}
+}
+
+// TestSearchRanking verifies coverage and recency both move the ranking, so a
+// thread matching the whole question beats one matching part of it, and a
+// recent match beats an old one.
+func TestSearchRanking(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		Name    string
+		Query   string
+		Add     func(s *Store)
+		WantTop string
+	}{{ // Test 0: Covering more of the question wins.
+		Name:  "coverage",
+		Query: "kafka consumer lag",
+		Add: func(s *Store) {
+			s.Add(testEpisode("full", 30, "me@x.com"), "kafka consumer lag rebalance")
+			s.Add(testEpisode("partial", 30, "me@x.com"), "kafka broker restart")
+		},
+		WantTop: "full",
+	}, { // Test 1: With equal coverage, the recent episode wins.
+		Name:  "recency",
+		Query: "kafka lag",
+		Add: func(s *Store) {
+			s.Add(testEpisode("recent", 10, "me@x.com"), "kafka lag")
+			s.Add(testEpisode("old", 900, "me@x.com"), "kafka lag")
+		},
+		WantTop: "recent",
+	}, { // Test 2: Repetition saturates, so a long noisy thread does not win.
+		Name:  "saturation",
+		Query: "kafka lag",
+		Add: func(s *Store) {
+			s.Add(testEpisode("noisy", 30, "me@x.com"),
+				"kafka kafka kafka kafka kafka kafka kafka kafka")
+			s.Add(testEpisode("onpoint", 30, "me@x.com"), "kafka lag")
+		},
+		WantTop: "onpoint",
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d %s", testNum, test.Name), func(t *testing.T) {
+			t.Parallel()
+			s := newTestStore()
+			test.Add(s)
+			got := s.Search(Query{Text: test.Query, Person: "me@x.com"})
+			if len(got) == 0 {
+				t.Fatalf("no results for %q", test.Query)
+			}
+			if got[0].Episode.ID != test.WantTop {
+				t.Errorf("top = %q, want %q (all: %+v)", got[0].Episode.ID, test.WantTop, got)
+			}
+		})
+	}
+}
+
+// TestSearchEmptyQuery verifies a query with nothing but stopwords matches
+// nothing rather than everything.
+func TestSearchEmptyQuery(t *testing.T) {
+	t.Parallel()
+	s := newTestStore()
+	s.Add(testEpisode("a", 1, "me@x.com"), "kafka lag")
+	if got := s.Search(Query{Text: "how do I", Person: "me@x.com"}); len(got) != 0 {
+		t.Errorf("stopword-only query = %+v, want no results", got)
+	}
+}
+
+// TestAddReplacesEpisode verifies re-indexing the same episode updates it in
+// place and leaves no stale postings behind.
+func TestAddReplacesEpisode(t *testing.T) {
+	t.Parallel()
+	s := newTestStore()
+	s.Add(testEpisode("a", 10, "me@x.com"), "certificate renewal")
+	s.Add(testEpisode("a", 10, "me@x.com"), "database migration")
+
+	if s.Len() != 1 {
+		t.Errorf("Len = %d, want 1", s.Len())
+	}
+	if got := s.Search(Query{Text: "certificate", Person: "me@x.com"}); len(got) != 0 {
+		t.Errorf("stale term still matches: %+v", got)
+	}
+	if got := s.Search(Query{Text: "migration", Person: "me@x.com"}); len(got) != 1 {
+		t.Errorf("new term = %+v, want one hit", got)
+	}
+	if ids := s.byParticipant["me@x.com"]; len(ids) != 1 {
+		t.Errorf("participant links = %v, want one", ids)
+	}
+}
+
+// TestOthers verifies the asker is left out of the people an answer names.
+func TestOthers(t *testing.T) {
+	t.Parallel()
+	ep := testEpisode("a", 1, "me@x.com", "billy@x.com", "carol@x.com")
+	want := []model.ID{"billy@x.com", "carol@x.com"}
+	if diff := cmp.Diff(want, ep.Others("me@x.com"), cmpopts.EquateEmpty()); diff != "" {
+		t.Errorf("mismatch (-want +got):\n%s", diff)
+	}
+	if !ep.Involves("me@x.com") || ep.Involves("nobody@x.com") {
+		t.Error("Involves disagrees with the participant list")
+	}
+}
+
+// TestPurge verifies retention drops old episodes and that clearing the
+// archive leaves the pointer behind.
+func TestPurge(t *testing.T) {
+	t.Parallel()
+	s := newTestStore()
+	old := testEpisode("old", 400, "me@x.com")
+	old.Archive = []Note{{Author: "me@x.com", At: fixedNow, Text: "the fix"}}
+	s.Add(old, "kafka lag")
+	s.Add(testEpisode("new", 10, "me@x.com"), "kafka lag")
+
+	if n := s.PurgeArchive(); n != 1 {
+		t.Errorf("PurgeArchive = %d, want 1", n)
+	}
+	if ep, _ := s.Episode("old"); ep.Archived() {
+		t.Error("archive survived the purge")
+	}
+	if n := s.PurgeBefore(fixedNow.AddDate(0, 0, -100)); n != 1 {
+		t.Errorf("PurgeBefore = %d, want 1", n)
+	}
+	if s.Len() != 1 {
+		t.Errorf("Len after purge = %d, want 1", s.Len())
+	}
+	if got := s.Search(Query{Text: "kafka lag", Person: "me@x.com"}); len(got) != 1 {
+		t.Errorf("search after purge = %+v, want one hit", got)
+	}
+}

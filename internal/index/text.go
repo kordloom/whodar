@@ -41,6 +41,18 @@ func tokenize(s string) []string {
 	return out
 }
 
+// Terms splits s into the stemmed tokens the scorer matches on. Indexes built
+// outside this package use it so their posting keys and query terms are
+// produced by exactly the same normalization.
+func Terms(s string) []string {
+	tokens := tokenize(s)
+	out := make([]string, 0, len(tokens))
+	for _, t := range tokens {
+		out = append(out, stem(t))
+	}
+	return out
+}
+
 // isWordRune reports whether r can be part of a token: a letter or digit from
 // any script. Folding removes diacritics before this runs, so accented letters
 // arrive as their base form.
