@@ -16,6 +16,7 @@
       <p class="side-tag">know who knows</p>
       <nav id="side-nav">
         <a href="#/" data-view="ask">Ask</a>
+        {{if .Recall}}<a href="#/recall" data-view="recall">Recall</a>{{end}}
         <a href="#/people" data-view="people">People
           <span class="nav-count" data-count="people"></span></a>
         <a href="#/channels" data-view="channels">Channels
@@ -94,6 +95,23 @@
           <h2>Channels</h2>
           <div id="channels" class="cards"></div>
         </section>
+      </section>
+
+      <section id="view-recall" hidden>
+        <form id="recall-form" autocomplete="off">
+          <input id="recall-q" name="q" type="text"
+                 placeholder="certificate renewal">
+          <div class="controls">
+            <input id="recall-me" class="recall-me" type="text" aria-label="Who you are"
+                   placeholder="you@example.com" value="{{.RecallMe}}">
+            <button type="submit" class="ask-btn">Recall</button>
+          </div>
+        </form>
+        <p class="recall-note">Finds the conversations you took part in, and who was with you.
+          Opening a link uses your own access to that tool.</p>
+        <p id="recall-status" class="status" role="status"></p>
+        <div id="recall-list" class="cards"></div>
+        <p id="recall-scope" class="recall-scope"></p>
       </section>
 
       <section id="view-directory" hidden>

@@ -91,6 +91,11 @@ type Config struct {
 	// deployment serving several people must set AuthToken per person or
 	// leave this unset.
 	Recall RecallFunc
+	// RecallMe is the identity the recall view starts with, usually the
+	// person running whodar. It is a starting point, not an authorization:
+	// the caller can change it, which is why recall is served on loopback
+	// only.
+	RecallMe string
 	// Log receives server-side error detail kept out of client responses; nil
 	// discards it.
 	Log io.Writer
@@ -134,7 +139,7 @@ func Handler(cfg Config) (http.Handler, error) {
 	if cfg.Recall != nil {
 		mux.HandleFunc("/api/recall", recallHandler(cfg.Recall, logw))
 	}
-	mux.HandleFunc("/", indexHandler(tmpl, cfg.Version))
+	mux.HandleFunc("/", indexHandler(tmpl, cfg))
 
 	// securityHeaders wraps outermost so hardening headers reach even the 401
 	// that requireToken writes for a missing or wrong token.
@@ -203,14 +208,23 @@ func tokenOK(token string, r *http.Request) bool {
 }
 
 // indexHandler serves the search page at the root path.
-func indexHandler(tmpl *template.Template, version string) http.HandlerFunc {
+func indexHandler(tmpl *template.Template, cfg Config) http.HandlerFunc {
+	data := struct {
+		// Version is the running whodar version.
+		Version string
+		// Recall reports whether the recall view is available.
+		Recall bool
+		// RecallMe is the identity the recall view starts with, which the
+		// person can change.
+		RecallMe string
+	}{Version: cfg.Version, Recall: cfg.Recall != nil, RecallMe: cfg.RecallMe}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := tmpl.Execute(w, map[string]string{"Version": version}); err != nil {
+		if err := tmpl.Execute(w, data); err != nil {
 			http.Error(w, "template error", http.StatusInternalServerError)
 		}
 	}

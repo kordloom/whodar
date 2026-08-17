@@ -48,6 +48,8 @@ type webConfig struct {
 	openaiURL string
 	// episodes holds the conversations recall answers from; nil disables it.
 	episodes *episode.Store
+	// recallMe is the identity the recall view starts with.
+	recallMe string
 	// fbStrength is how hard votes move ranking.
 	fbStrength string
 }
@@ -79,6 +81,9 @@ session cookie. Put TLS in front of it for anything beyond a trusted network.`,
 			if cfg.episodes, err = opts.loadEpisodes(); err != nil {
 				return err
 			}
+			if cfg.recallMe = os.Getenv(meEnv); cfg.recallMe == "" {
+				cfg.recallMe = gitEmail()
+			}
 			store := applyFeedback(ix, opts, cmd.ErrOrStderr())
 			return serveWeb(cmd, opts, ix, store, cfg)
 		},
@@ -103,15 +108,15 @@ func addWebFlags(cmd *cobra.Command, cfg *webConfig, defaultAddr string) {
 		"How hard votes move ranking: off, low, normal, or high.")
 }
 
-// serveWeb runs the web UI over ix until interrupted. A nil store disables
-// the feedback API. Binding beyond localhost requires the serve token, which
-// then gates every request.
-// recallFn returns the web recall handler, or nil when no conversations have
-// been recorded. Every answer is scoped to the person the request names, so it
-// can only ever return conversations that person took part in.
+// recallFn returns the web recall handler, or nil when recall is unavailable.
+// An answer is scoped to the person the request names, and the web app has no
+// way to prove who is asking: the serve token gates access to the server, not
+// to one person's history. So recall is served only on loopback, where the
+// only caller is the person running whodar. Off-loopback it is disabled
+// outright rather than trusting a name the caller supplies.
 func recallFn(opts *options, ix *index.Index, cfg webConfig) web.RecallFunc {
 	store := cfg.episodes
-	if store == nil || store.Len() == 0 {
+	if store == nil || store.Len() == 0 || !loopbackAddr(cfg.addr) {
 		return nil
 	}
 	res := recall.New(store, ix)
@@ -124,6 +129,9 @@ func recallFn(opts *options, ix *index.Index, cfg webConfig) web.RecallFunc {
 	}
 }
 
+// serveWeb runs the web UI over ix until interrupted. A nil store disables
+// the feedback API. Binding beyond localhost requires the serve token, which
+// then gates every request.
 func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedback.Store, cfg webConfig) error {
 	token := os.Getenv(serveTokenEnv)
 	if !loopbackAddr(cfg.addr) && token == "" {
@@ -174,7 +182,8 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 
 	handler, err := web.Handler(web.Config{
 		Ask: ask, Feedback: vote, Person: person, Version: version, AuthToken: token,
-		Directory: &dir, Modes: modes, Recall: recallFn(opts, ix, cfg), Log: cmd.ErrOrStderr(),
+		Directory: &dir, Modes: modes, Recall: recallFn(opts, ix, cfg), RecallMe: cfg.recallMe,
+		Log: cmd.ErrOrStderr(),
 	})
 	if err != nil {
 		return err

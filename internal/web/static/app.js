@@ -15,6 +15,13 @@ const button = form.querySelector("button");
 const examplesEl = document.getElementById("examples");
 const askView = document.getElementById("view-ask");
 const dirView = document.getElementById("view-directory");
+const recallView = document.getElementById("view-recall");
+const recallForm = document.getElementById("recall-form");
+const recallQuery = document.getElementById("recall-q");
+const recallMe = document.getElementById("recall-me");
+const recallStatus = document.getElementById("recall-status");
+const recallList = document.getElementById("recall-list");
+const recallScope = document.getElementById("recall-scope");
 const dirTitle = document.getElementById("dir-title");
 const dirFilter = document.getElementById("dir-filter");
 const dirStatus = document.getElementById("dir-status");
@@ -447,6 +454,7 @@ let pendingTeamFacet = "";
 // viewFromHash maps the location hash to a view name.
 function viewFromHash() {
   const name = location.hash.replace(/^#\//, "");
+  if (name === "recall" && recallView) return "recall";
   return DIR_VIEWS[name] ? name : "ask";
 }
 
@@ -454,12 +462,17 @@ function viewFromHash() {
 function showView(view) {
   currentView = view;
   askView.hidden = view !== "ask";
-  dirView.hidden = view === "ask";
+  dirView.hidden = view === "ask" || view === "recall";
+  if (recallView) recallView.hidden = view !== "recall";
   for (const a of sideNav.querySelectorAll("a")) {
     a.classList.toggle("active", a.dataset.view === view);
   }
   facetTeam.hidden = view !== "people";
   facetOrg.hidden = view !== "people";
+  if (view === "recall") {
+    recallQuery.focus();
+    return;
+  }
   if (view !== "ask") {
     dirTitle.textContent = DIR_VIEWS[view].title;
     dirFilter.placeholder = "Filter " + view + "...";
@@ -626,6 +639,105 @@ dirFilter.addEventListener("input", () => {
 });
 facetTeam.addEventListener("change", () => renderDirectory("people"));
 facetOrg.addEventListener("change", () => renderDirectory("people"));
+
+if (recallForm) {
+  recallForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    runRecall();
+  });
+}
+
+// runRecall asks what the named person worked through before and renders the
+// conversations, each with who was there and a link back to it.
+async function runRecall() {
+  const query = recallQuery.value.trim();
+  const me = recallMe.value.trim();
+  if (!query) return;
+  if (!me) {
+    recallStatus.textContent = "Say who you are, so the answer covers your own conversations.";
+    return;
+  }
+  recallStatus.textContent = "Looking...";
+  recallList.replaceChildren();
+  recallScope.textContent = "";
+  try {
+    const res = await fetch(
+      "/api/recall?q=" + encodeURIComponent(query) + "&me=" + encodeURIComponent(me));
+    const data = await res.json();
+    if (!res.ok) {
+      recallStatus.textContent = data.error || "Recall is unavailable.";
+      return;
+    }
+    renderRecall(data);
+  } catch (err) {
+    recallStatus.textContent = "Recall is unavailable.";
+  }
+}
+
+// renderRecall draws one card per remembered conversation.
+function renderRecall(data) {
+  const episodes = data.episodes || [];
+  recallScope.textContent = (data.scope && data.scope.note) || "";
+  if (!episodes.length) {
+    recallStatus.textContent = "Nothing found in the conversations you took part in.";
+    return;
+  }
+  recallStatus.textContent = "";
+  for (const ep of episodes) {
+    recallList.appendChild(recallCard(ep));
+  }
+}
+
+// recallCard builds the card for one remembered conversation.
+function recallCard(ep) {
+  const card = el("div", "card");
+  const head = el("div", "card-head");
+  head.appendChild(el("h3", null, recallPeople(ep)));
+  const badge = confidenceBadge(ep.confidence);
+  if (badge) head.appendChild(badge);
+  card.appendChild(head);
+
+  const where = [];
+  if (ep.place) where.push(ep.kind === "thread" || ep.kind === "window" ? "#" + ep.place : ep.place);
+  if (ep.when) where.push(new Date(ep.when).toLocaleDateString());
+  if (ep.source) where.push(ep.source);
+  card.appendChild(el("p", "card-sub", where.join(" · ")));
+
+  if (ep.matched && ep.matched.length) chips(card, ep.matched);
+
+  if (ep.solution) {
+    const sol = el("div", "recall-solution");
+    if (ep.solution.summary) sol.appendChild(el("p", "recall-summary", ep.solution.summary));
+    for (const note of ep.solution.notes || []) {
+      const line = el("p", "recall-note-line");
+      line.appendChild(el("span", "recall-author", note.author + ": "));
+      line.appendChild(document.createTextNode(note.text));
+      sol.appendChild(line);
+    }
+    if (ep.solution.truncated) sol.appendChild(el("p", "recall-more", "The conversation ran longer."));
+    card.appendChild(sol);
+  }
+
+  if (ep.permalink) {
+    const link = el("a", "recall-link", "Open the conversation");
+    link.href = ep.permalink;
+    link.target = "_blank";
+    link.rel = "noopener";
+    card.appendChild(link);
+  }
+  if (ep.link_may_have_expired) {
+    card.appendChild(el("p", "recall-more", "Old enough that the link may no longer resolve."));
+  }
+  return card;
+}
+
+// recallPeople names who else was in a conversation.
+function recallPeople(ep) {
+  const names = (ep.people || []).map((p) => p.name || p.email || p.id).filter(Boolean);
+  if (!names.length) return "On your own";
+  if (names.length === 1) return "With " + names[0];
+  return "With " + names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+}
 
 window.addEventListener("hashchange", () => showView(viewFromHash()));
 
