@@ -20,6 +20,10 @@ const (
 	minRecallTop1 = 0.95
 	// minRecallTop3 is the share where it must be in the first three.
 	minRecallTop3 = 0.99
+	// minAnchoredTop1 is the share of questions asked with one remembered word
+	// and the rest paraphrased that must still find the owner. This is how a
+	// person actually asks, so it matters more than the friendly case above.
+	minAnchoredTop1 = 0.80
 )
 
 // TestRankingQuality scores whodar against a company built with known answers.
@@ -43,6 +47,16 @@ func TestRankingQuality(t *testing.T) {
 	}
 	if who.Precision3() < minWhoKnowsTop3 {
 		t.Errorf("who-knows p@3 = %.2f, want at least %.2f", who.Precision3(), minWhoKnowsTop3)
+	}
+
+	// How a person actually asks months later, and the hard case beyond it.
+	anchored := built.ScoreAnchored(5)
+	blind := built.ScoreBlind(5)
+	t.Logf("anchored:  %s   (one remembered word, rest in their own words)", anchored)
+	t.Logf("blind:     %s   (no shared vocabulary at all)", blind)
+	if anchored.Precision1() < minAnchoredTop1 {
+		t.Errorf("anchored p@1 = %.2f, want at least %.2f. Missed: %s",
+			anchored.Precision1(), minAnchoredTop1, strings.Join(anchored.Missed, "; "))
 	}
 
 	rec := built.ScoreRecall(5)

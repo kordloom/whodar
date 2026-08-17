@@ -117,11 +117,23 @@ const maxMissed = 8
 // ScoreWhoKnows asks every who-knows question and scores where the owner
 // ranked. The owner is the only right answer by construction: they are the
 // only person made fluent in that subject.
-func (b *Built) ScoreWhoKnows(limit int) Score {
+func (b *Built) ScoreWhoKnows(limit int) Score { return b.scoreKind(KindWhoKnows, limit) }
+
+// ScoreAnchored scores questions asked the way a person asks months later:
+// one word of the subject remembered, the rest in their own words.
+func (b *Built) ScoreAnchored(limit int) Score { return b.scoreKind(KindAnchored, limit) }
+
+// ScoreBlind scores questions that share no vocabulary with the subject at
+// all. Word matching cannot win these, and the number is here to size honestly
+// how much a model adds rather than to be passed.
+func (b *Built) ScoreBlind(limit int) Score { return b.scoreKind(KindBlind, limit) }
+
+// scoreKind asks every question of one kind and scores where the owner ranked.
+func (b *Built) scoreKind(kind Kind, limit int) Score {
 	res := resolve.NewKeyword(b.Index)
 	var score Score
 	for _, q := range b.Org.Questions {
-		if q.Kind != KindWhoKnows {
+		if q.Kind != kind {
 			continue
 		}
 		score.Asked++

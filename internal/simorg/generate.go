@@ -65,6 +65,13 @@ const (
 	// KindRecall asks about a conversation someone took part in. The answer is
 	// that conversation, and it is only ever asked of a participant.
 	KindRecall
+	// KindAnchored asks about a subject the way a person asks months later:
+	// one remembered word, the rest described in their own words.
+	KindAnchored
+	// KindBlind asks with no vocabulary in common with the subject at all. It
+	// is the case pure word matching cannot win, and the reason semantic mode
+	// and an LLM exist.
+	KindBlind
 )
 
 // Question is something the generated company has a known right answer to,
@@ -115,23 +122,47 @@ var subjects = []struct {
 	// is what makes a single owner the provably correct answer: a miss is
 	// whodar failing to find them, never two people having a fair claim.
 	Words []string
+	// Anchored is how someone asks months later, remembering one word of the
+	// subject and describing the rest in their own words. This is the normal
+	// case, not the friendly one.
+	Anchored string
+	// Blind is how someone asks who remembers the problem but none of the
+	// vocabulary. No word in it appears anywhere in any subject, which is the
+	// hardest thing to ask a matcher that works on words.
+	Blind string
 }{
-	{"billing retries", []string{"billing", "retries", "dunning", "invoice", "chargeback", "proration"}},
-	{"kafka lag", []string{"kafka", "lag", "partition", "rebalance", "offset", "broker"}},
-	{"certificate renewal", []string{"certificate", "renewal", "certbot", "expiry", "wildcard", "acme"}},
-	{"sso login", []string{"sso", "login", "saml", "oidc", "mfa", "idp"}},
-	{"kubernetes deploys", []string{"kubernetes", "deploys", "kubectl", "manifest", "helm", "namespace"}},
-	{"database migrations", []string{"database", "migrations", "schema", "postgres", "backfill", "vacuum"}},
-	{"search indexing", []string{"search", "indexing", "relevance", "shard", "analyzer", "synonym"}},
-	{"payment webhooks", []string{"payment", "webhooks", "signature", "idempotency", "stripe", "callback"}},
-	{"cdn caching", []string{"cdn", "caching", "purge", "edge", "ttl", "origin"}},
-	{"terraform state", []string{"terraform", "state", "drift", "workspace", "tfstate", "hcl"}},
-	{"oncall paging", []string{"oncall", "paging", "escalation", "pagerduty", "runbook", "severity"}},
-	{"mobile releases", []string{"mobile", "releases", "testflight", "crashlytics", "appstore", "ipa"}},
-	{"data warehouse", []string{"data", "warehouse", "snowflake", "dbt", "freshness", "mart"}},
-	{"feature flags", []string{"feature", "flags", "toggle", "cohort", "targeting", "variant"}},
-	{"api ratelimits", []string{"api", "ratelimits", "throttle", "quota", "burst", "backpressure"}},
-	{"image uploads", []string{"image", "uploads", "thumbnail", "resize", "presigned", "exif"}},
+	{"billing retries", []string{"billing", "retries", "dunning", "invoice", "chargeback", "proration"},
+		"billing keeps breaking for some customers", "money we failed to collect from a customer"},
+	{"kafka lag", []string{"kafka", "lag", "partition", "rebalance", "offset", "broker"},
+		"kafka is falling behind again", "the event stream keeps falling behind"},
+	{"certificate renewal", []string{"certificate", "renewal", "certbot", "expiry", "wildcard", "acme"},
+		"the certificate broke on staging", "https stopped working on staging"},
+	{"sso login", []string{"sso", "login", "saml", "oidc", "mfa", "idp"},
+		"people cannot get through login", "nobody can sign in this morning"},
+	{"kubernetes deploys", []string{"kubernetes", "deploys", "kubectl", "manifest", "helm", "namespace"},
+		"kubernetes rollouts keep stalling", "shipping containers to the cluster fails"},
+	{"database migrations", []string{"database", "migrations", "schema", "postgres", "backfill", "vacuum"},
+		"migrations are locking things up", "changing table structure without downtime"},
+	{"search indexing", []string{"search", "indexing", "relevance", "shard", "analyzer", "synonym"},
+		"search results come back wrong", "results are wrong when people look things up"},
+	{"payment webhooks", []string{"payment", "webhooks", "signature", "idempotency", "stripe", "callback"},
+		"webhooks arrive twice", "notices from the card processor arrive twice"},
+	{"cdn caching", []string{"cdn", "caching", "purge", "edge", "ttl", "origin"},
+		"caching serves the wrong thing", "stale assets served to visitors"},
+	{"terraform state", []string{"terraform", "state", "drift", "workspace", "tfstate", "hcl"},
+		"terraform is out of sync", "our infrastructure code file drifted apart"},
+	{"oncall paging", []string{"oncall", "paging", "escalation", "pagerduty", "runbook", "severity"},
+		"paging goes to the wrong person", "who gets woken up at night"},
+	{"mobile releases", []string{"mobile", "releases", "testflight", "crashlytics", "appstore", "ipa"},
+		"mobile builds keep failing", "shipping the phone app to users"},
+	{"data warehouse", []string{"data", "warehouse", "snowflake", "dbt", "freshness", "mart"},
+		"warehouse numbers look stale", "nightly reporting numbers look old"},
+	{"feature flags", []string{"feature", "flags", "toggle", "cohort", "targeting", "variant"},
+		"flags are not rolling out right", "turning things on for some users only"},
+	{"api ratelimits", []string{"api", "ratelimits", "throttle", "quota", "burst", "backpressure"},
+		"we keep hitting ratelimits", "too many requests are being rejected"},
+	{"image uploads", []string{"image", "uploads", "thumbnail", "resize", "presigned", "exif"},
+		"uploads come out broken", "pictures people attach are broken"},
 }
 
 // teams are the organizational units people are sorted into. None of them
@@ -380,13 +411,25 @@ func pick(rng *rand.Rand, words []string, n int) []string {
 // questionsForOwners asks who knows each subject, where the owner is the
 // answer by construction.
 func questionsForOwners(owners []owner) []Question {
-	out := make([]Question, 0, len(owners))
+	out := make([]Question, 0, len(owners)*3)
 	for _, o := range owners {
-		out = append(out, Question{
-			Kind:       KindWhoKnows,
-			Text:       "who knows about " + subjects[o.subject].Topic,
-			WantPerson: o.who.canonical(),
-		})
+		subject := subjects[o.subject]
+		out = append(out,
+			Question{
+				Kind:       KindWhoKnows,
+				Text:       "who knows about " + subject.Topic,
+				WantPerson: o.who.canonical(),
+			},
+			Question{
+				Kind:       KindAnchored,
+				Text:       subject.Anchored,
+				WantPerson: o.who.canonical(),
+			},
+			Question{
+				Kind:       KindBlind,
+				Text:       subject.Blind,
+				WantPerson: o.who.canonical(),
+			})
 	}
 	return out
 }
