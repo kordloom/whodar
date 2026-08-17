@@ -80,6 +80,7 @@ Examples:
 			if err != nil {
 				return err
 			}
+			warnEmptyAsk(cmd, ix, ans)
 			return writeJSON(cmd.OutOrStdout(), ans.View(query), opts.pretty)
 		},
 	}
@@ -98,6 +99,24 @@ Examples:
 	return cmd
 }
 
+// warnEmptyAsk explains an empty answer on stderr so it does not read as a
+// silent success. An empty index, a query with no term the index knows, and a
+// genuine miss are different problems with different fixes, and the JSON on
+// stdout cannot tell them apart.
+func warnEmptyAsk(cmd *cobra.Command, ix *index.Index, ans resolve.Answer) {
+	if len(ans.People) > 0 || len(ans.Channels) > 0 {
+		return
+	}
+	w := cmd.ErrOrStderr()
+	if ix.Graph == nil || len(ix.Graph.People) == 0 {
+		fmt.Fprintln(w, "No one is indexed yet: run `whodar index` against a source first.")
+		return
+	}
+	fmt.Fprintln(w,
+		"No match for that question. Matching is on the words people and channels are described by, "+
+			"so try the terms your team would use, or `whodar directory` to see what is indexed.")
+}
+
 // pickResolver builds the resolver for the chosen mode. Semantic mode and the
 // default ollama provider target a local server; anything non-local is gated
 // by the egress policy. Cloud providers additionally run redacted under the
@@ -109,6 +128,11 @@ func pickResolver(ix *index.Index, opts *options, mode, model, embedModel, ollam
 	case "semantic":
 		if provider != "" && provider != "ollama" {
 			return nil, fmt.Errorf("%w: semantic mode needs local embeddings; use --provider ollama", ErrBadArgs)
+		}
+		if !ix.HasEmbeddings() {
+			return nil, fmt.Errorf(
+				"%w: this index has no embeddings, so semantic mode has nothing to match against. "+
+					"Re-index with --embed, or ask with --mode keyword", ErrBadArgs)
 		}
 		if err := guardLLMHost(opts.pol, ollamaURL); err != nil {
 			return nil, err

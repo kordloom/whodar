@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/kordloom/whodar/internal/index"
@@ -83,5 +84,40 @@ func TestPickResolverRedactedLeak(t *testing.T) {
 	if _, err := pickResolver(
 		ix, open, "llm", "", "", "https://api.openai.com", "ollama", ""); err != nil {
 		t.Errorf("open + remote --ollama-url was denied: %v", err)
+	}
+}
+
+// TestAskSemanticWithoutEmbeddingsExplains verifies asking in semantic mode on
+// an index with no vectors fails with an actionable message rather than
+// silently returning nothing.
+func TestAskSemanticWithoutEmbeddingsExplains(t *testing.T) {
+	dir := t.TempDir()
+	csv := writeOrgCSV(t, dir)
+	if _, _, err := runCmd(t, "index", "--data-dir", dir, "--source", "org-csv", "--file", csv); err != nil {
+		t.Fatalf("index: %v", err)
+	}
+	_, stderr, err := runCmd(t, "ask", "--data-dir", dir, "--mode", "semantic", "who owns retries")
+	if err == nil {
+		t.Fatal("semantic ask on an index with no embeddings did not fail")
+	}
+	if !strings.Contains(err.Error(), "--embed") && !strings.Contains(string(stderr), "--embed") {
+		t.Errorf("message does not point at --embed: %v / %s", err, stderr)
+	}
+}
+
+// TestAskEmptyResultWarns verifies a query that matches nothing writes an
+// explanation to stderr, so an empty answer does not read as a silent success.
+func TestAskEmptyResultWarns(t *testing.T) {
+	dir := t.TempDir()
+	csv := writeOrgCSV(t, dir)
+	if _, _, err := runCmd(t, "index", "--data-dir", dir, "--source", "org-csv", "--file", csv); err != nil {
+		t.Fatalf("index: %v", err)
+	}
+	_, stderr, err := runCmd(t, "ask", "--data-dir", dir, "wildebeest zzzznothing")
+	if err != nil {
+		t.Fatalf("ask: %v", err)
+	}
+	if !strings.Contains(string(stderr), "No match") {
+		t.Errorf("no explanation for an empty answer:\n%s", stderr)
 	}
 }
