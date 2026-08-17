@@ -353,7 +353,7 @@ func generateHistory(
 			for range 6 {
 				ts += 600
 				msgs = append(msgs, slackMessageAt(o.who.id,
-					strings.Join(pick(rng, ownWords, 4), " "), ts))
+					sentence(rng, fillers.Owner, ownWords), ts))
 				count++
 			}
 		}
@@ -364,7 +364,7 @@ func generateHistory(
 			ts += 600
 			p := people[rng.Intn(len(people))]
 			other := subjects[rng.Intn(len(subjects))].Words
-			msgs = append(msgs, slackMessageAt(p.id, strings.Join(pick(rng, other, 3), " "), ts))
+			msgs = append(msgs, slackMessageAt(p.id, sentence(rng, fillers.Chatter, other), ts))
 			count++
 		}
 
@@ -379,7 +379,8 @@ func generateHistory(
 				helper = people[rng.Intn(len(people))]
 			}
 			marker := fmt.Sprintf("%s-%03d-%02d", words[0], i, t)
-			problem := fmt.Sprintf("%s is failing again, %s", marker, strings.Join(pick(rng, words, 3), " "))
+			problem := fmt.Sprintf("%s is acting up again, %s",
+				marker, sentence(rng, fillers.Owner, words))
 			parentTS := fmt.Sprintf("%d.000100", ts)
 			msgs = append(msgs, slackThreadAt(asker.id, problem, ts, 2,
 				[]string{helper.id}, ts+900))
@@ -396,6 +397,42 @@ func generateHistory(
 		history[channelID] = msgs
 	}
 	return history, threads, count
+}
+
+// fillers are the connective words generated messages are phrased with. None
+// of them shares a stem with any subject vocabulary, any team name, or any
+// title, so they add sentence shape without adding signal: they are uniform
+// noise to the keyword matcher and natural language to an embedding model.
+var fillers = struct {
+	// Owner phrases how someone fluent in a subject talks about it.
+	Owner []string
+	// Chatter phrases how a passerby mentions something once.
+	Chatter []string
+}{
+	Owner: []string{
+		"spent the morning on the %s %s again, sorted it by adjusting the %s",
+		"heads up, the %s %s needs the %s bumped after yesterday",
+		"wrote up how the %s ties into the %s and the %s",
+		"if the %s acts odd, look at the %s before touching the %s",
+	},
+	Chatter: []string{
+		"anyone seen the %s %s acting odd since this morning",
+		"no idea about the %s, maybe ask whoever owns the %s",
+		"saw something odd with the %s %s, ignoring it now",
+	},
+}
+
+// sentence renders a filler template with words from a vocabulary, so a
+// generated message reads like something a person typed rather than a list of
+// terms.
+func sentence(rng *rand.Rand, templates []string, words []string) string {
+	tpl := templates[rng.Intn(len(templates))]
+	n := strings.Count(tpl, "%s")
+	args := make([]any, n)
+	for i := range n {
+		args[i] = words[rng.Intn(len(words))]
+	}
+	return fmt.Sprintf(tpl, args...)
 }
 
 // pick returns n words drawn from the list, without caring about repeats: real

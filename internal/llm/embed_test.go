@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -65,5 +66,43 @@ func TestDefaultEmbedModel(t *testing.T) {
 	t.Parallel()
 	if got := New("").embedModel; got != defaultEmbedModel {
 		t.Errorf("default embed model = %q, want %q", got, defaultEmbedModel)
+	}
+}
+
+// TestEmbedTaskPrefixes verifies the nomic family gets the task prefixes it
+// was trained to expect, on the right side, and that other models get raw
+// text. Missing prefixes do not fail; they quietly wreck ranking, which is
+// why this is pinned by a test rather than a comment.
+func TestEmbedTaskPrefixes(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		Model      string
+		Task       EmbedTask
+		WantPrompt string
+	}{
+		{Model: "nomic-embed-text", Task: EmbedQueries, WantPrompt: "search_query: kafka lag"},
+		{Model: "nomic-embed-text", Task: EmbedDocuments, WantPrompt: "search_document: kafka lag"},
+		{Model: "nomic-embed-text-v1.5", Task: EmbedDocuments, WantPrompt: "search_document: kafka lag"},
+		{Model: "mxbai-embed-large", Task: EmbedQueries, WantPrompt: "kafka lag"},
+		{Model: "all-minilm", Task: EmbedDocuments, WantPrompt: "kafka lag"},
+	}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			var got embedRequest
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, _ := io.ReadAll(r.Body)
+				_ = json.Unmarshal(body, &got)
+				io.WriteString(w, `{"embedding":[0.1]}`)
+			}))
+			t.Cleanup(srv.Close)
+			c := New("", WithBaseURL(srv.URL), WithEmbedModel(test.Model), WithEmbedTask(test.Task))
+			if _, err := c.Embed(context.Background(), "kafka lag"); err != nil {
+				t.Fatalf("Embed: %v", err)
+			}
+			if got.Prompt != test.WantPrompt {
+				t.Errorf("prompt = %q, want %q", got.Prompt, test.WantPrompt)
+			}
+		})
 	}
 }

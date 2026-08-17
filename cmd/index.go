@@ -271,7 +271,7 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 		fmt.Fprintf(cmd.ErrOrStderr(),
 			"embedding %d people and %d channels via Ollama...\n",
 			len(ix.Graph.People), len(ix.Graph.Channels))
-		if err := ix.Embed(cmd.Context(), newOllama("", p.embedModel, p.ollamaURL)); err != nil {
+		if err := ix.Embed(cmd.Context(), newDocOllama(p.embedModel, p.ollamaURL)); err != nil {
 			return fmt.Errorf("embed: %w", err)
 		}
 	}
@@ -338,7 +338,7 @@ func saveEpisodes(cmd *cobra.Command, opts *options, ix *index.Index, p indexPar
 	// never gain them later.
 	var embedder *llm.Ollama
 	if p.embed {
-		embedder = newOllama("", p.embedModel, p.ollamaURL)
+		embedder = newDocOllama(p.embedModel, p.ollamaURL)
 		fmt.Fprintf(cmd.ErrOrStderr(), "embedding %d conversations via Ollama...\n", len(eps))
 	}
 	before := store.Len()

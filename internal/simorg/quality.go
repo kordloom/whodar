@@ -27,6 +27,51 @@ type Built struct {
 	Episodes *episode.Store
 }
 
+// Embed fills the index and episode vectors through a local model, exactly as
+// `whodar index --embed` would, so semantic mode can be scored against the
+// same questions keyword mode was.
+func (b *Built) Embed(ctx context.Context, embedder index.Embedder) error {
+	if err := b.Index.Embed(ctx, embedder); err != nil {
+		return fmt.Errorf("simorg: embed index: %w", err)
+	}
+	for _, ep := range b.Episodes.All() {
+		vec, err := embedder.Embed(ctx, ep.Text())
+		if err != nil {
+			return fmt.Errorf("simorg: embed episode: %w", err)
+		}
+		b.Episodes.SetVector(ep.ID, vec)
+	}
+	return nil
+}
+
+// ScoreSemantic asks questions of one kind through semantic mode, which ranks
+// by meaning rather than by shared words. It is what the blind questions
+// exist to measure.
+func (b *Built) ScoreSemantic(ctx context.Context, embedder resolve.Embedder, kind Kind, limit int) Score {
+	res := resolve.NewSemantic(b.Index, embedder)
+	var score Score
+	for _, q := range b.Org.Questions {
+		if q.Kind != kind {
+			continue
+		}
+		score.Asked++
+		ans, err := res.Resolve(ctx, q.Text, limit)
+		if err != nil {
+			score.record(q.Text, 0)
+			continue
+		}
+		rank := 0
+		for i, m := range ans.People {
+			if m.Person != nil && m.Person.ID == q.WantPerson {
+				rank = i + 1
+				break
+			}
+		}
+		score.record(q.Text, rank)
+	}
+	return score
+}
+
 // Build runs the real ingest path over a generated company. It uses the same
 // connectors, the same indexer, and the same episode store the binary uses, so
 // what is measured afterwards is whodar rather than a stand-in for it.

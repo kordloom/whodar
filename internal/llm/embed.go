@@ -13,6 +13,38 @@ import (
 // defaultEmbedModel is the embedding model used when none is given.
 const defaultEmbedModel = "nomic-embed-text"
 
+// EmbedTask says which side of retrieval a client embeds for. Some models,
+// including the default nomic family, are trained asymmetrically: a stored
+// item and a question about it must carry different task prefixes, and
+// leaving them off quietly wrecks ranking rather than failing.
+type EmbedTask int
+
+const (
+	// EmbedQueries marks text as a question looking for matches. It is the
+	// default because most call sites embed what a person just asked.
+	EmbedQueries EmbedTask = iota
+	// EmbedDocuments marks text as an item being stored to be found later,
+	// which is what indexing embeds.
+	EmbedDocuments
+)
+
+// WithEmbedTask sets which side of retrieval this client embeds for.
+func WithEmbedTask(task EmbedTask) Option {
+	return func(o *Ollama) { o.embedTask = task }
+}
+
+// embedPrefix returns the task prefix the configured model needs, or nothing
+// for models that embed both sides the same way.
+func (o *Ollama) embedPrefix() string {
+	if !strings.Contains(o.embedModel, "nomic-embed") {
+		return ""
+	}
+	if o.embedTask == EmbedDocuments {
+		return "search_document: "
+	}
+	return "search_query: "
+}
+
 // embedRequest is the body sent to /api/embeddings.
 type embedRequest struct {
 	// Model is the embedding model name.
@@ -29,9 +61,10 @@ type embedResponse struct {
 	Error string `json:"error"`
 }
 
-// Embed returns the embedding vector for text using the configured embed model.
+// Embed returns the embedding vector for text using the configured embed
+// model, applying the task prefix the model was trained to expect.
 func (o *Ollama) Embed(ctx context.Context, text string) ([]float32, error) {
-	body, err := json.Marshal(embedRequest{Model: o.embedModel, Prompt: text})
+	body, err := json.Marshal(embedRequest{Model: o.embedModel, Prompt: o.embedPrefix() + text})
 	if err != nil {
 		return nil, fmt.Errorf("llm: encode embed request: %w", err)
 	}

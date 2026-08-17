@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -450,14 +451,128 @@ func NewSemantic(ix *index.Index, embedder Embedder) *Semantic {
 	return &Semantic{ix: ix, embedder: embedder}
 }
 
-// Resolve embeds the query and ranks people and channels by cosine similarity.
+// Resolve ranks people and channels by blending meaning with words. The two
+// signals fail differently: word matching wins when the asker remembers any
+// term that was actually used and scores zero when they remember none, while
+// vector similarity survives a full paraphrase but is blurrier on exact hits.
+// Fusing the two rankings answers both askers without anyone picking a mode.
 func (s *Semantic) Resolve(ctx context.Context, query string, limit int) (Answer, error) {
 	vec, err := s.embedder.Embed(ctx, query)
 	if err != nil {
 		return Answer{}, fmt.Errorf("semantic resolve: %w", err)
 	}
-	return Answer{
-		People:   s.ix.SemanticPeople(vec, limit),
-		Channels: s.ix.SemanticChannels(vec, limit),
-	}, nil
+	// Fusing over a deeper pool than the caller asked for lets an answer that
+	// both signals agree on climb into the visible window.
+	pool := max(limit*3, 15)
+	people := fusePeople(s.ix.Search(query, pool), s.ix.SemanticPeople(vec, pool), limit)
+	channels := fuseChannels(s.ix.SearchChannels(query, pool), s.ix.SemanticChannels(vec, pool), limit)
+	return Answer{People: people, Channels: channels}, nil
+}
+
+// rrfK dampens rank differences in reciprocal rank fusion. The standard value
+// keeps a first place from utterly dominating and lets agreement across both
+// lists beat a single strong showing in one.
+const rrfK = 60
+
+// fusePeople merges the word ranking and the meaning ranking of people by
+// reciprocal rank fusion, keeping each person's best reasons and confidence
+// from whichever list explained them better.
+func fusePeople(words, meaning []model.Match, limit int) []model.Match {
+	type fused struct {
+		match model.Match
+		score float64
+	}
+	byID := make(map[model.ID]*fused)
+	fold := func(list []model.Match) {
+		for rank, m := range list {
+			if m.Person == nil {
+				continue
+			}
+			f := byID[m.Person.ID]
+			if f == nil {
+				f = &fused{match: m}
+				byID[m.Person.ID] = f
+			}
+			f.score += 1.0 / float64(rrfK+rank+1)
+			// The word ranking explains itself in matched terms while the
+			// meaning ranking only says "semantic match", so richer reasons
+			// and the higher confidence win the display.
+			if len(m.Reasons) > len(f.match.Reasons) {
+				f.match.Reasons = m.Reasons
+			}
+			if m.Confidence > f.match.Confidence {
+				f.match.Confidence = m.Confidence
+			}
+		}
+	}
+	fold(words)
+	fold(meaning)
+
+	out := make([]model.Match, 0, len(byID))
+	scores := make(map[model.ID]float64, len(byID))
+	for id, f := range byID {
+		scores[id] = f.score
+		f.match.Score = f.score
+		out = append(out, f.match)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		si, sj := scores[out[i].Person.ID], scores[out[j].Person.ID]
+		if si != sj {
+			return si > sj
+		}
+		return out[i].Person.ID < out[j].Person.ID
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out
+}
+
+// fuseChannels merges the two channel rankings the same way.
+func fuseChannels(words, meaning []model.ChannelMatch, limit int) []model.ChannelMatch {
+	type fused struct {
+		match model.ChannelMatch
+		score float64
+	}
+	byID := make(map[model.ID]*fused)
+	fold := func(list []model.ChannelMatch) {
+		for rank, m := range list {
+			if m.Channel == nil {
+				continue
+			}
+			f := byID[m.Channel.ID]
+			if f == nil {
+				f = &fused{match: m}
+				byID[m.Channel.ID] = f
+			}
+			f.score += 1.0 / float64(rrfK+rank+1)
+			if len(m.Reasons) > len(f.match.Reasons) {
+				f.match.Reasons = m.Reasons
+			}
+			if m.Confidence > f.match.Confidence {
+				f.match.Confidence = m.Confidence
+			}
+		}
+	}
+	fold(words)
+	fold(meaning)
+
+	out := make([]model.ChannelMatch, 0, len(byID))
+	scores := make(map[model.ID]float64, len(byID))
+	for id, f := range byID {
+		scores[id] = f.score
+		f.match.Score = f.score
+		out = append(out, f.match)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		si, sj := scores[out[i].Channel.ID], scores[out[j].Channel.ID]
+		if si != sj {
+			return si > sj
+		}
+		return out[i].Channel.ID < out[j].Channel.ID
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out
 }

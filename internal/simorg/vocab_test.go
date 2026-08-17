@@ -1,6 +1,7 @@
 package simorg
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/kordloom/whodar/internal/text"
@@ -49,6 +50,19 @@ func TestSubjectVocabulariesAreDisjoint(t *testing.T) {
 			if subject, taken := owner[stem]; taken {
 				t.Errorf("team %q shares the stem %q with subject %q, which would outrank its owner",
 					team, stem, subject)
+			}
+		}
+	}
+
+	// Filler templates add sentence shape to generated messages. A filler word
+	// sharing a stem with a subject would hand that subject's owner free hits
+	// from everyone else's chatter, which corrupts every score at once.
+	for _, group := range [][]string{fillers.Owner, fillers.Chatter} {
+		for _, tpl := range group {
+			for _, stem := range text.Terms(strings.ReplaceAll(tpl, "%s", " ")) {
+				if subject, taken := owner[stem]; taken {
+					t.Errorf("filler word stem %q collides with subject %q in %q", stem, subject, tpl)
+				}
 			}
 		}
 	}

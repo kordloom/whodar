@@ -34,6 +34,8 @@ type Ollama struct {
 	model string
 	// embedModel is the model name used for embeddings.
 	embedModel string
+	// embedTask is which side of retrieval Embed serves.
+	embedTask EmbedTask
 	// http performs requests.
 	http Doer
 }

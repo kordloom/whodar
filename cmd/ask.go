@@ -55,7 +55,7 @@ ask in, each with reasons and a confidence from zero to one.
 
 Modes:
   keyword   no model, deterministic, always works (default)
-  semantic  match on meaning; needs an index built with --embed
+  semantic  blend meaning with your words; needs an index built with --embed
   llm       a local Ollama model re-ranks and writes a recommendation
 
 Examples:
@@ -202,6 +202,14 @@ func cloudDenied(provider string, err error) error {
 // newOllama builds an Ollama client for the chat and embed models.
 func newOllama(model, embedModel, ollamaURL string) *llm.Ollama {
 	return llm.New(model, llm.WithBaseURL(ollamaURL), llm.WithEmbedModel(embedModel))
+}
+
+// newDocOllama builds the client indexing embeds with. Stored items and the
+// questions asked of them carry different task prefixes on models trained
+// asymmetrically, so the index-time client is marked as the document side.
+func newDocOllama(embedModel, ollamaURL string) *llm.Ollama {
+	return llm.New("", llm.WithBaseURL(ollamaURL), llm.WithEmbedModel(embedModel),
+		llm.WithEmbedTask(llm.EmbedDocuments))
 }
 
 // guardLLMHost permits a loopback model host unconditionally and requires the

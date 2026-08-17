@@ -127,8 +127,10 @@ Answers a question from the index.
 | `--openai-url`  |           | OpenAI-compatible base URL including the version path, e.g. `http://localhost:1234/v1`. |
 | `--feedback`    | `normal`  | How hard votes move ranking: `off`, `low`, `normal`, `high`. |
 
-Modes: `keyword` needs no model and always works. `semantic` matches on
-meaning using embeddings built with `index --embed`. `llm` retrieves
+Modes: `keyword` needs no model and always works. `semantic` blends meaning
+with your exact words, using embeddings built with `index --embed`, so a
+paraphrase can find what the words alone would miss without losing the
+matches the words already had. `llm` retrieves
 candidates, then a model re-ranks them and writes a short recommendation; it
 cannot invent people. The default provider is a local Ollama server. The
 `anthropic` (Claude), `openai`, and `gemini` providers are cloud models gated
