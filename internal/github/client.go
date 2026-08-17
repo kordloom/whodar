@@ -362,7 +362,7 @@ func (c *Client) getURL(ctx context.Context, endpoint, path string, out any) (st
 		resp.Header.Get("X-RateLimit-Remaining") == "0":
 		return "", fmt.Errorf("github %s: %w (resets at %s)", path, ErrRateLimited, resetTime(resp))
 	case resp.StatusCode != http.StatusOK:
-		return "", fmt.Errorf("github %s: %w %d", path, ErrStatus, resp.StatusCode)
+		return "", fmt.Errorf("github %s: %w: %w", path, ErrStatus, &httputil.StatusError{Code: resp.StatusCode})
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		return "", fmt.Errorf("github %s: decode: %w", path, err)
