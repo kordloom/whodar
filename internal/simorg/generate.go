@@ -435,16 +435,6 @@ func sentence(rng *rand.Rand, templates []string, words []string) string {
 	return fmt.Sprintf(tpl, args...)
 }
 
-// pick returns n words drawn from the list, without caring about repeats: real
-// people repeat themselves.
-func pick(rng *rand.Rand, words []string, n int) []string {
-	out := make([]string, 0, n)
-	for range n {
-		out = append(out, words[rng.Intn(len(words))])
-	}
-	return out
-}
-
 // questionsForOwners asks who knows each subject, where the owner is the
 // answer by construction.
 func questionsForOwners(owners []owner) []Question {
