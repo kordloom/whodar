@@ -153,7 +153,45 @@ func TestSlackFetchSkipsUnreadableChannels(t *testing.T) {
 	if !strings.Contains(got, "skipping #locked-room") || !strings.Contains(got, "not_in_channel") {
 		t.Errorf("log missing skip line:\n%s", got)
 	}
-	if !strings.Contains(got, "skipped 1 unreadable channels") {
+	// One channel read and one skipped is the invite case, not the missing
+	// scope case, so the summary points at inviting the bot.
+	if !strings.Contains(got, "skipped 1 channels the bot is not in") {
 		t.Errorf("log missing skip summary:\n%s", got)
+	}
+}
+
+// TestSlackAllUnreadableNamesTheScope verifies that when no channel can be read
+// the summary points at the missing OAuth scope, not at inviting the bot to
+// every channel. A token without channels:history fails all of them, and
+// telling the user to send a hundred invites would be wrong advice.
+func TestSlackAllUnreadableNamesTheScope(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/auth.test", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"ok":true,"user_id":"UBOT","url":"https://x.slack.com/","team":"X"}`)
+	})
+	mux.HandleFunc("/users.list", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"ok":true,"members":[{"id":"U1","profile":{"real_name":"Jane","email":"jane@x.com"}}]}`)
+	})
+	mux.HandleFunc("/conversations.list", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"ok":true,"channels":[{"id":"C1","name":"billing"},{"id":"C2","name":"platform"}]}`)
+	})
+	mux.HandleFunc("/conversations.history", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"ok":false,"error":"missing_scope"}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	var log strings.Builder
+	client := slack.New("xoxb-test", slack.WithBaseURL(srv.URL))
+	if _, err := NewSlackWithClient(client, SlackOptions{Log: &log}).Fetch(context.Background()); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	got := log.String()
+	if !strings.Contains(got, "channels:history scope") {
+		t.Errorf("log does not name the missing scope when every channel failed:\n%s", got)
+	}
+	if strings.Contains(got, "invite it to the ones") {
+		t.Errorf("log wrongly told the user to invite the bot when the scope is missing:\n%s", got)
 	}
 }

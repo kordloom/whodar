@@ -142,7 +142,7 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 	}
 
 	oldest := slackOldest(s.opts.SinceDays)
-	skipped := 0
+	skipped, read := 0, 0
 	for i, ch := range channels {
 		if s.opts.MaxChannels > 0 && i >= s.opts.MaxChannels {
 			fmt.Fprintf(s.opts.Log, "slack: stopping at %d channels (cap)\n", s.opts.MaxChannels)
@@ -194,11 +194,22 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 			}
 			s.episodes = append(s.episodes, eps...)
 		}
+		read++
 		fmt.Fprintf(s.opts.Log, "slack: indexed #%s (%d messages)\n", ch.Name, len(msgs))
 	}
 	if skipped > 0 {
-		fmt.Fprintf(s.opts.Log,
-			"slack: skipped %d unreadable channels; invite the bot to the ones that matter\n", skipped)
+		// Every channel unreadable points at a missing scope, not a hundred
+		// missing invites: the token cannot read history at all. Some readable
+		// and some not is the ordinary case of a bot not yet in those channels.
+		if read == 0 {
+			fmt.Fprintf(s.opts.Log,
+				"slack: no channel could be read. The bot token is likely missing the "+
+					"channels:history scope (and groups:history for private channels). "+
+					"Add it in your Slack app config and reinstall\n")
+		} else {
+			fmt.Fprintf(s.opts.Log,
+				"slack: skipped %d channels the bot is not in; invite it to the ones that matter\n", skipped)
+		}
 	}
 	return records, nil
 }
