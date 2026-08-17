@@ -20,6 +20,9 @@ type wsConn interface {
 	Read(ctx context.Context) ([]byte, error)
 	// Write sends a text message.
 	Write(ctx context.Context, data []byte) error
+	// Ping sends a WebSocket ping and waits for the matching pong. It is how a
+	// connection that stopped carrying traffic is told apart from a quiet one.
+	Ping(ctx context.Context) error
 	// Close closes the connection.
 	Close() error
 }
@@ -79,6 +82,19 @@ const (
 // mentions cannot spawn unbounded resolver work.
 const maxConcurrentAnswers = 8
 
+// Keepalive bounds. A workspace can be quiet for hours, so silence alone says
+// nothing about the connection. A ping that never draws a pong does: without
+// it a half-open connection, which is what a closed laptop lid or a NAT
+// timeout leaves behind, would keep the reader blocked forever and the bot
+// would stop answering without ever reconnecting.
+const (
+	// defaultPingPeriod is how often the connection is probed.
+	defaultPingPeriod = 30 * time.Second
+	// defaultPingTimeout is how long a pong may take before the connection is
+	// treated as dead.
+	defaultPingTimeout = 10 * time.Second
+)
+
 // SocketRunner runs a Slack Socket Mode session: it opens a WebSocket with the
 // app-level token, reads event frames, acknowledges them, and dispatches
 // questions to the Engine. It reconnects with backoff until the context is
@@ -101,6 +117,11 @@ type SocketRunner struct {
 	// answerSlots bounds concurrent answers to maxConcurrentAnswers. Each
 	// answer goroutine acquires a slot itself so the read loop never blocks.
 	answerSlots chan struct{}
+	// pingPeriod is how often a session probes the connection, and pingTimeout
+	// how long a pong may take. They are fields rather than constants so a
+	// test can probe quickly without mutating state another test is reading.
+	pingPeriod  time.Duration
+	pingTimeout time.Duration
 }
 
 // SocketOption configures a SocketRunner.
@@ -142,6 +163,7 @@ func NewSocketRunner(app *slack.Client, engine *Engine, replier Replier, botUser
 		app: app, engine: engine, replier: replier, botUserID: botUserID,
 		dial: dialWebSocket, log: io.Discard,
 		answerSlots: make(chan struct{}, maxConcurrentAnswers),
+		pingPeriod:  defaultPingPeriod, pingTimeout: defaultPingTimeout,
 	}
 	for _, o := range opts {
 		o(s)
@@ -208,6 +230,32 @@ func (s *SocketRunner) session(ctx context.Context, conn wsConn) error {
 	defer func() { _ = conn.Close() }()
 	var answers sync.WaitGroup
 	defer answers.Wait()
+
+	// Closing the connection is what unblocks the read below, so the keepalive
+	// reports a dead link by closing rather than by returning an error nobody
+	// is waiting on.
+	alive, stopKeepalive := context.WithCancel(ctx)
+	defer stopKeepalive()
+	go func() {
+		ticker := time.NewTicker(s.pingPeriod)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-alive.Done():
+				return
+			case <-ticker.C:
+				probe, cancel := context.WithTimeout(alive, s.pingTimeout)
+				err := conn.Ping(probe)
+				cancel()
+				if err != nil && alive.Err() == nil {
+					fmt.Fprintf(s.log, "whodar bot: connection stopped answering: %v\n", err)
+					_ = conn.Close()
+					return
+				}
+			}
+		}
+	}()
+
 	for {
 		data, err := conn.Read(ctx)
 		if err != nil {
@@ -328,6 +376,9 @@ func (cc *coderConn) Read(ctx context.Context) ([]byte, error) {
 func (cc *coderConn) Write(ctx context.Context, data []byte) error {
 	return cc.c.Write(ctx, websocket.MessageText, data)
 }
+
+// Ping sends a ping and waits for the pong.
+func (cc *coderConn) Ping(ctx context.Context) error { return cc.c.Ping(ctx) }
 
 // Close closes the connection normally.
 func (cc *coderConn) Close() error {

@@ -132,6 +132,9 @@ type SlashHandler struct {
 	now func() time.Time
 	// log receives handler notices.
 	log io.Writer
+	// slots bounds concurrent answers, so a burst of commands cannot spawn
+	// unbounded resolver work on the machine serving them.
+	slots chan struct{}
 }
 
 // SlashOption configures a SlashHandler.
@@ -167,6 +170,7 @@ func NewSlashHandler(engine *Engine, respond Responder, signingSecret string, op
 	h := &SlashHandler{
 		engine: engine, respond: respond, signingSecret: signingSecret,
 		maxSkew: 5 * time.Minute, now: time.Now, log: io.Discard,
+		slots: make(chan struct{}, maxConcurrentAnswers),
 	}
 	for _, o := range opts {
 		o(h)
@@ -204,7 +208,17 @@ func (h *SlashHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		UserID:      vals.Get("user_id"),
 		ResponseURL: vals.Get("response_url"),
 	}
-	go routeSlash(context.Background(), h.engine, h.respond, cmd, h.log)
+	select {
+	case h.slots <- struct{}{}:
+	default:
+		fmt.Fprintln(h.log, "whodar bot: busy, declined a slash command")
+		_, _ = w.Write([]byte("whodar is busy answering other questions. Try again in a moment."))
+		return
+	}
+	go func() {
+		defer func() { <-h.slots }()
+		routeSlash(context.Background(), h.engine, h.respond, cmd, h.log)
+	}()
 }
 
 // compile-time guard that SlashHandler is an http.Handler.

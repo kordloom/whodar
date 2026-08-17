@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -38,6 +39,10 @@ func (f *fakeConn) Write(_ context.Context, data []byte) error {
 
 // Close is a no-op.
 func (f *fakeConn) Close() error { return nil }
+
+// Ping answers immediately: these tests exercise frame handling, not the
+// keepalive, and a healthy connection is what they assume.
+func (f *fakeConn) Ping(context.Context) error { return nil }
 
 // stubApp returns a client with a dummy app token; session does not call it.
 func stubApp(t *testing.T) *slack.Client {
@@ -116,6 +121,10 @@ func (c *blockingConn) Write(_ context.Context, data []byte) error {
 
 // Close is a no-op.
 func (c *blockingConn) Close() error { return nil }
+
+// Ping answers immediately, so a blocked read is what the test observes rather
+// than the keepalive closing the connection underneath it.
+func (c *blockingConn) Ping(context.Context) error { return nil }
 
 // safeRecorder counts replies under a mutex, for tests that answer from more
 // than one goroutine at once.
@@ -217,5 +226,65 @@ func TestSocketIgnoresOwnAndOther(t *testing.T) {
 
 	if rec.calls != 0 {
 		t.Errorf("should ignore self, bot, and non-mention messages, calls=%d", rec.calls)
+	}
+}
+
+// deadConn never delivers a frame and never answers a ping. It is what a
+// closed laptop lid or a NAT timeout leaves behind: the socket looks open, so
+// a reader waits on it forever.
+type deadConn struct {
+	// closed is closed when the connection is shut, unblocking Read.
+	closed chan struct{}
+	// once guards Close against being called twice.
+	once sync.Once
+}
+
+// newDeadConn returns a connection that answers nothing.
+func newDeadConn() *deadConn { return &deadConn{closed: make(chan struct{})} }
+
+// Read blocks until the connection is closed.
+func (d *deadConn) Read(ctx context.Context) ([]byte, error) {
+	select {
+	case <-d.closed:
+		return nil, errors.New("connection closed")
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// Write reports success without sending anything.
+func (d *deadConn) Write(context.Context, []byte) error { return nil }
+
+// Ping never answers, which is what tells a half-open link from a quiet one.
+func (d *deadConn) Ping(ctx context.Context) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+// Close unblocks Read.
+func (d *deadConn) Close() error {
+	d.once.Do(func() { close(d.closed) })
+	return nil
+}
+
+// TestSessionEndsWhenPingsGoUnanswered verifies a connection that stops
+// answering is given up on rather than waited on forever. Slack sends nothing
+// to a quiet workspace, so silence cannot be the signal; an unanswered ping
+// can. Without this the bot would sit on a dead socket and never reconnect.
+func TestSessionEndsWhenPingsGoUnanswered(t *testing.T) {
+	t.Parallel()
+	s := NewSocketRunner(stubApp(t), okEngine(), &recorder{}, "UBOT")
+	// Probe far faster than production so the test does not wait on a timer.
+	s.pingPeriod, s.pingTimeout = 10*time.Millisecond, 20*time.Millisecond
+	done := make(chan error, 1)
+	go func() { done <- s.session(context.Background(), newDeadConn()) }()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("session returned no error for a connection that stopped answering")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("session waited on a dead connection instead of giving up")
 	}
 }

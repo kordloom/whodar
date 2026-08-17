@@ -33,6 +33,10 @@ type EventsHandler struct {
 	now func() time.Time
 	// log receives handler notices.
 	log io.Writer
+	// slots bounds concurrent answers. Slack retries an event it does not see
+	// acknowledged, and each answer can run a model call, so without a bound a
+	// burst of mentions would spawn unbounded work on the machine serving it.
+	slots chan struct{}
 }
 
 // EventsOption configures an EventsHandler.
@@ -69,6 +73,7 @@ func NewEventsHandler(engine *Engine, replier Replier, botUserID, signingSecret 
 		engine: engine, replier: replier, botUserID: botUserID,
 		signingSecret: signingSecret, maxSkew: 5 * time.Minute,
 		now: time.Now, log: io.Discard,
+		slots: make(chan struct{}, maxConcurrentAnswers),
 	}
 	for _, o := range opts {
 		o(h)
@@ -120,7 +125,19 @@ func (h *EventsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ev := outer.Event
-		go routeEvent(context.Background(), h.engine, h.replier, h.botUserID, ev, h.log)
+		select {
+		case h.slots <- struct{}{}:
+		default:
+			// Every slot is busy. Dropping the event is better than queueing
+			// work that outlives the question, and Slack has already been
+			// acknowledged so it will not retry.
+			fmt.Fprintln(h.log, "whodar bot: busy, dropped an event")
+			return
+		}
+		go func() {
+			defer func() { <-h.slots }()
+			routeEvent(context.Background(), h.engine, h.replier, h.botUserID, ev, h.log)
+		}()
 	default:
 		w.WriteHeader(http.StatusOK)
 	}

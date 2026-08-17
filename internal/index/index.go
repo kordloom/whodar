@@ -239,6 +239,10 @@ func (ix *Index) rebuild() {
 	ix.refreshStats()
 }
 
+// SourceSize reports how many records the named source contributed to this
+// index, so a caller can tell a full read from a truncated one.
+func (ix *Index) SourceSize(name string) int { return len(ix.sources[name]) }
+
 // LoadAliases merges a JSON alias file into the index's identity resolver so
 // records indexed afterward key by their canonical identifier. Call
 // Canonicalize to also join people already in the graph.

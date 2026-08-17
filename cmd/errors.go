@@ -20,6 +20,10 @@ var ErrNoIdentity = errors.New("unknown identity")
 // what is missing.
 var ErrLicense = errors.New("not licensed")
 
+// ErrShrunkSource indicates a source returned far less than it did last time,
+// which is what a rate limit or a lost scope looks like from here.
+var ErrShrunkSource = errors.New("source returned much less than before")
+
 // ErrNoRecords indicates a run read nothing from any source. It stops a
 // replacing index from writing an empty result over a good one, which is what
 // an expired token would otherwise do silently.

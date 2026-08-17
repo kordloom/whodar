@@ -71,6 +71,7 @@ func newIndexCmd(opts *options) *cobra.Command {
 		jiraJQL          string
 		maxIssues        int
 		merge            bool
+		allowShrink      bool
 		aliasesFile      string
 		halfLifeDays     int
 		repoPaths        []string
@@ -159,7 +160,7 @@ Start with the org chart, then merge everything else onto it:
 			}
 
 			return indexRecords(cmd, opts, recs, indexParams{
-				merge: merge, halfLifeDays: halfLifeDays, aliasesFile: aliasesFile,
+				merge: merge, allowShrink: allowShrink, halfLifeDays: halfLifeDays, aliasesFile: aliasesFile,
 				embed: embed, embedModel: embedModel, ollamaURL: ollamaURL, changesFile: changesFile,
 				episodes: eps,
 			})
@@ -179,6 +180,8 @@ Start with the org chart, then merge everything else onto it:
 	f.IntVar(&maxArchive, "max-archive-messages", 50, "Retained message cap per conversation.")
 	f.StringVar(&changesFile, "changes-file", "", "Write the index diff as JSON to this path.")
 	f.BoolVar(&merge, "merge", false, "Merge into the existing index instead of replacing it.")
+	f.BoolVar(&allowShrink, "allow-shrink", false,
+		"Accept a source returning far less than last time, which is otherwise refused as a truncated read.")
 	f.StringVar(&aliasesFile, "aliases", "",
 		"JSON file mapping a canonical id to its aliases, joining one person across sources.")
 	f.IntVar(&halfLifeDays, "half-life-days", 180,
@@ -209,6 +212,9 @@ Start with the org chart, then merge everything else onto it:
 type indexParams struct {
 	// merge adds records onto the existing index instead of replacing it.
 	merge bool
+	// allowShrink accepts a source that returned far less than it did last
+	// time, which is otherwise refused as a truncated read.
+	allowShrink bool
 	// halfLifeDays halves a dated record's weight after this many days; 0 disables decay.
 	halfLifeDays int
 	// aliasesFile joins one person across sources by canonical id when set.
@@ -253,6 +259,9 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 		if err := ix.LoadAliases(p.aliasesFile); err != nil {
 			return err
 		}
+	}
+	if err := guardShrink(existing, recs, p.allowShrink); err != nil {
+		return err
 	}
 	if p.merge {
 		ix.Add(recs)
@@ -324,6 +333,34 @@ func guardArchive(cmd *cobra.Command, opts *options) error {
 			ErrLicense, state.Reason())
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "archive: %s\n", state.Reason())
+	return nil
+}
+
+// guardShrink refuses to replace a source's contribution with a far smaller
+// one. A rate limit or a scope a token quietly lost makes a connector keep
+// what it managed to read and return no error, so without this a run that saw
+// a fraction of a source would shrink the index while reporting success.
+func guardShrink(existing *index.Index, recs []connector.Record, allow bool) error {
+	if existing == nil || allow {
+		return nil
+	}
+	incoming := make(map[string]int)
+	for _, rec := range recs {
+		incoming[rec.Source]++
+	}
+	for name, got := range incoming {
+		if name == "" {
+			continue
+		}
+		had := existing.SourceSize(name)
+		if had > 0 && got*2 < had {
+			return fmt.Errorf(
+				"%w: %s returned %d records where it last returned %d, so the existing index "+
+					"was left alone. Check the messages above for a rate limit or a token that "+
+					"lost a scope. Pass --allow-shrink if the source really did get smaller",
+				ErrShrunkSource, name, got, had)
+		}
+	}
 	return nil
 }
 
