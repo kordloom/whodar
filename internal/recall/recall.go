@@ -29,6 +29,9 @@ type Resolver struct {
 	// embedder turns a question into a vector for semantic recall; nil keeps
 	// matching to the words themselves.
 	embedder Embedder
+	// summarizer writes how a kept conversation resolved; nil shows the
+	// conversation as written.
+	summarizer Summarizer
 }
 
 // Embedder turns a question into a vector. Semantic recall needs one, and it
@@ -91,6 +94,9 @@ type Query struct {
 	// conversation whose exact wording is long forgotten. It needs an embedder
 	// and episodes that were embedded when indexed.
 	Meaning bool
+	// Explain includes how each problem was worked out, for conversations
+	// whose content whodar keeps.
+	Explain bool
 }
 
 // Answer is a recall result, shaped for JSON so the CLI, the web app, and the
@@ -134,6 +140,9 @@ type Episode struct {
 	// Confidence is how much of the question this conversation covered, from
 	// zero to one.
 	Confidence float64 `json:"confidence"`
+	// Solution is how the problem was worked out, present only for
+	// conversations whose content whodar keeps.
+	Solution *Solution `json:"solution,omitempty"`
 }
 
 // Person names someone who took part.
@@ -181,7 +190,11 @@ func (r *Resolver) Resolve(ctx context.Context, q Query) Answer {
 		Scope:    r.scope(),
 	}
 	for _, hit := range hits {
-		ans.Episodes = append(ans.Episodes, r.view(hit, q.Person))
+		view := r.view(hit, q.Person)
+		if q.Explain {
+			view.Solution = r.solution(ctx, hit.Episode)
+		}
+		ans.Episodes = append(ans.Episodes, view)
 	}
 	return ans
 }

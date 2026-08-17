@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/policy"
 	"github.com/kordloom/whodar/internal/recall"
 )
 
@@ -25,8 +26,12 @@ func newRecallCmd(opts *options) *cobra.Command {
 		me         string
 		horizon    int
 		meaning    bool
+		explain    bool
 		embedModel string
+		model      string
 		ollamaURL  string
+		provider   string
+		openaiURL  string
 	)
 	cmd := &cobra.Command{
 		Use:   "recall [question]",
@@ -64,6 +69,11 @@ Examples:
 						"%w: no conversation was embedded; re-index with --episodes --embed", ErrBadArgs)
 				}
 			}
+			if explain {
+				if err := attachSummarizer(cmd, opts, res, model, ollamaURL, provider, openaiURL); err != nil {
+					return err
+				}
+			}
 			if horizon > 0 {
 				res.SetHorizon(time.Duration(horizon) * 24 * time.Hour)
 			}
@@ -73,7 +83,9 @@ Examples:
 			}
 			query := strings.Join(args, " ")
 			ans := res.Resolve(cmd.Context(),
-				recall.Query{Text: query, Person: person, Limit: limit, Meaning: meaning})
+				recall.Query{
+					Text: query, Person: person, Limit: limit, Meaning: meaning, Explain: explain,
+				})
 			warnEmptyRecall(cmd, res, ans, person)
 			return writeJSON(cmd.OutOrStdout(), ans, opts.pretty)
 		},
@@ -83,11 +95,55 @@ Examples:
 		"Who is asking: an email or a source identifier. Defaults to "+meEnv+", then your git email.")
 	cmd.Flags().BoolVar(&meaning, "meaning", false,
 		"Match by meaning instead of exact words. Needs an index built with --episodes --embed.")
+	cmd.Flags().BoolVar(&explain, "how", false,
+		"Show how it was worked out, for conversations whodar keeps. Needs a Memory license at index time.")
+	cmd.Flags().StringVar(&model, "model", "", "Ollama chat model that writes the account for --how.")
+	cmd.Flags().StringVar(&provider, "provider", "ollama",
+		"Model provider for --how: ollama, anthropic, openai, or gemini. Cloud providers need --policy open.")
+	cmd.Flags().StringVar(&openaiURL, "openai-url", "",
+		"OpenAI-compatible base URL, e.g. a local LM Studio or vLLM server.")
 	cmd.Flags().StringVar(&embedModel, "embed-model", "", "Ollama embed model for --meaning.")
 	cmd.Flags().StringVar(&ollamaURL, "ollama-url", "http://localhost:11434", "Ollama base URL.")
 	cmd.Flags().IntVar(&horizon, "link-horizon-days", 0,
 		"Warn that links older than this many days may have expired. Zero makes no claim.")
 	return cmd
+}
+
+// attachSummarizer wires the model that writes how a conversation resolved.
+// The text it sees is conversation content, so a cloud provider is allowed
+// only under the open policy, exactly as it is for an answer that quotes
+// candidate detail. A local model is loopback and needs no opt-in.
+func attachSummarizer(
+	cmd *cobra.Command, opts *options, res *recall.Resolver,
+	model, ollamaURL, provider, openaiURL string,
+) error {
+	switch provider {
+	case "", "ollama":
+		target := ollamaURL
+		if openaiURL != "" {
+			target = openaiURL
+		}
+		if err := guardLLMHost(opts.pol, target); err != nil {
+			return err
+		}
+		res.SetSummarizer(newOllama(model, "", ollamaURL))
+		return nil
+	default:
+		// The redacted policy promises a model never sees message text, and a
+		// kept conversation is nothing but message text. So this path needs
+		// the open policy, not merely a known provider.
+		if opts.pol.Mode() != policy.Open {
+			return fmt.Errorf(
+				"%w: --how sends the conversation itself to %s, which needs --policy open",
+				policy.ErrEgressDenied, provider)
+		}
+		chat, err := cloudChatter(opts.pol, provider, model, openaiURL)
+		if err != nil {
+			return err
+		}
+		res.SetSummarizer(chat)
+		return nil
+	}
 }
 
 // resolveMe determines who is asking, preferring the flag, then the
