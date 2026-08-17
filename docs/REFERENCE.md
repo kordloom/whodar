@@ -196,9 +196,10 @@ Put it at `license.json` in the data directory, or point `WHODAR_LICENSE` at it
 
 Without one the free tier is in force: the people graph, and recall pointing back
 at past conversations. A Memory license adds the archive, which keeps the words of
-each conversation on your own machines and can show how something was solved. An
-expired license drops to the free tier and leaves every byte already indexed on
-disk.
+each conversation on your own machines and can show how something was solved. It
+is $5,000 a year, flat per organization, with no seat count; see
+[COMMERCIAL.md](../COMMERCIAL.md). An expired license drops to the free tier and
+leaves every byte already indexed on disk.
 
 ## whodar feedback
 

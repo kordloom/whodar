@@ -309,7 +309,8 @@ func guardArchive(cmd *cobra.Command, opts *options) error {
 	state := license.Resolve(opts.dataDir, time.Now())
 	if !state.Has(license.Memory) {
 		return fmt.Errorf(
-			"%w: keeping conversation content needs a Memory license. %s Ask at hello@whodar.dev",
+			"%w: keeping the words of a conversation needs a Memory license "+
+				"($5,000 a year, flat per organization). %s Ask at hello@whodar.dev",
 			ErrBadArgs, state.Reason())
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "archive: %s\n", state.Reason())

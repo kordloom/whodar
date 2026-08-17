@@ -30,7 +30,11 @@ nothing about your organization leaves the machine.
 
 Put the file at ` + license.FileName + ` in the data directory, or point
 ` + license.EnvLicense + ` at it. Without one, the free tier is in force: the
-people graph, and recall pointing back at past conversations.`,
+people graph, and recall pointing back at past conversations.
+
+Memory adds the archive, which keeps the words of each conversation so an answer
+can show how something was fixed. It is $5,000 a year, flat per organization,
+with no seat count. Ask at hello@whodar.dev.`,
 	}
 	cmd.AddCommand(newLicenseStatusCmd(opts), newLicenseMintCmd())
 	return cmd
