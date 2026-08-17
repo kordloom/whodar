@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/model"
@@ -93,17 +94,16 @@ func notesFrom(msgs []slack.Message, byID map[string]slack.User) []episode.Note 
 }
 
 // threadTSOf recovers the thread timestamp from an episode id of the form
-// "slack:<channel>:<thread ts>". A windowed conversation has no thread and
-// returns the empty string.
+// "slack:<channel>:<thread ts>". A windowed conversation carries a "w" prefix
+// instead and has no thread, so it returns the empty string.
 func threadTSOf(id string) string {
-	for i := len(id) - 1; i >= 0; i-- {
-		if id[i] == ':' {
-			ts := id[i+1:]
-			if ts == "" || ts[0] == 'w' {
-				return ""
-			}
-			return ts
-		}
+	i := strings.LastIndex(id, ":")
+	if i < 0 {
+		return ""
 	}
-	return ""
+	ts := id[i+1:]
+	if strings.HasPrefix(ts, "w") {
+		return ""
+	}
+	return ts
 }

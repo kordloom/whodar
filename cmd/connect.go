@@ -403,7 +403,7 @@ func runFirstIndex(cmd *cobra.Command, opts *options, ui *prompt.IO, spec source
 			}
 		}
 		remember, cerr := ui.Confirm(
-			"Remember conversations, so `whodar recall` can find how something was worked out?", true)
+			"Remember conversations, so whodar recall can find who helped you and when?", true)
 		if cerr != nil {
 			return cerr
 		}

@@ -88,14 +88,17 @@ func (s *Store) Add(ep Episode) {
 	if ep.ID == "" {
 		return
 	}
+	var vec []float32
 	if old, ok := s.episodes[ep.ID]; ok {
-		// Re-indexing must never quietly throw away kept content. A run
-		// without the archive reports the same conversation with no words
-		// attached, and taking that at face value would delete history the
-		// source may no longer serve. Only `archive prune` deletes.
+		// Re-indexing must never quietly throw away what only the older run
+		// holds. A run without the archive reports the same conversation with
+		// no words attached, and a run without embeddings reports it with no
+		// vector; taking either at face value would delete work the source may
+		// no longer serve. Only `archive prune` deletes.
 		if len(ep.Archive) == 0 && len(old.Archive) > 0 {
 			ep.Archive = old.Archive
 		}
+		vec = s.vecs[ep.ID]
 		s.forget(old)
 	}
 	body := ep.Body
@@ -104,6 +107,9 @@ func (s *Store) Add(ep Episode) {
 	s.episodes[ep.ID] = &stored
 	for _, p := range stored.Participants {
 		s.byParticipant[p] = append(s.byParticipant[p], stored.ID)
+	}
+	if len(vec) > 0 {
+		s.vecs[stored.ID] = vec
 	}
 	for _, term := range text.Terms(strings.TrimSpace(body + " " + stored.Text())) {
 		posting := s.postings[term]

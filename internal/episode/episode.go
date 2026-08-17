@@ -6,6 +6,7 @@
 package episode
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -80,12 +81,7 @@ func (e *Episode) Archived() bool { return len(e.Archive) > 0 }
 
 // Involves reports whether person took part in the episode.
 func (e *Episode) Involves(person model.ID) bool {
-	for _, p := range e.Participants {
-		if p == person {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(e.Participants, person)
 }
 
 // Others returns the participants apart from person, which is what a recall

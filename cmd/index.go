@@ -328,7 +328,7 @@ func saveEpisodes(cmd *cobra.Command, opts *options, ix *index.Index, p indexPar
 	// Participants arrive as each source names them. Resolving them against
 	// the graph is what makes one person's work findable across every tool.
 	ix.CanonicalizeEpisodes(eps)
-	store, err := opts.loadEpisodes()
+	store, err := opts.loadEpisodes(cmd)
 	if err != nil {
 		return err
 	}

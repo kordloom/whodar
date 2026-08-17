@@ -187,6 +187,7 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 				workspaceURL: workspaceURL,
 				max:          s.opts.MaxEpisodesPerChannel,
 				archive:      s.opts.Archive,
+				maxArchive:   s.opts.MaxArchiveMessages,
 			})
 			if s.opts.Archive {
 				s.fillArchive(ctx, eps, byID)

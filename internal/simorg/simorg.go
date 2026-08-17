@@ -423,9 +423,10 @@ func BuildIndex(dir string) (*index.Index, error) {
 	pagerdutySrv := PagerDutyServer()
 	defer pagerdutySrv.Close()
 
+	// BuildIndex builds the people graph; BuildEpisodes collects the
+	// conversations separately, so this source needs no episode options.
 	slackSource := connector.NewSlackWithClient(
-		slack.New("xoxb-demo", slack.WithBaseURL(slackSrv.URL)),
-		connector.SlackOptions{Episodes: true, Archive: true})
+		slack.New("xoxb-demo", slack.WithBaseURL(slackSrv.URL)), connector.SlackOptions{})
 
 	sources := []struct {
 		Name   string

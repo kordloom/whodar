@@ -78,7 +78,7 @@ session cookie. Put TLS in front of it for anything beyond a trusted network.`,
 			if err != nil {
 				return noIndexError(err)
 			}
-			if cfg.episodes, err = opts.loadEpisodes(); err != nil {
+			if cfg.episodes, err = opts.loadEpisodes(cmd); err != nil {
 				return err
 			}
 			if cfg.recallMe = os.Getenv(meEnv); cfg.recallMe == "" {
@@ -109,14 +109,15 @@ func addWebFlags(cmd *cobra.Command, cfg *webConfig, defaultAddr string) {
 }
 
 // recallFn returns the web recall handler, or nil when recall is unavailable.
-// An answer is scoped to the person the request names, and the web app has no
-// way to prove who is asking: the serve token gates access to the server, not
-// to one person's history. So recall is served only on loopback, where the
-// only caller is the person running whodar. Off-loopback it is disabled
-// outright rather than trusting a name the caller supplies.
-func recallFn(opts *options, ix *index.Index, cfg webConfig) web.RecallFunc {
+// An answer is scoped to the person the request names, and the web app cannot
+// prove who is asking: a serve token gates the server, not one person's
+// history, and one token cannot tell two people apart. So recall is served
+// only where the caller can only be the person running whodar: a loopback bind
+// with no token. A token means the server is shared, whether directly or
+// behind a proxy that forwards to loopback, and recall stays off.
+func recallFn(ix *index.Index, cfg webConfig, token string) web.RecallFunc {
 	store := cfg.episodes
-	if store == nil || store.Len() == 0 || !loopbackAddr(cfg.addr) {
+	if store == nil || store.Len() == 0 || !loopbackAddr(cfg.addr) || token != "" {
 		return nil
 	}
 	res := recall.New(store, ix)
@@ -182,7 +183,7 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 
 	handler, err := web.Handler(web.Config{
 		Ask: ask, Feedback: vote, Person: person, Version: version, AuthToken: token,
-		Directory: &dir, Modes: modes, Recall: recallFn(opts, ix, cfg), RecallMe: cfg.recallMe,
+		Directory: &dir, Modes: modes, Recall: recallFn(ix, cfg, token), RecallMe: cfg.recallMe,
 		Log: cmd.ErrOrStderr(),
 	})
 	if err != nil {

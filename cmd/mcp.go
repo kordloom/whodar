@@ -49,7 +49,7 @@ model. Wiring it in is the opt-in.`,
 			}
 			applyFeedback(ix, opts, cmd.ErrOrStderr())
 
-			store, err := opts.loadEpisodes()
+			store, err := opts.loadEpisodes(cmd)
 			if err != nil {
 				return err
 			}

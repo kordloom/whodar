@@ -87,9 +87,9 @@ type Config struct {
 	// Modes reports answer-mode readiness at /api/modes; nil disables it.
 	Modes ModesFunc
 	// Recall answers what one person worked through before, at /api/recall;
-	// nil disables it. It is scoped to the person named in the request, so a
-	// deployment serving several people must set AuthToken per person or
-	// leave this unset.
+	// nil disables it. The request names the person, and nothing here proves
+	// that name, so a caller who can reach this endpoint can ask as anyone.
+	// Set it only where the caller can only be the person running whodar.
 	Recall RecallFunc
 	// RecallMe is the identity the recall view starts with, usually the
 	// person running whodar. It is a starting point, not an authorization:

@@ -58,7 +58,7 @@ Examples:
 			if err != nil {
 				return noIndexError(err)
 			}
-			store, err := opts.loadEpisodes()
+			store, err := opts.loadEpisodes(cmd)
 			if err != nil {
 				return err
 			}

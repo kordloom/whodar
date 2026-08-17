@@ -11,11 +11,6 @@ import (
 // tokenize splits s into searchable tokens, dropping stopwords.
 func tokenize(s string) []string { return text.Tokenize(s) }
 
-// Terms splits s into the stemmed tokens the scorer matches on. Indexes built
-// outside this package use it so their posting keys and query terms are
-// produced by exactly the same normalization.
-func Terms(s string) []string { return text.Terms(s) }
-
 // slug normalizes text into a lowercase hyphenated identifier.
 func slug(s string) string { return text.Slug(s) }
 

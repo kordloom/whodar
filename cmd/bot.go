@@ -113,7 +113,7 @@ Transports and their credentials:
 			// Recall is scoped to whoever typed the message: the Slack user
 			// id resolves to a person, and the store only returns
 			// conversations that person took part in.
-			store, err := opts.loadEpisodes()
+			store, err := opts.loadEpisodes(cmd)
 			if err != nil {
 				return err
 			}

@@ -19,9 +19,10 @@ func newArchiveCmd(opts *options) *cobra.Command {
 		Long: `Report and prune the conversations whodar keeps.
 
 Recall points back at past conversations on every install. With a Memory
-license the content of those conversations is kept too, on this machine, in the
-same encrypted file, so an answer can show how something was worked out after
-the source has aged the messages out.
+license the words of those conversations are kept too, on this machine, beside
+the index, so an answer can show how something was worked out after the source
+has aged the messages out. Set a key with whodar vault and that file is
+encrypted alongside the index; without one it is plain JSON readable only by you.
 
 Retention is yours to set. Nothing here contacts a server, and nothing is
 deleted unless you ask.`,
@@ -37,7 +38,7 @@ func newArchiveStatusCmd(opts *options) *cobra.Command {
 		Short: "Report what is kept and how far back",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			store, err := opts.loadEpisodes()
+			store, err := opts.loadEpisodes(cmd)
 			if err != nil {
 				return err
 			}
@@ -93,7 +94,7 @@ exactly what you name.`,
 				return fmt.Errorf(
 					"%w: name what to prune: --older-than-days or --content-only", ErrBadArgs)
 			}
-			store, err := opts.loadEpisodes()
+			store, err := opts.loadEpisodes(cmd)
 			if err != nil {
 				return err
 			}

@@ -168,8 +168,10 @@ type Scope struct {
 	Sources []string `json:"sources"`
 	// Episodes is how many conversations were searched.
 	Episodes int `json:"episodes"`
-	// Oldest is the earliest conversation held.
-	Oldest time.Time `json:"oldest,omitempty"`
+	// Oldest is the earliest conversation held, as a date. It is empty when
+	// nothing is held, since a zero time serializes as year one and reads as a
+	// real answer.
+	Oldest string `json:"oldest,omitempty"`
 	// Note explains in words what is and is not covered.
 	Note string `json:"note"`
 }
@@ -178,6 +180,12 @@ type Scope struct {
 // unless Meaning is set and semantic recall is available, in which case a
 // failed embedding falls back to words rather than failing the answer.
 func (r *Resolver) Resolve(ctx context.Context, q Query) Answer {
+	if q.Person == "" {
+		// Recall is personal. Without a person there is no scope, and a search
+		// across everyone's conversations is never the right answer to fall
+		// back to, so it returns nothing rather than everything.
+		return Answer{Query: q.Text, Episodes: []Episode{}, Scope: r.scope()}
+	}
 	sq := episode.Query{Text: q.Text, Person: q.Person, Limit: q.Limit}
 	var hits []episode.Result
 	if q.Meaning && r.Semantic() {
@@ -257,10 +265,14 @@ func (r *Resolver) scope() Scope {
 		names = append(names, s)
 	}
 	sort.Strings(names)
+	oldestText := ""
+	if !oldest.IsZero() {
+		oldestText = oldest.Format(time.DateOnly)
+	}
 	return Scope{
 		Sources:  names,
 		Episodes: len(all),
-		Oldest:   oldest,
+		Oldest:   oldestText,
 		Note:     scopeNote(names),
 	}
 }

@@ -54,15 +54,31 @@ func TestSearchSemanticWithoutVectors(t *testing.T) {
 	}
 }
 
-// TestVectorDroppedWithEpisode verifies replacing a conversation clears its old
-// vector, so a stale embedding cannot outlive the text it came from.
-func TestVectorDroppedWithEpisode(t *testing.T) {
+// TestVectorSurvivesReindex verifies re-indexing a conversation keeps its
+// embedding. Embeddings can only be computed while the text is in hand, so a
+// routine index run without --embed must not throw them away: a slightly stale
+// vector costs a little ranking precision, while a lost one silently breaks
+// meaning-based recall until every conversation is embedded again. A later
+// embed run overwrites the vector, so staleness corrects itself.
+func TestVectorSurvivesReindex(t *testing.T) {
 	t.Parallel()
 	s := newTestStore()
 	s.Add(withBody(testEpisode("a", 1, "me@x.com"), "kafka lag"))
 	s.SetVector("a", []float32{1, 0})
-	s.Add(withBody(testEpisode("a", 1, "me@x.com"), "billing invoice"))
+
+	s.Add(withBody(testEpisode("a", 1, "me@x.com"), "kafka lag"))
+	if _, ok := s.Vector("a"); !ok {
+		t.Error("the vector was dropped by a re-index that carried no embedding")
+	}
+
+	s.SetVector("a", []float32{0, 1})
+	if v, _ := s.Vector("a"); v[1] != 1 {
+		t.Errorf("vector = %v, want the newer embedding to win", v)
+	}
+
+	// Forgetting a conversation outright still takes its vector with it.
+	s.PurgeBefore(fixedNow.AddDate(0, 0, 1))
 	if _, ok := s.Vector("a"); ok {
-		t.Error("the old vector survived a replacement")
+		t.Error("a purged conversation left its vector behind")
 	}
 }

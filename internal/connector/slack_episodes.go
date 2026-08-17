@@ -2,6 +2,7 @@ package connector
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/kordloom/whodar/internal/episode"
@@ -42,6 +43,9 @@ type episodeOpts struct {
 	// archive retains the text of loose conversations, which are already in
 	// hand. Threads need their replies fetched separately.
 	archive bool
+	// maxArchive caps retained messages per conversation; zero means the
+	// connector default.
+	maxArchive int
 }
 
 // collectEpisodes turns one channel's history into episodes: every thread with
@@ -70,7 +74,11 @@ func collectEpisodes(ch slack.Channel, msgs []slack.Message, opts episodeOpts) [
 	flush := func() {
 		if ep, ok := windowEpisode(ch, window, byID, workspaceURL); ok {
 			if opts.archive {
-				ep.Archive = notesFrom(window, byID)
+				capped := window
+				if opts.maxArchive > 0 && len(capped) > opts.maxArchive {
+					capped = capped[:opts.maxArchive]
+				}
+				ep.Archive = notesFrom(capped, byID)
 			}
 			out = append(out, ep)
 		}
@@ -201,12 +209,13 @@ func episodeText(msgs []slack.Message) string {
 	return strings.TrimSpace(b.String())
 }
 
-// slackSeconds returns the epoch seconds of a Slack timestamp, or zero when it
-// does not parse.
+// slackSeconds returns the epoch seconds of a Slack timestamp, keeping the
+// fractional part so messages sent in the same second keep their order. It
+// returns zero when the timestamp does not parse.
 func slackSeconds(ts string) float64 {
-	t := slackTime(ts)
-	if t.IsZero() {
+	sec, err := strconv.ParseFloat(ts, 64)
+	if err != nil || sec <= 0 {
 		return 0
 	}
-	return float64(t.Unix())
+	return sec
 }
