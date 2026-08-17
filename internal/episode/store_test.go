@@ -226,3 +226,48 @@ func TestAddKeepsArchiveOnReindex(t *testing.T) {
 		t.Error("prune did not clear the content")
 	}
 }
+
+// TestReindexKeepsArchiveParticipants verifies a later run without the archive
+// keeps the people the archive contributed. Replies are read only while
+// archiving, so a plain re-index reports just the participants visible without
+// them, and dropping the rest would leave the retained conversation unreachable
+// by the person who actually solved it.
+func TestReindexKeepsArchiveParticipants(t *testing.T) {
+	t.Parallel()
+	s := New()
+	// The archiving run saw the thread starter and the expert who replied.
+	s.Add(Episode{
+		ID: "slack:C1:1", Source: "slack", Kind: KindThread, Place: "billing",
+		Participants: []model.ID{"asker@x.com", "expert@x.com"},
+		Archive: []Note{
+			{Author: "expert@x.com", Text: "raise the retry ceiling and redeploy"},
+		},
+	})
+	if !s.HasPerson("expert@x.com") {
+		t.Fatal("setup: the expert should be reachable after the archiving run")
+	}
+
+	// A later plain run sees only the thread parent's author.
+	s.Add(Episode{
+		ID: "slack:C1:1", Source: "slack", Kind: KindThread, Place: "billing",
+		Participants: []model.ID{"asker@x.com"},
+	})
+
+	ep, ok := s.Episode("slack:C1:1")
+	if !ok {
+		t.Fatal("episode disappeared on re-index")
+	}
+	if len(ep.Archive) != 1 {
+		t.Errorf("archive = %+v, want it kept", ep.Archive)
+	}
+	if !s.HasPerson("expert@x.com") {
+		t.Error("the expert who wrote the retained answer can no longer reach it")
+	}
+	if !s.HasPerson("asker@x.com") {
+		t.Error("the thread starter lost their link")
+	}
+	hits := s.Search(Query{Text: "retry ceiling", Person: "expert@x.com"})
+	if len(hits) != 1 {
+		t.Errorf("expert's own recall returned %d conversations, want 1", len(hits))
+	}
+}

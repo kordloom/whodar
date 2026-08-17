@@ -97,6 +97,11 @@ func (s *Store) Add(ep Episode) {
 		// no longer serve. Only `archive prune` deletes.
 		if len(ep.Archive) == 0 && len(old.Archive) > 0 {
 			ep.Archive = old.Archive
+			// Keeping the words but not the people who wrote them would leave
+			// the retained conversation unreachable by the person who solved
+			// it. Replies are only read while archiving, so a later plain run
+			// reports just the participants visible without them.
+			ep.Participants = unionParticipants(ep.Participants, old.Participants)
 		}
 		vec = s.vecs[ep.ID]
 		s.forget(old)
@@ -111,7 +116,8 @@ func (s *Store) Add(ep Episode) {
 	if len(vec) > 0 {
 		s.vecs[stored.ID] = vec
 	}
-	for _, term := range text.Terms(strings.TrimSpace(body + " " + stored.Text())) {
+	indexed := strings.TrimSpace(body + " " + stored.Text() + " " + archiveText(stored.Archive))
+	for _, term := range text.Terms(indexed) {
 		posting := s.postings[term]
 		if posting == nil {
 			posting = make(map[string]float64)
@@ -119,6 +125,40 @@ func (s *Store) Add(ep Episode) {
 		}
 		posting[stored.ID]++
 	}
+}
+
+// archiveText joins retained messages so a kept conversation is findable by
+// what was actually said in it. Without this a conversation is searchable only
+// by its opening message, which states the problem rather than the answer, and
+// the words a later run no longer fetches would drop out of the index while
+// still sitting on disk.
+func archiveText(notes []Note) string {
+	if len(notes) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, n := range notes {
+		b.WriteString(n.Text)
+		b.WriteByte(' ')
+	}
+	return b.String()
+}
+
+// unionParticipants returns everyone in either list, keeping the order of the
+// first and appending anyone the second adds.
+func unionParticipants(keep, add []model.ID) []model.ID {
+	seen := make(map[model.ID]bool, len(keep)+len(add))
+	out := make([]model.ID, 0, len(keep)+len(add))
+	for _, list := range [][]model.ID{keep, add} {
+		for _, p := range list {
+			if p == "" || seen[p] {
+				continue
+			}
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // SetVector attaches an embedding vector to an episode.
