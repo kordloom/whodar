@@ -49,6 +49,24 @@ func (s *Slack) fillArchive(ctx context.Context, eps []episode.Episode, byID map
 			continue
 		}
 		ep.Archive = notesFrom(msgs, byID)
+		addAuthors(ep)
+	}
+}
+
+// addAuthors folds the people who spoke into the participant list. Slack names
+// only the first few repliers on a thread parent, so without this someone
+// quoted in a conversation could not find it again.
+func addAuthors(ep *episode.Episode) {
+	seen := make(map[model.ID]bool, len(ep.Participants))
+	for _, p := range ep.Participants {
+		seen[p] = true
+	}
+	for _, n := range ep.Archive {
+		if n.Author == "" || seen[n.Author] {
+			continue
+		}
+		seen[n.Author] = true
+		ep.Participants = append(ep.Participants, n.Author)
 	}
 }
 

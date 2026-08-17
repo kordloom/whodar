@@ -195,3 +195,35 @@ func TestNameFallsBackToIdentifier(t *testing.T) {
 		t.Errorf("name = %q, want the identifier itself", got)
 	}
 }
+
+// TestTrimConversationKeepsBothEnds verifies a long conversation keeps its
+// opening and its ending. The problem is stated first and settled last, so
+// trimming only the tail would cut off the answer this feature exists to show.
+func TestTrimConversationKeepsBothEnds(t *testing.T) {
+	t.Parallel()
+	var notes []episode.Note
+	notes = append(notes, episode.Note{Text: "the problem"})
+	for i := 0; i < maxSolutionNotes*2; i++ {
+		notes = append(notes, episode.Note{Text: "middle chatter"})
+	}
+	notes = append(notes, episode.Note{Text: "that fixed it"})
+
+	kept, truncated := trimConversation(notes)
+	if !truncated {
+		t.Fatal("a long conversation was not reported as truncated")
+	}
+	if len(kept) != maxSolutionNotes {
+		t.Fatalf("kept %d messages, want %d", len(kept), maxSolutionNotes)
+	}
+	if kept[0].Text != "the problem" {
+		t.Errorf("first kept = %q, want the problem statement", kept[0].Text)
+	}
+	if kept[len(kept)-1].Text != "that fixed it" {
+		t.Errorf("last kept = %q, want the resolution", kept[len(kept)-1].Text)
+	}
+
+	short := []episode.Note{{Text: "one"}, {Text: "two"}}
+	if got, truncated := trimConversation(short); truncated || len(got) != 2 {
+		t.Errorf("short conversation = (%d, %v), want it untouched", len(got), truncated)
+	}
+}

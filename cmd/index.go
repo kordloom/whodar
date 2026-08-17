@@ -107,6 +107,11 @@ Start with the org chart, then merge everything else onto it:
 				eps  []episode.Episode
 				err  error
 			)
+			if archive {
+				if err := guardArchive(cmd, opts); err != nil {
+					return err
+				}
+			}
 			switch source {
 			case "org-csv":
 				if file == "" {
@@ -167,10 +172,10 @@ Start with the org chart, then merge everything else onto it:
 	f.IntVar(&sinceDays, "since-days", 180, "Slack history window in days.")
 	f.IntVar(&maxMessages, "max-messages", 5000, "Slack message cap per channel.")
 	f.BoolVar(&episodes, "episodes", false,
-		"Record the conversations behind the messages so `whodar recall` can point back at them.")
+		"Record past conversations so whodar recall can point back at them.")
 	f.IntVar(&maxEpisodes, "max-episodes-per-channel", 200, "Episode cap per channel.")
 	f.BoolVar(&archive, "archive", false,
-		"Keep the content of each conversation, not just a link to it. Licensed feature; implies --episodes.")
+		"Slack only: keep the words of each conversation, not just a link. Needs a Memory license, implies --episodes.")
 	f.IntVar(&maxArchive, "max-archive-messages", 50, "Retained message cap per conversation.")
 	f.StringVar(&changesFile, "changes-file", "", "Write the index diff as JSON to this path.")
 	f.BoolVar(&merge, "merge", false, "Merge into the existing index instead of replacing it.")
@@ -385,11 +390,6 @@ func fetchSlack(
 	}
 	if a.includePrivate && !opts.pol.AllowPrivateChannels() {
 		return nil, nil, fmt.Errorf("%w: private-channel ingest is disabled by policy", ErrBadArgs)
-	}
-	if a.archive {
-		if err := guardArchive(cmd, opts); err != nil {
-			return nil, nil, err
-		}
 	}
 	src := connector.NewSlack(token, connector.SlackOptions{
 		IncludePrivate:        a.includePrivate,

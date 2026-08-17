@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -22,20 +23,7 @@ var testUsers = map[string]slack.User{
 }
 
 // ts builds a Slack timestamp for the given epoch second.
-func ts(sec int) string { return itoa(sec) + ".000100" }
-
-// itoa avoids a strconv import in the table below.
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var digits []byte
-	for n > 0 {
-		digits = append([]byte{byte('0' + n%10)}, digits...)
-		n /= 10
-	}
-	return string(digits)
-}
+func ts(sec int) string { return strconv.Itoa(sec) + ".000100" }
 
 // TestCollectEpisodes verifies each conversation shape a channel produces: a
 // thread with replies, a run of loose messages between several people, and the
@@ -127,7 +115,7 @@ func TestCollectEpisodes(t *testing.T) {
 		WantIDs: nil,
 	}}
 	for testNum, test := range tests {
-		t.Run(itoa(testNum)+" "+test.Name, func(t *testing.T) {
+		t.Run(strconv.Itoa(testNum)+" "+test.Name, func(t *testing.T) {
 			t.Parallel()
 			got := collectEpisodes(testChannel, test.Messages,
 				episodeOpts{byID: testUsers, workspaceURL: "https://acme.slack.com/"})

@@ -100,11 +100,11 @@ matches against. No other source's message bodies are kept.</li>
 written only when you index with <code>--episodes</code>. A conversation record holds who
 took part, where, when, a link back to it, and the words it matched on. Who spoke
 with whom is information the index alone does not hold, so this is a real
-addition: index without <code>--episodes</code> and none of it is written. An organization
-can pin it off entirely with <code>&quot;archive&quot;: &quot;deny&quot;</code> in the policy file, and
-<code>whodar archive prune</code> deletes what is already there.</li>
+addition: index without <code>--episodes</code> and none of it is written. <code>whodar archive prune</code> deletes what is already there.</li>
 <li>The words of a conversation are kept only with a Memory license and only when you
-pass <code>--archive</code>. Without both, whodar stores a pointer and nothing more.</li>
+pass <code>--archive</code>. Without both, whodar stores a pointer and nothing more. An
+organization can forbid keeping words outright with <code>&quot;archive&quot;: &quot;deny&quot;</code> in the
+policy file, which no license overrides.</li>
 <li>Credentials are read only from the environment, never from a flag. No token is
 written to disk and nothing is logged.</li>
 <li>Indexing talks only to the sources you name, with your own tokens.</li>

@@ -61,14 +61,10 @@ func (r *Resolver) solution(ctx context.Context, ep *episode.Episode) *Solution 
 	if !ep.Archived() {
 		return nil
 	}
-	notes := ep.Archive
-	out := &Solution{Source: ep.Permalink}
-	if len(notes) > maxSolutionNotes {
-		notes = notes[:maxSolutionNotes]
-		out.Truncated = true
-	}
-	out.Notes = make([]Note, 0, len(notes))
-	for _, n := range notes {
+	kept, truncated := trimConversation(ep.Archive)
+	out := &Solution{Source: ep.Permalink, Truncated: truncated}
+	out.Notes = make([]Note, 0, len(kept))
+	for _, n := range kept {
 		out.Notes = append(out.Notes, Note{
 			Author: r.name(n.Author),
 			Text:   n.Text,
@@ -83,6 +79,21 @@ func (r *Resolver) solution(ctx context.Context, ep *episode.Episode) *Solution 
 		}
 	}
 	return out
+}
+
+// trimConversation cuts a long conversation to a readable length, keeping both
+// ends: the problem is stated at the start and settled at the end, so trimming
+// only the tail would drop the very thing this feature exists to show. It
+// reports whether anything was left out.
+func trimConversation(notes []episode.Note) ([]episode.Note, bool) {
+	if len(notes) <= maxSolutionNotes {
+		return notes, false
+	}
+	head := maxSolutionNotes / 3
+	tail := maxSolutionNotes - head
+	kept := make([]episode.Note, 0, maxSolutionNotes)
+	kept = append(kept, notes[:head]...)
+	return append(kept, notes[len(notes)-tail:]...), true
 }
 
 // name renders a person for display, falling back to the identifier when the

@@ -6,6 +6,7 @@ package recall
 
 import (
 	"context"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -256,12 +257,37 @@ func (r *Resolver) scope() Scope {
 		Sources:  names,
 		Episodes: len(all),
 		Oldest:   oldest,
-		Note: "Covers conversations whodar has indexed: channels the bot can read, " +
-			"within the history window. Direct messages are not indexed.",
+		Note:     scopeNote(names),
+	}
+}
+
+// scopeNote says in words what a recall answer covered, so a miss reads as a
+// gap in what was indexed rather than proof that nothing ever happened.
+func scopeNote(sources []string) string {
+	if len(sources) == 0 {
+		return "Nothing has been indexed yet: run whodar index with --episodes."
+	}
+	note := "Covers what whodar has indexed from " + joinWords(sources) +
+		", within each source's history window."
+	for _, s := range sources {
+		if s == "slack" {
+			return note + " Slack covers channels the bot can read; direct messages are not indexed."
+		}
+	}
+	return note
+}
+
+// joinWords lists names in prose.
+func joinWords(names []string) string {
+	switch len(names) {
+	case 1:
+		return names[0]
+	case 2:
+		return names[0] + " and " + names[1]
+	default:
+		return strings.Join(names[:len(names)-1], ", ") + ", and " + names[len(names)-1]
 	}
 }
 
 // roundTwo trims a confidence to two decimals for stable output.
-func roundTwo(f float64) float64 {
-	return float64(int(f*100+0.5)) / 100
-}
+func roundTwo(f float64) float64 { return math.Round(f*100) / 100 }

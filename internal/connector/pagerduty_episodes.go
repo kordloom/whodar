@@ -12,8 +12,15 @@ import (
 	"github.com/kordloom/whodar/internal/util"
 )
 
-// defaultIncidentDays bounds how far back incidents are read.
-const defaultIncidentDays = 365
+// Incident window bounds. The PagerDuty incidents API rejects a date range
+// wider than six months, so the default sits inside it and anything larger is
+// clamped rather than silently failing the whole read.
+const (
+	// defaultIncidentDays is how far back incidents are read by default.
+	defaultIncidentDays = 180
+	// maxIncidentDays is the widest range the API accepts.
+	maxIncidentDays = 180
+)
 
 // Episodes returns the resolved incidents seen by the most recent Fetch. It is
 // empty unless PagerDutyOptions.Episodes was set.
@@ -26,6 +33,11 @@ func (p *PagerDuty) collectIncidents(ctx context.Context) error {
 	days := p.opts.IncidentDays
 	if days <= 0 {
 		days = defaultIncidentDays
+	}
+	if days > maxIncidentDays {
+		fmt.Fprintf(p.opts.Log,
+			"pagerduty: incident window capped at %d days by the API\n", maxIncidentDays)
+		days = maxIncidentDays
 	}
 	since := time.Now().AddDate(0, 0, -days)
 	incidents, err := p.client.Incidents(ctx, since, p.opts.MaxIncidents)

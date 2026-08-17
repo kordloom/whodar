@@ -188,3 +188,41 @@ func TestPurge(t *testing.T) {
 		t.Errorf("search after purge = %+v, want one hit", got)
 	}
 }
+
+// TestAddKeepsArchiveOnReindex verifies a routine re-index without the archive
+// does not throw away conversation content already kept. The source may no
+// longer serve those messages, so only an explicit prune deletes them.
+func TestAddKeepsArchiveOnReindex(t *testing.T) {
+	t.Parallel()
+	s := newTestStore()
+	kept := testEpisode("a", 10, "me@x.com")
+	kept.Archive = []Note{{Author: "billy@x.com", At: fixedNow, Text: "bump the cert"}}
+	kept.Body = "certificate renewal"
+	s.Add(kept)
+
+	// The same conversation, seen again by a run that was not keeping words.
+	s.Add(withBody(testEpisode("a", 10, "me@x.com"), "certificate renewal"))
+
+	ep, ok := s.Episode("a")
+	if !ok || !ep.Archived() {
+		t.Fatalf("episode = %+v, want its content kept through a re-index", ep)
+	}
+	if ep.Archive[0].Text != "bump the cert" {
+		t.Errorf("archive = %+v, want the original message", ep.Archive)
+	}
+
+	// A run that does carry content replaces it, so corrections land.
+	fresh := testEpisode("a", 10, "me@x.com")
+	fresh.Archive = []Note{{Author: "billy@x.com", At: fixedNow, Text: "use certbot instead"}}
+	fresh.Body = "certificate renewal"
+	s.Add(fresh)
+	if ep, _ := s.Episode("a"); ep.Archive[0].Text != "use certbot instead" {
+		t.Errorf("archive = %+v, want the newer content", ep.Archive)
+	}
+
+	// Pruning is the one way content goes away.
+	s.PurgeArchive()
+	if ep, _ := s.Episode("a"); ep.Archived() {
+		t.Error("prune did not clear the content")
+	}
+}

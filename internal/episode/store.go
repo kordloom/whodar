@@ -76,8 +76,9 @@ func (s *Store) All() []*Episode {
 	return out
 }
 
-// SetHalfLife sets the age at which a score halves. A zero or negative
-// duration disables decay.
+// SetHalfLife sets the age at which a score halves. Zero restores the default;
+// a negative duration turns decay off, so an old conversation ranks purely on
+// how well it matches.
 func (s *Store) SetHalfLife(d time.Duration) { s.halfLife = d }
 
 // Add stores an episode and indexes its body. Adding an episode that is
@@ -88,6 +89,13 @@ func (s *Store) Add(ep Episode) {
 		return
 	}
 	if old, ok := s.episodes[ep.ID]; ok {
+		// Re-indexing must never quietly throw away kept content. A run
+		// without the archive reports the same conversation with no words
+		// attached, and taking that at face value would delete history the
+		// source may no longer serve. Only `archive prune` deletes.
+		if len(ep.Archive) == 0 && len(old.Archive) > 0 {
+			ep.Archive = old.Archive
+		}
 		s.forget(old)
 	}
 	body := ep.Body

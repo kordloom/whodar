@@ -15,11 +15,12 @@ guarantees in one place.
   written only when you index with `--episodes`. A conversation record holds who
   took part, where, when, a link back to it, and the words it matched on. Who spoke
   with whom is information the index alone does not hold, so this is a real
-  addition: index without `--episodes` and none of it is written. An organization
-  can pin it off entirely with `"archive": "deny"` in the policy file, and
-  `whodar archive prune` deletes what is already there.
+  addition: index without `--episodes` and none of it is written. `whodar archive
+  prune` deletes what is already there.
 - The words of a conversation are kept only with a Memory license and only when you
-  pass `--archive`. Without both, whodar stores a pointer and nothing more.
+  pass `--archive`. Without both, whodar stores a pointer and nothing more. An
+  organization can forbid keeping words outright with `"archive": "deny"` in the
+  policy file, which no license overrides.
 - Credentials are read only from the environment, never from a flag. No token is
   written to disk and nothing is logged.
 - Indexing talks only to the sources you name, with your own tokens.

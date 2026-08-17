@@ -378,11 +378,11 @@ host. The policy does not gate indexing, which talks only to the sources you
 name with your tokens when you run `whodar index`, or the bot posting answers
 back to your Slack workspace.
 
-An organization can pin the policy with a locked file. A locked
 An organization can also pin `"private_channels": "deny"` to keep private
 channels out of the index, and `"archive": "deny"` to forbid keeping the words
 of any conversation, whatever the license says.
 
+An organization can pin the policy with a locked file. A locked
 `/etc/whodar/policy.json` always wins: `WHODAR_POLICY_FILE` and `--policy` are
 then ignored. The lock constrains the installed binary for regular users; it
 is not a security boundary against an administrator. Private-channel ingest

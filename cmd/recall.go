@@ -119,11 +119,10 @@ func attachSummarizer(
 ) error {
 	switch provider {
 	case "", "ollama":
-		target := ollamaURL
-		if openaiURL != "" {
-			target = openaiURL
-		}
-		if err := guardLLMHost(opts.pol, target); err != nil {
+		// Guard the host the request actually goes to. Checking one URL and
+		// sending to another would let conversation content reach an
+		// unchecked machine.
+		if err := guardLLMHost(opts.pol, ollamaURL); err != nil {
 			return err
 		}
 		res.SetSummarizer(newOllama(model, "", ollamaURL))

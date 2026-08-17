@@ -91,6 +91,16 @@ func routeSlashRecall(
 		}
 		return
 	}
+	allowed, warn := e.allow(cmd.UserID)
+	if warn {
+		if err := private.RespondPrivately(ctx, cmd.ResponseURL, rateWarning); err != nil {
+			fmt.Fprintf(log, "whodar bot: slash respond: %v\n", err)
+		}
+		return
+	}
+	if !allowed {
+		return
+	}
 	text := "Tell me what to look for, like `/whodar recall certificate renewal`."
 	if query != "" {
 		answer, err := e.Recall(ctx, cmd.UserID, query, recallLimit)
