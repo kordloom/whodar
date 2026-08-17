@@ -11,6 +11,15 @@ guarantees in one place.
   by you (mode `0600`). It is never uploaded. Besides the graph and ranking signals
   it holds a capped sample of each person's Slack messages, which is what ranking
   matches against. No other source's message bodies are kept.
+- Past conversations live beside it at `~/.whodar/episodes.json`, same permissions,
+  written only when you index with `--episodes`. A conversation record holds who
+  took part, where, when, a link back to it, and the words it matched on. Who spoke
+  with whom is information the index alone does not hold, so this is a real
+  addition: index without `--episodes` and none of it is written. An organization
+  can pin it off entirely with `"archive": "deny"` in the policy file, and
+  `whodar archive prune` deletes what is already there.
+- The words of a conversation are kept only with a Memory license and only when you
+  pass `--archive`. Without both, whodar stores a pointer and nothing more.
 - Credentials are read only from the environment, never from a flag. No token is
   written to disk and nothing is logged.
 - Indexing talks only to the sources you name, with your own tokens.
@@ -47,8 +56,8 @@ Three things to know:
   variables and stops.
 - The key is the only way back in. Losing it makes an encrypted index unrecoverable,
   so store it as carefully as any other secret and keep a backup.
-- The vault covers the index only. `feedback.json`, which holds your queries and
-  votes, stays plain JSON today.
+- The vault covers the index and the conversations beside it. `feedback.json`,
+  which holds your queries and votes, stays plain JSON today.
 
 ## Control what a model sees
 
