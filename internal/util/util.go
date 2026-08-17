@@ -2,6 +2,7 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -41,7 +42,15 @@ func Truncate(s string, max int) string {
 func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
 	if err != nil {
-		return fmt.Errorf("atomic write: temp: %w", err)
+		// The raw error names the randomly-suffixed temp file, which never
+		// existed and means nothing to a user. Report the directory that could
+		// not be written and the underlying cause instead.
+		cause := err
+		var pe *fs.PathError
+		if errors.As(err, &pe) {
+			cause = pe.Err
+		}
+		return fmt.Errorf("cannot write to directory %s: %v", filepath.Dir(path), cause)
 	}
 	name := tmp.Name()
 	if err := fillTemp(tmp, data, perm); err != nil {

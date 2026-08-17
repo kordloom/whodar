@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/kordloom/whodar/internal/connector"
 	"github.com/kordloom/whodar/internal/episode"
+	"github.com/kordloom/whodar/internal/httputil"
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/license"
 	"github.com/kordloom/whodar/internal/llm"
@@ -287,9 +289,11 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 		if err := guardLLMHost(opts.pol, p.ollamaURL); err != nil {
 			return err
 		}
+		total := len(ix.Graph.People) + len(ix.Graph.Channels)
 		fmt.Fprintf(cmd.ErrOrStderr(),
 			"embedding %d people and %d channels via Ollama...\n",
 			len(ix.Graph.People), len(ix.Graph.Channels))
+		ix.SetEmbedProgress(util.ProgressWriter(cmd.ErrOrStderr(), "embedded", embedProgressEvery(total)))
 		if err := ix.Embed(cmd.Context(), newDocOllama(p.embedModel, p.ollamaURL)); err != nil {
 			return fmt.Errorf("embed: %w", err)
 		}
@@ -334,6 +338,16 @@ func guardArchive(cmd *cobra.Command, opts *options) error {
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "archive: %s\n", state.Reason())
 	return nil
+}
+
+// embedProgressEvery picks how often to report embedding progress: about
+// twenty updates across the whole run, and at least every entity for a small
+// graph, so the line moves without flooding.
+func embedProgressEvery(total int) int {
+	if total <= 20 {
+		return 1
+	}
+	return total / 20
 }
 
 // guardShrink refuses to replace a source's contribution with a far smaller
@@ -389,15 +403,25 @@ func saveEpisodes(cmd *cobra.Command, opts *options, ix *index.Index, p indexPar
 		fmt.Fprintf(cmd.ErrOrStderr(), "embedding %d conversations via Ollama...\n", len(eps))
 	}
 	before := store.Len()
+	embedFailed := false
 	for _, ep := range eps {
 		body := strings.TrimSpace(ep.Body + " " + ep.Text())
 		store.Add(ep)
-		if embedder == nil || body == "" {
+		if embedder == nil || body == "" || embedFailed {
 			continue
 		}
 		vec, err := embedder.Embed(cmd.Context(), body)
 		if err != nil {
-			return fmt.Errorf("embed conversation: %w", err)
+			// A failed embedding must not discard the conversations already
+			// fetched: the index is on disk by now, so throwing these away
+			// would leave the two out of step and waste the whole read. The
+			// conversations are kept without vectors, so keyword recall works
+			// and a later re-index can add the vectors.
+			fmt.Fprintf(cmd.ErrOrStderr(),
+				"embedding stopped (%v); keeping conversations without semantic vectors, "+
+					"re-index with a working model to add them\n", err)
+			embedFailed = true
+			continue
 		}
 		store.SetVector(ep.ID, vec)
 	}
@@ -429,6 +453,29 @@ type slackArgs struct {
 }
 
 // fetchSlack builds Slack records, enforcing the private-channel policy guard.
+// explainSourceError turns a low-level fetch failure into an actionable message
+// naming the source and the credential to check. A token that expired or lost
+// a scope otherwise surfaces as a bare status code next to an internal API
+// path, which tells a user nothing about what to do. Other errors pass through.
+func explainSourceError(source, tokenEnv string, err error) error {
+	var se *httputil.StatusError
+	if !errors.As(err, &se) {
+		return err
+	}
+	switch se.Code {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return fmt.Errorf(
+			"%w: %s rejected the credentials (HTTP %d). The token in %s is missing, expired, or "+
+				"lacks the read access this needs. Recreate it and set %s, then try again",
+			ErrAuth, source, se.Code, tokenEnv, tokenEnv)
+	case http.StatusNotFound:
+		return fmt.Errorf(
+			"%w: %s returned not found (HTTP 404). Check the site URL is the root with no path, and "+
+				"that the names you scoped to exist", ErrAuth, source)
+	}
+	return err
+}
+
 func fetchSlack(
 	cmd *cobra.Command, opts *options, a slackArgs,
 ) ([]connector.Record, []episode.Episode, error) {
@@ -485,7 +532,7 @@ func fetchGitHub(cmd *cobra.Command, a githubArgs) ([]connector.Record, []episod
 	})
 	recs, err := src.Fetch(cmd.Context())
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, explainSourceError("GitHub", githubTokenEnv, err)
 	}
 	return recs, src.Episodes(), nil
 }
@@ -523,7 +570,7 @@ func fetchJira(cmd *cobra.Command, a jiraArgs) ([]connector.Record, []episode.Ep
 	})
 	recs, err := src.Fetch(cmd.Context())
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, explainSourceError("Jira", jiraTokenEnv, err)
 	}
 	return recs, src.Episodes(), nil
 }
@@ -550,7 +597,11 @@ func fetchConfluence(cmd *cobra.Command, a confluenceArgs) ([]connector.Record, 
 	src := connector.NewConfluence(site, email, token, connector.ConfluenceOptions{
 		Spaces: a.spaces, CQL: a.cql, MaxPages: a.maxPages, Log: cmd.ErrOrStderr(),
 	})
-	return src.Fetch(cmd.Context())
+	recs, err := src.Fetch(cmd.Context())
+	if err != nil {
+		return nil, explainSourceError("Confluence", confluenceTokenEnv, err)
+	}
+	return recs, nil
 }
 
 // fetchPagerDuty builds PagerDuty records from services and on-call data.
@@ -564,7 +615,7 @@ func fetchPagerDuty(cmd *cobra.Command, episodes bool) ([]connector.Record, []ep
 	})
 	recs, err := src.Fetch(cmd.Context())
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, explainSourceError("PagerDuty", pagerdutyTokenEnv, err)
 	}
 	return recs, src.Episodes(), nil
 }

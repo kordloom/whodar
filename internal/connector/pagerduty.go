@@ -43,9 +43,16 @@ type PagerDuty struct {
 	episodes []episode.Episode
 }
 
+// pagerdutyProgressEvery reports progress each time this many more incidents
+// arrive.
+const pagerdutyProgressEvery = 100
+
 // NewPagerDuty returns a PagerDuty connector authenticating with token.
 func NewPagerDuty(token string, opts PagerDutyOptions) *PagerDuty {
-	return &PagerDuty{client: pagerduty.New(token), opts: opts.withDefaults()}
+	o := opts.withDefaults()
+	client := pagerduty.New(token,
+		pagerduty.WithProgress(util.ProgressWriter(o.Log, "pagerduty: fetched", pagerdutyProgressEvery)))
+	return &PagerDuty{client: client, opts: o}
 }
 
 // NewPagerDutyWithClient returns a PagerDuty connector using a preconfigured

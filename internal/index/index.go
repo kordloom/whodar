@@ -112,6 +112,8 @@ type Index struct {
 	fbStep float64
 	// fbMax clamps net votes per result; zero means the default, negative off.
 	fbMax int
+	// embedProgress, when set, is called after each entity is embedded.
+	embedProgress util.Progress
 	// sources holds the records each source contributed, keyed by source name.
 	// They are the index's source of truth: everything else here is derived
 	// from them, so re-reading a source replaces its contribution instead of

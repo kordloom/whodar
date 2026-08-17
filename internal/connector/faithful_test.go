@@ -245,3 +245,35 @@ func TestConfluenceAgainstFaithfulSite(t *testing.T) {
 		t.Errorf("records = %+v, want both the page creator and the last editor", recs)
 	}
 }
+
+// TestJiraReportsProgressWhilePaging verifies the connector shows movement as
+// it pages rather than printing one line after every issue has already
+// arrived. A long index left a user staring at a still screen otherwise.
+func TestJiraReportsProgressWhilePaging(t *testing.T) {
+	t.Parallel()
+	var issues []fakeapi.JiraIssue
+	for i := range 350 {
+		issues = append(issues, fakeapi.JiraIssue{
+			Key: "OPS-" + strconv.Itoa(i), Summary: "issue", AssigneeEmail: "jane@x.com",
+			ProjectKey: "OPS", ProjectName: "Operations",
+			Updated:        "2026-06-20T09:30:00.000-0500",
+			ResolutionDate: "2026-06-21T09:30:00.000-0500",
+			StatusName:     "Done", StatusCategory: "done",
+		})
+	}
+	srv := (&fakeapi.Jira{Issues: issues}).Server()
+	t.Cleanup(srv.Close)
+
+	var log strings.Builder
+	src := NewJira(srv.URL, "me@x.com", "token", JiraOptions{
+		Projects: []string{"OPS"}, MaxIssues: 350, Log: &log,
+	})
+	if _, err := src.Fetch(context.Background()); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	// Four pages of 100, so several interim progress lines, not just the final
+	// summary.
+	if got := strings.Count(log.String(), "fetched"); got < 3 {
+		t.Errorf("saw %d progress lines in:\n%s", got, log.String())
+	}
+}

@@ -38,6 +38,10 @@ func (o JiraOptions) withDefaults() JiraOptions {
 	return o
 }
 
+// jiraProgressEvery reports progress each time this many more issues arrive, so
+// a long search shows movement without flooding the log.
+const jiraProgressEvery = 100
+
 // Jira is a Source that ingests issues and weights the assignee and reporter by
 // the components, labels, summary words, and project of the issues they handle.
 type Jira struct {
@@ -52,7 +56,10 @@ type Jira struct {
 // NewJira returns a Jira connector for the site, authenticating with an email
 // and API token.
 func NewJira(baseURL, email, token string, opts JiraOptions) *Jira {
-	return &Jira{client: jira.New(baseURL, email, token), opts: opts.withDefaults()}
+	o := opts.withDefaults()
+	client := jira.New(baseURL, email, token,
+		jira.WithProgress(util.ProgressWriter(o.Log, "jira: fetched", jiraProgressEvery)))
+	return &Jira{client: client, opts: o}
 }
 
 // NewJiraWithClient returns a Jira connector using a preconfigured client.

@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"unicode/utf8"
 
@@ -114,5 +115,27 @@ func TestTruncate(t *testing.T) {
 				t.Errorf("Truncate(%q, %d) = %q, not valid UTF-8", test.In, test.Max, got)
 			}
 		})
+	}
+}
+
+// TestWriteFileAtomicUnwritableDir verifies the error names the directory and
+// the cause, not the phantom temp file that never existed.
+func TestWriteFileAtomicUnwritableDir(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	err := WriteFileAtomic(filepath.Join(dir, "index.json"), []byte("x"), 0o600)
+	if err == nil {
+		t.Skip("directory is still writable (likely running as root); nothing to check")
+	}
+	if strings.Contains(err.Error(), ".tmp-") {
+		t.Errorf("error names a phantom temp file: %v", err)
+	}
+	if !strings.Contains(err.Error(), dir) {
+		t.Errorf("error does not name the unwritable directory: %v", err)
 	}
 }

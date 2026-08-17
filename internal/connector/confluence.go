@@ -43,10 +43,17 @@ type Confluence struct {
 	opts ConfluenceOptions
 }
 
+// confluenceProgressEvery reports progress each time this many more pages
+// arrive.
+const confluenceProgressEvery = 100
+
 // NewConfluence returns a Confluence connector for the site, authenticating with
 // an email and API token.
 func NewConfluence(siteURL, email, token string, opts ConfluenceOptions) *Confluence {
-	return &Confluence{client: confluence.New(siteURL, email, token), opts: opts.withDefaults()}
+	o := opts.withDefaults()
+	client := confluence.New(siteURL, email, token,
+		confluence.WithProgress(util.ProgressWriter(o.Log, "confluence: fetched", confluenceProgressEvery)))
+	return &Confluence{client: client, opts: o}
 }
 
 // NewConfluenceWithClient returns a Confluence connector using a preconfigured

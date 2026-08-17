@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/util"
 	"github.com/kordloom/whodar/internal/vector"
 )
 
@@ -25,6 +26,7 @@ func (ix *Index) HasEmbeddings() bool {
 // Embed fills per-person and per-channel vectors by embedding a text
 // representation of each entity. An error from e aborts and is returned.
 func (ix *Index) Embed(ctx context.Context, e Embedder) error {
+	done := 0
 	pv := make(map[model.ID][]float32, len(ix.Graph.People))
 	for id, p := range ix.Graph.People {
 		vec, err := e.Embed(ctx, personEmbedText(p, ix.texts[id]))
@@ -32,6 +34,8 @@ func (ix *Index) Embed(ctx context.Context, e Embedder) error {
 			return fmt.Errorf("index: embed person %s: %w", id, err)
 		}
 		pv[id] = vec
+		done++
+		ix.embedProgress.Report(done)
 	}
 	cv := make(map[model.ID][]float32, len(ix.Graph.Channels))
 	for id, ch := range ix.Graph.Channels {
@@ -40,11 +44,19 @@ func (ix *Index) Embed(ctx context.Context, e Embedder) error {
 			return fmt.Errorf("index: embed channel %s: %w", id, err)
 		}
 		cv[id] = vec
+		done++
+		ix.embedProgress.Report(done)
 	}
 	ix.personVecs = pv
 	ix.channelVecs = cv
 	return nil
 }
+
+// SetEmbedProgress sets a callback invoked after each entity is embedded with
+// the running count. Embedding makes one blocking model call per person and
+// channel, so on a large graph this is the difference between visible movement
+// and a frozen line.
+func (ix *Index) SetEmbedProgress(p util.Progress) { ix.embedProgress = p }
 
 // SemanticPeople ranks people by cosine similarity to the query vector. The
 // similarity doubles as the confidence, clamped at zero.

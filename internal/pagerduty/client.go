@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/kordloom/whodar/internal/httputil"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // defaultBaseURL is the PagerDuty REST API root.
@@ -29,6 +30,8 @@ type Client struct {
 	http httputil.Doer
 	// maxRetries bounds retries on HTTP 429.
 	maxRetries int
+	// progress, when set, is called after each page with the running count.
+	progress util.Progress
 }
 
 // Option configures a Client.
@@ -50,6 +53,12 @@ func WithBaseURL(u string) Option {
 			c.baseURL = u
 		}
 	}
+}
+
+// WithProgress sets a callback invoked after each page with the running item
+// count, so a long fetch can show movement.
+func WithProgress(p util.Progress) Option {
+	return func(c *Client) { c.progress = p }
 }
 
 // apiTimeout bounds one HTTP exchange so a hung server cannot stall a run.
@@ -247,6 +256,7 @@ func (c *Client) Incidents(ctx context.Context, since time.Time, max int) ([]Inc
 			return nil, err
 		}
 		all = append(all, resp.Incidents...)
+		c.progress.Report(len(all))
 		if !resp.More || len(resp.Incidents) == 0 || (max > 0 && len(all) >= max) {
 			break
 		}
@@ -304,7 +314,7 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 		return fmt.Errorf("pagerduty %s: %w", path, err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("pagerduty %s: %w %d", path, ErrStatus, resp.StatusCode)
+		return fmt.Errorf("pagerduty %s: %w: %w", path, ErrStatus, &httputil.StatusError{Code: resp.StatusCode})
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		return fmt.Errorf("pagerduty %s: decode: %w", path, err)

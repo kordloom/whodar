@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kordloom/whodar/internal/httputil"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // searchPath is the Jira Cloud issue search endpoint.
@@ -31,6 +32,8 @@ type Client struct {
 	http httputil.Doer
 	// maxRetries bounds retries on HTTP 429.
 	maxRetries int
+	// progress, when set, is called after each page with the running count.
+	progress util.Progress
 }
 
 // Option configures a Client.
@@ -43,6 +46,12 @@ func WithHTTPClient(d httputil.Doer) Option {
 			c.http = d
 		}
 	}
+}
+
+// WithProgress sets a callback invoked after each page of a paging call with
+// the running item count, so a long search can show movement.
+func WithProgress(p util.Progress) Option {
+	return func(c *Client) { c.progress = p }
 }
 
 // apiTimeout bounds one HTTP exchange so a hung server cannot stall a run.
@@ -187,6 +196,7 @@ func (c *Client) Search(ctx context.Context, jql string, max int) ([]Issue, erro
 			return nil, err
 		}
 		all = append(all, resp.Issues...)
+		c.progress.Report(len(all))
 		startAt += len(resp.Issues)
 		if len(resp.Issues) == 0 || startAt >= resp.Total {
 			break
@@ -248,7 +258,7 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 		return fmt.Errorf("jira %s: %w", path, err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("jira %s: %w %d", path, ErrStatus, resp.StatusCode)
+		return fmt.Errorf("jira %s: %w: %w", path, ErrStatus, &httputil.StatusError{Code: resp.StatusCode})
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		return fmt.Errorf("jira %s: decode: %w", path, err)
