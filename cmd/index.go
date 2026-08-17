@@ -16,6 +16,7 @@ import (
 	"github.com/kordloom/whodar/internal/connector"
 	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/license"
 	"github.com/kordloom/whodar/internal/llm"
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/util"
@@ -55,6 +56,8 @@ func newIndexCmd(opts *options) *cobra.Command {
 		maxMessages      int
 		episodes         bool
 		maxEpisodes      int
+		archive          bool
+		maxArchive       int
 		changesFile      string
 		embed            bool
 		embedModel       string
@@ -113,8 +116,11 @@ Start with the org chart, then merge everything else onto it:
 				oc.Log = cmd.ErrOrStderr()
 				recs, err = oc.Fetch(cmd.Context())
 			case "slack":
-				recs, eps, err = fetchSlack(cmd, opts,
-					slackArgs{includePrivate, sinceDays, maxMessages, episodes, maxEpisodes})
+				recs, eps, err = fetchSlack(cmd, opts, slackArgs{
+					includePrivate: includePrivate, sinceDays: sinceDays, maxMessages: maxMessages,
+					episodes: episodes || archive, maxEpisodes: maxEpisodes,
+					archive: archive, maxArchive: maxArchive,
+				})
 			case "codeowners":
 				if file == "" {
 					return fmt.Errorf("%w: --file (CODEOWNERS path or repo root) required for codeowners", ErrBadArgs)
@@ -161,6 +167,9 @@ Start with the org chart, then merge everything else onto it:
 	f.BoolVar(&episodes, "episodes", false,
 		"Record the conversations behind the messages so `whodar recall` can point back at them.")
 	f.IntVar(&maxEpisodes, "max-episodes-per-channel", 200, "Episode cap per channel.")
+	f.BoolVar(&archive, "archive", false,
+		"Keep the content of each conversation, not just a link to it. Licensed feature; implies --episodes.")
+	f.IntVar(&maxArchive, "max-archive-messages", 50, "Retained message cap per conversation.")
 	f.StringVar(&changesFile, "changes-file", "", "Write the index diff as JSON to this path.")
 	f.BoolVar(&merge, "merge", false, "Merge into the existing index instead of replacing it.")
 	f.StringVar(&aliasesFile, "aliases", "",
@@ -282,6 +291,24 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 	return nil
 }
 
+// guardArchive refuses to retain conversation content unless the organization
+// is licensed for it and its own policy allows it. Both checks are local: the
+// license is verified against a compiled-in key, and the policy is a file the
+// organization controls.
+func guardArchive(cmd *cobra.Command, opts *options) error {
+	if !opts.pol.AllowArchive() {
+		return fmt.Errorf("%w: keeping conversation content is disabled by policy", ErrBadArgs)
+	}
+	state := license.Resolve(opts.dataDir, time.Now())
+	if !state.Has(license.Memory) {
+		return fmt.Errorf(
+			"%w: keeping conversation content needs a Memory license. %s Ask at hello@whodar.dev",
+			ErrBadArgs, state.Reason())
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "archive: %s\n", state.Reason())
+	return nil
+}
+
 // saveEpisodes merges newly observed conversations into the episode store.
 // Episodes always merge, even when the index itself is rebuilt: a source stops
 // serving old messages long before they stop being worth remembering, so
@@ -337,6 +364,10 @@ type slackArgs struct {
 	episodes bool
 	// maxEpisodes caps episodes kept per channel.
 	maxEpisodes int
+	// archive retains the content of each conversation.
+	archive bool
+	// maxArchive caps retained messages per conversation.
+	maxArchive int
 }
 
 // fetchSlack builds Slack records, enforcing the private-channel policy guard.
@@ -350,12 +381,19 @@ func fetchSlack(
 	if a.includePrivate && !opts.pol.AllowPrivateChannels() {
 		return nil, nil, fmt.Errorf("%w: private-channel ingest is disabled by policy", ErrBadArgs)
 	}
+	if a.archive {
+		if err := guardArchive(cmd, opts); err != nil {
+			return nil, nil, err
+		}
+	}
 	src := connector.NewSlack(token, connector.SlackOptions{
 		IncludePrivate:        a.includePrivate,
 		SinceDays:             a.sinceDays,
 		MaxMessages:           a.maxMessages,
 		Episodes:              a.episodes,
 		MaxEpisodesPerChannel: a.maxEpisodes,
+		Archive:               a.archive,
+		MaxArchiveMessages:    a.maxArchive,
 		Log:                   cmd.ErrOrStderr(),
 	})
 	recs, err := src.Fetch(cmd.Context())

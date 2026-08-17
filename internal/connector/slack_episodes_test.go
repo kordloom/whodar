@@ -129,7 +129,8 @@ func TestCollectEpisodes(t *testing.T) {
 	for testNum, test := range tests {
 		t.Run(itoa(testNum)+" "+test.Name, func(t *testing.T) {
 			t.Parallel()
-			got := collectEpisodes(testChannel, test.Messages, testUsers, "https://acme.slack.com/", 0)
+			got := collectEpisodes(testChannel, test.Messages,
+				episodeOpts{byID: testUsers, workspaceURL: "https://acme.slack.com/"})
 			ids := make([]string, 0, len(got))
 			for _, ep := range got {
 				ids = append(ids, ep.ID)
@@ -177,7 +178,8 @@ func TestCollectEpisodesCap(t *testing.T) {
 			slack.Message{User: "U1", Text: "thanks", TS: ts(base + 120)},
 		)
 	}
-	got := collectEpisodes(testChannel, msgs, testUsers, "https://acme.slack.com/", 2)
+	got := collectEpisodes(testChannel, msgs,
+		episodeOpts{byID: testUsers, workspaceURL: "https://acme.slack.com/", max: 2})
 	if len(got) != 2 {
 		t.Fatalf("collected %d episodes, want 2", len(got))
 	}
@@ -195,7 +197,7 @@ func TestCollectEpisodesNoWorkspaceURL(t *testing.T) {
 		{User: "U2", Text: "answer", TS: ts(1060)},
 		{User: "U1", Text: "thanks", TS: ts(1120)},
 	}
-	got := collectEpisodes(testChannel, msgs, testUsers, "", 0)
+	got := collectEpisodes(testChannel, msgs, episodeOpts{byID: testUsers})
 	if len(got) != 1 {
 		t.Fatalf("collected %d episodes, want 1", len(got))
 	}

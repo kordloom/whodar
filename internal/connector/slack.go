@@ -42,6 +42,12 @@ type SlackOptions struct {
 	// MaxEpisodesPerChannel caps episodes kept per channel; zero uses the
 	// default.
 	MaxEpisodesPerChannel int
+	// Archive retains the content of each conversation, not just a link to
+	// it. It is the only setting that reads thread replies.
+	Archive bool
+	// MaxArchiveMessages caps retained messages per conversation; zero uses
+	// the default.
+	MaxArchiveMessages int
 	// Log receives progress lines; nil discards them.
 	Log io.Writer
 }
@@ -176,8 +182,16 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 			})
 		}
 		if s.opts.Episodes {
-			s.episodes = append(s.episodes,
-				collectEpisodes(ch, msgs, byID, workspaceURL, s.opts.MaxEpisodesPerChannel)...)
+			eps := collectEpisodes(ch, msgs, episodeOpts{
+				byID:         byID,
+				workspaceURL: workspaceURL,
+				max:          s.opts.MaxEpisodesPerChannel,
+				archive:      s.opts.Archive,
+			})
+			if s.opts.Archive {
+				s.fillArchive(ctx, eps, byID)
+			}
+			s.episodes = append(s.episodes, eps...)
 		}
 		fmt.Fprintf(s.opts.Log, "slack: indexed #%s (%d messages)\n", ch.Name, len(msgs))
 	}

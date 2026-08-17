@@ -31,13 +31,26 @@ const (
 // first. It is empty unless SlackOptions.Episodes was set.
 func (s *Slack) Episodes() []episode.Episode { return s.episodes }
 
+// episodeOpts bounds how one channel's history becomes episodes.
+type episodeOpts struct {
+	// byID resolves message authors to people.
+	byID map[string]slack.User
+	// workspaceURL builds permalinks; empty means episodes carry no links.
+	workspaceURL string
+	// max caps episodes kept for the channel; zero uses the default.
+	max int
+	// archive retains the text of loose conversations, which are already in
+	// hand. Threads need their replies fetched separately.
+	archive bool
+}
+
 // collectEpisodes turns one channel's history into episodes: every thread with
 // a reply, plus runs of loose messages where several people talked close
 // together. Slack returns thread shape on the parent message, so this needs no
 // extra API call and never reads a reply.
-func collectEpisodes(
-	ch slack.Channel, msgs []slack.Message, byID map[string]slack.User, workspaceURL string, max int,
-) []episode.Episode {
+func collectEpisodes(ch slack.Channel, msgs []slack.Message, opts episodeOpts) []episode.Episode {
+	byID, workspaceURL := opts.byID, opts.workspaceURL
+	max := opts.max
 	if max <= 0 {
 		max = defaultMaxEpisodesPerChannel
 	}
@@ -56,6 +69,9 @@ func collectEpisodes(
 	var window []slack.Message
 	flush := func() {
 		if ep, ok := windowEpisode(ch, window, byID, workspaceURL); ok {
+			if opts.archive {
+				ep.Archive = notesFrom(window, byID)
+			}
 			out = append(out, ep)
 		}
 		window = nil

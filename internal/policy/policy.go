@@ -58,6 +58,8 @@ type Policy struct {
 	locked bool
 	// privateOff, when true, forbids private-channel ingest regardless of flags.
 	privateOff bool
+	// archiveOff pins retention of conversation content off.
+	archiveOff bool
 }
 
 // New returns a Policy with the given mode and lock state.
@@ -79,6 +81,18 @@ func (p Policy) Locked() bool { return p.locked }
 // AllowPrivateChannels reports whether ingesting private channels is permitted.
 // An organization can pin this off; user flags then cannot enable it.
 func (p Policy) AllowPrivateChannels() bool { return !p.privateOff }
+
+// AllowArchive reports whether retaining conversation content is permitted. An
+// organization that keeps a short retention period on purpose can pin this
+// off, so no local archive outlives the record its own policy deletes.
+func (p Policy) AllowArchive() bool { return !p.archiveOff }
+
+// WithoutArchive returns a copy that forbids retaining conversation content.
+func (p Policy) WithoutArchive() Policy {
+	c := p
+	c.archiveOff = true
+	return c
+}
 
 // WithoutPrivateChannels returns a copy that forbids private-channel ingest.
 // This is how an organization pins private ingest off.

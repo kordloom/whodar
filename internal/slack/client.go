@@ -302,6 +302,40 @@ func (c *Client) History(ctx context.Context, channelID, oldest string, limit in
 	return all, nil
 }
 
+// Replies returns up to limit messages in the thread under threadTS,
+// beginning with the parent. It is the only call that reads a conversation
+// rather than its shape, so it runs only when an archive is being kept.
+func (c *Client) Replies(ctx context.Context, channelID, threadTS string, limit int) ([]Message, error) {
+	if channelID == "" || threadTS == "" {
+		return nil, nil
+	}
+	var all []Message
+	cursor := ""
+	for limit <= 0 || len(all) < limit {
+		params := url.Values{
+			"channel": {channelID},
+			"ts":      {threadTS},
+			"limit":   {"200"},
+		}
+		if cursor != "" {
+			params.Set("cursor", cursor)
+		}
+		var resp historyResp
+		if err := c.do(ctx, "conversations.replies", params, &resp); err != nil {
+			return nil, err
+		}
+		all = append(all, resp.Messages...)
+		cursor = resp.cursor()
+		if cursor == "" || !resp.HasMore {
+			break
+		}
+	}
+	if limit > 0 && len(all) > limit {
+		all = all[:limit]
+	}
+	return all, nil
+}
+
 // do calls a Slack Web API method with form params and decodes the result into
 // out. It retries on HTTP 429 up to maxRetries, honoring Retry-After.
 func (c *Client) do(ctx context.Context, method string, params url.Values, out response) error {

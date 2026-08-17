@@ -407,7 +407,10 @@ func runFirstIndex(cmd *cobra.Command, opts *options, ui *prompt.IO, spec source
 		if cerr != nil {
 			return cerr
 		}
-		recs, eps, err = fetchSlack(cmd, opts, slackArgs{includePrivate, 180, 5000, remember, 200})
+		recs, eps, err = fetchSlack(cmd, opts, slackArgs{
+			includePrivate: includePrivate, sinceDays: 180, maxMessages: 5000,
+			episodes: remember, maxEpisodes: 200,
+		})
 	case "github":
 		a, gerr := promptGitHubScope(ui)
 		if gerr != nil {
