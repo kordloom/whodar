@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/util"
@@ -51,6 +52,8 @@ func newIndexCmd(opts *options) *cobra.Command {
 		includePrivate   bool
 		sinceDays        int
 		maxMessages      int
+		episodes         bool
+		maxEpisodes      int
 		changesFile      string
 		embed            bool
 		embedModel       string
@@ -97,6 +100,7 @@ Start with the org chart, then merge everything else onto it:
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var (
 				recs []connector.Record
+				eps  []episode.Episode
 				err  error
 			)
 			switch source {
@@ -108,7 +112,8 @@ Start with the org chart, then merge everything else onto it:
 				oc.Log = cmd.ErrOrStderr()
 				recs, err = oc.Fetch(cmd.Context())
 			case "slack":
-				recs, err = fetchSlack(cmd, opts, slackArgs{includePrivate, sinceDays, maxMessages})
+				recs, eps, err = fetchSlack(cmd, opts,
+					slackArgs{includePrivate, sinceDays, maxMessages, episodes, maxEpisodes})
 			case "codeowners":
 				if file == "" {
 					return fmt.Errorf("%w: --file (CODEOWNERS path or repo root) required for codeowners", ErrBadArgs)
@@ -142,6 +147,7 @@ Start with the org chart, then merge everything else onto it:
 			return indexRecords(cmd, opts, recs, indexParams{
 				merge: merge, halfLifeDays: halfLifeDays, aliasesFile: aliasesFile,
 				embed: embed, embedModel: embedModel, ollamaURL: ollamaURL, changesFile: changesFile,
+				episodes: eps,
 			})
 		},
 	}
@@ -151,6 +157,9 @@ Start with the org chart, then merge everything else onto it:
 	f.BoolVar(&includePrivate, "include-private", false, "Ingest private Slack channels if policy allows.")
 	f.IntVar(&sinceDays, "since-days", 180, "Slack history window in days.")
 	f.IntVar(&maxMessages, "max-messages", 5000, "Slack message cap per channel.")
+	f.BoolVar(&episodes, "episodes", false,
+		"Record the conversations behind the messages so `whodar recall` can point back at them.")
+	f.IntVar(&maxEpisodes, "max-episodes-per-channel", 200, "Episode cap per channel.")
 	f.StringVar(&changesFile, "changes-file", "", "Write the index diff as JSON to this path.")
 	f.BoolVar(&merge, "merge", false, "Merge into the existing index instead of replacing it.")
 	f.StringVar(&aliasesFile, "aliases", "",
@@ -195,6 +204,9 @@ type indexParams struct {
 	ollamaURL string
 	// changesFile writes the index diff as JSON to this path when set.
 	changesFile string
+	// episodes are the conversations a source observed, stored beside the
+	// index so recall can point back at them.
+	episodes []episode.Episode
 }
 
 // indexRecords folds recs into the on-disk index and reports what changed. It
@@ -251,6 +263,9 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 	if err := opts.saveIndex(ix); err != nil {
 		return err
 	}
+	if err := saveEpisodes(cmd, opts, p.episodes); err != nil {
+		return err
+	}
 
 	out := cmd.ErrOrStderr()
 	fmt.Fprintf(out,
@@ -266,6 +281,31 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 	return nil
 }
 
+// saveEpisodes merges newly observed conversations into the episode store.
+// Episodes always merge, even when the index itself is rebuilt: a source stops
+// serving old messages long before they stop being worth remembering, so
+// dropping them would throw away history whodar may be the last to hold.
+func saveEpisodes(cmd *cobra.Command, opts *options, eps []episode.Episode) error {
+	if len(eps) == 0 {
+		return nil
+	}
+	store, err := opts.loadEpisodes()
+	if err != nil {
+		return err
+	}
+	before := store.Len()
+	for _, ep := range eps {
+		store.Add(ep)
+	}
+	if err := opts.saveEpisodes(store); err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(),
+		"recorded %d conversations (%d new) into %s\n",
+		len(eps), store.Len()-before, opts.episodePath())
+	return nil
+}
+
 // slackArgs holds the Slack-specific index flags.
 type slackArgs struct {
 	// includePrivate requests private-channel ingest.
@@ -274,24 +314,36 @@ type slackArgs struct {
 	sinceDays int
 	// maxMessages caps messages per channel.
 	maxMessages int
+	// episodes records the conversations behind the messages.
+	episodes bool
+	// maxEpisodes caps episodes kept per channel.
+	maxEpisodes int
 }
 
 // fetchSlack builds Slack records, enforcing the private-channel policy guard.
-func fetchSlack(cmd *cobra.Command, opts *options, a slackArgs) ([]connector.Record, error) {
+func fetchSlack(
+	cmd *cobra.Command, opts *options, a slackArgs,
+) ([]connector.Record, []episode.Episode, error) {
 	token := os.Getenv(slackTokenEnv)
 	if token == "" {
-		return nil, fmt.Errorf("%w: set %s", ErrBadArgs, slackTokenEnv)
+		return nil, nil, fmt.Errorf("%w: set %s", ErrBadArgs, slackTokenEnv)
 	}
 	if a.includePrivate && !opts.pol.AllowPrivateChannels() {
-		return nil, fmt.Errorf("%w: private-channel ingest is disabled by policy", ErrBadArgs)
+		return nil, nil, fmt.Errorf("%w: private-channel ingest is disabled by policy", ErrBadArgs)
 	}
 	src := connector.NewSlack(token, connector.SlackOptions{
-		IncludePrivate: a.includePrivate,
-		SinceDays:      a.sinceDays,
-		MaxMessages:    a.maxMessages,
-		Log:            cmd.ErrOrStderr(),
+		IncludePrivate:        a.includePrivate,
+		SinceDays:             a.sinceDays,
+		MaxMessages:           a.maxMessages,
+		Episodes:              a.episodes,
+		MaxEpisodesPerChannel: a.maxEpisodes,
+		Log:                   cmd.ErrOrStderr(),
 	})
-	return src.Fetch(cmd.Context())
+	recs, err := src.Fetch(cmd.Context())
+	if err != nil {
+		return nil, nil, err
+	}
+	return recs, src.Episodes(), nil
 }
 
 // githubArgs holds the GitHub-specific index flags.

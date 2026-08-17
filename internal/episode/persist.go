@@ -158,6 +158,9 @@ func (s *Store) PurgeArchive() int {
 	return n
 }
 
+// HasPerson reports whether any episode includes a person.
+func (s *Store) HasPerson(id model.ID) bool { return len(s.byParticipant[id]) > 0 }
+
 // Participants returns the people known to have taken part in any episode.
 func (s *Store) Participants() []model.ID {
 	out := make([]model.ID, 0, len(s.byParticipant))

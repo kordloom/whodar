@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/httputil"
 	"github.com/kordloom/whodar/internal/prompt"
 	"github.com/kordloom/whodar/internal/slack"
@@ -390,6 +391,7 @@ func runFirstIndex(cmd *cobra.Command, opts *options, ui *prompt.IO, spec source
 	merge := indexExists(opts)
 	var (
 		recs []connector.Record
+		eps  []episode.Episode
 		err  error
 	)
 	switch spec.id {
@@ -400,7 +402,12 @@ func runFirstIndex(cmd *cobra.Command, opts *options, ui *prompt.IO, spec source
 				return err
 			}
 		}
-		recs, err = fetchSlack(cmd, opts, slackArgs{includePrivate, 180, 5000})
+		remember, cerr := ui.Confirm(
+			"Remember conversations, so `whodar recall` can find how something was worked out?", true)
+		if cerr != nil {
+			return cerr
+		}
+		recs, eps, err = fetchSlack(cmd, opts, slackArgs{includePrivate, 180, 5000, remember, 200})
 	case "github":
 		a, gerr := promptGitHubScope(ui)
 		if gerr != nil {
@@ -448,7 +455,7 @@ func runFirstIndex(cmd *cobra.Command, opts *options, ui *prompt.IO, spec source
 	if err != nil {
 		return err
 	}
-	return indexRecords(cmd, opts, recs, indexParams{merge: merge, halfLifeDays: 180})
+	return indexRecords(cmd, opts, recs, indexParams{merge: merge, halfLifeDays: 180, episodes: eps})
 }
 
 // fetchLocal prompts for a required path and fetches records from the source the

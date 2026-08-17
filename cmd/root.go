@@ -50,6 +50,13 @@ func (o *options) feedbackPath() string {
 	return filepath.Join(o.dataDir, "feedback.json")
 }
 
+// episodePath returns the episode file path under the data directory. Past
+// conversations live beside the index rather than inside it, so a question
+// about who knows something never pays to load them.
+func (o *options) episodePath() string {
+	return filepath.Join(o.dataDir, "episodes.json")
+}
+
 // newRootCmd builds the root command, wires shared flags, and adds subcommands.
 func newRootCmd() *cobra.Command {
 	opts := &options{
@@ -73,8 +80,9 @@ func newRootCmd() *cobra.Command {
 	pf.BoolVar(&opts.pretty, "pretty", false, "Indent JSON output.")
 
 	root.AddCommand(
-		newIndexCmd(opts), newConnectCmd(opts), newAskCmd(opts), newServeCmd(opts), newBotCmd(opts),
-		newFeedbackCmd(opts), newDemoCmd(opts), newMCPCmd(opts), newVaultCmd(opts), newVersionCmd())
+		newIndexCmd(opts), newConnectCmd(opts), newAskCmd(opts), newRecallCmd(opts),
+		newServeCmd(opts), newBotCmd(opts), newFeedbackCmd(opts), newDemoCmd(opts),
+		newMCPCmd(opts), newVaultCmd(opts), newVersionCmd())
 	return root
 }
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/keyring"
 	"github.com/kordloom/whodar/internal/prompt"
@@ -72,6 +73,33 @@ func (o *options) saveIndex(ix *index.Index) error {
 		return ix.Save(o.indexPath())
 	}
 	return ix.Save(o.indexPath(), index.WithCodec(c))
+}
+
+// loadEpisodes reads the episode store, decrypting with the same key as the
+// index. A missing file is an empty store, since a run that has never indexed
+// episodes has no history rather than a problem.
+func (o *options) loadEpisodes() (*episode.Store, error) {
+	c, err := o.codec()
+	if err != nil {
+		return nil, err
+	}
+	if c == nil {
+		return episode.LoadOrNew(o.episodePath())
+	}
+	return episode.LoadOrNew(o.episodePath(), episode.WithCodec(c))
+}
+
+// saveEpisodes writes the episode store, encrypting it when a key is
+// configured.
+func (o *options) saveEpisodes(store *episode.Store) error {
+	c, err := o.codec()
+	if err != nil {
+		return err
+	}
+	if c == nil {
+		return store.Save(o.episodePath())
+	}
+	return store.Save(o.episodePath(), episode.WithCodec(c))
 }
 
 // loadWith loads the index at path with an optional codec.

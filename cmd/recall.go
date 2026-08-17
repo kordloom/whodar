@@ -1,0 +1,120 @@
+package cmd
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
+
+	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/recall"
+)
+
+// meEnv names the environment variable identifying who is asking, so the
+// answer can be scoped to that person's own conversations.
+const meEnv = "WHODAR_ME"
+
+// newRecallCmd builds the recall command, which finds the conversation where
+// something was worked out before.
+func newRecallCmd(opts *options) *cobra.Command {
+	var (
+		limit   int
+		me      string
+		horizon int
+	)
+	cmd := &cobra.Command{
+		Use:   "recall [question]",
+		Short: "Find when you worked through something before",
+		Long: `Find the past conversation where something was worked out, and who was in it.
+
+An answer is a pointer, not a transcript: the people, the place, the date, and a
+link back to the conversation in the tool it happened in. Opening the link uses
+your own access to that tool.
+
+Results cover only conversations you took part in. Identify yourself with --me,
+WHODAR_ME, or leave it unset to use your git email.
+
+Examples:
+  whodar recall "certificate renewal"
+  whodar recall --me jane@example.com "kafka consumer lag"`,
+		Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ix, err := opts.loadIndex(cmd)
+			if err != nil {
+				return noIndexError(err)
+			}
+			store, err := opts.loadEpisodes()
+			if err != nil {
+				return err
+			}
+			res := recall.New(store, ix)
+			if horizon > 0 {
+				res.SetHorizon(time.Duration(horizon) * 24 * time.Hour)
+			}
+			person, err := resolveMe(res, me)
+			if err != nil {
+				return err
+			}
+			query := strings.Join(args, " ")
+			ans := res.Resolve(recall.Query{Text: query, Person: person, Limit: limit})
+			warnEmptyRecall(cmd, res, ans, person)
+			return writeJSON(cmd.OutOrStdout(), ans, opts.pretty)
+		},
+	}
+	cmd.Flags().IntVar(&limit, "limit", 5, "Maximum conversations to return.")
+	cmd.Flags().StringVar(&me, "me", "",
+		"Who is asking: an email or a source identifier. Defaults to "+meEnv+", then your git email.")
+	cmd.Flags().IntVar(&horizon, "link-horizon-days", 0,
+		"Warn that links older than this many days may have expired. Zero makes no claim.")
+	return cmd
+}
+
+// resolveMe determines who is asking, preferring the flag, then the
+// environment, then the git email. Recall is scoped to one person, so an
+// unidentifiable caller is an error rather than an org-wide search.
+func resolveMe(res *recall.Resolver, flag string) (model.ID, error) {
+	for _, hint := range []string{flag, os.Getenv(meEnv), gitEmail()} {
+		if id := res.Who(hint); id != "" {
+			return id, nil
+		}
+	}
+	return "", fmt.Errorf(
+		"%w: pass --me, set %s, or configure git user.email", ErrNoIdentity, meEnv)
+}
+
+// gitEmail returns the configured git email, which is usually the same address
+// the work tools know a person by. It returns an empty string when git is
+// absent or unconfigured.
+func gitEmail() string {
+	out, err := exec.Command("git", "config", "--get", "user.email").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// warnEmptyRecall explains an empty answer on stderr, separating a question
+// that matched nothing from history that was never indexed or never included
+// the asker. Silence would read as "this never happened".
+func warnEmptyRecall(cmd *cobra.Command, res *recall.Resolver, ans recall.Answer, person model.ID) {
+	if len(ans.Episodes) > 0 {
+		return
+	}
+	w := cmd.ErrOrStderr()
+	switch {
+	case res.Len() == 0:
+		fmt.Fprintln(w,
+			"No conversations indexed yet: run `whodar index --source slack --episodes`.")
+	case !res.Known(person):
+		fmt.Fprintf(w,
+			"No indexed conversation includes %s. Check --me, and that the bot can read "+
+				"the channels you talk in.\n", person)
+	default:
+		fmt.Fprintln(w,
+			"No match in your conversations. Try other words: matching is on the words used "+
+				"at the time, and direct messages are not indexed.")
+	}
+}
