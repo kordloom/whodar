@@ -11,11 +11,13 @@ import (
 // would otherwise stay unreachable to them.
 func (ix *Index) CanonicalizeStore(store *episode.Store) {
 	for _, ep := range store.All() {
-		before := append([]model.ID(nil), ep.Participants...)
-		one := []episode.Episode{*ep}
-		ix.CanonicalizeEpisodes(one)
-		if !sameIDs(before, one[0].Participants) {
-			store.Relink(ep.ID, one[0].Participants)
+		// canonicalParticipants returns a fresh slice, so the stored episode's
+		// own list is left intact for Relink to read the old identifiers from.
+		// Reusing the episode's backing array here would let this overwrite the
+		// keys Relink then needs to unlink, leaving stale reverse-index entries.
+		next := ix.canonicalParticipants(ep.Participants)
+		if !sameIDs(ep.Participants, next) {
+			store.Relink(ep.ID, next)
 		}
 	}
 }
@@ -41,17 +43,25 @@ func sameIDs(a, b []model.ID) bool {
 // the order they were seen in is kept.
 func (ix *Index) CanonicalizeEpisodes(eps []episode.Episode) {
 	for i := range eps {
-		participants := eps[i].Participants
-		out := participants[:0]
-		seen := make(map[model.ID]bool, len(participants))
-		for _, p := range participants {
-			id := ix.Canonical(p)
-			if id == "" || seen[id] {
-				continue
-			}
-			seen[id] = true
-			out = append(out, id)
-		}
-		eps[i].Participants = out
+		eps[i].Participants = ix.canonicalParticipants(eps[i].Participants)
 	}
+}
+
+// canonicalParticipants resolves a participant list to canonical identifiers in
+// a fresh slice, dropping empties and duplicates and keeping first-seen order.
+// It never reuses the input's backing array, so a caller still holding the
+// original list, such as a stored episode about to be relinked, keeps reading
+// its old identifiers.
+func (ix *Index) canonicalParticipants(participants []model.ID) []model.ID {
+	out := make([]model.ID, 0, len(participants))
+	seen := make(map[model.ID]bool, len(participants))
+	for _, p := range participants {
+		id := ix.Canonical(p)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out
 }
