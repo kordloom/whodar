@@ -462,8 +462,12 @@ func (s *Semantic) Resolve(ctx context.Context, query string, limit int) (Answer
 		return Answer{}, fmt.Errorf("semantic resolve: %w", err)
 	}
 	// Fusing over a deeper pool than the caller asked for lets an answer that
-	// both signals agree on climb into the visible window.
-	pool := max(limit*3, 15)
+	// both signals agree on climb into the visible window. A non-positive
+	// limit means every match, so the pool is unbounded too, matching keyword.
+	pool := 0
+	if limit > 0 {
+		pool = max(limit*3, 15)
+	}
 	people := fusePeople(s.ix.Search(query, pool), s.ix.SemanticPeople(vec, pool), limit)
 	channels := fuseChannels(s.ix.SearchChannels(query, pool), s.ix.SemanticChannels(vec, pool), limit)
 	return Answer{People: people, Channels: channels}, nil
@@ -522,10 +526,9 @@ func fusePeople(words, meaning []model.Match, limit int) []model.Match {
 		}
 		return out[i].Person.ID < out[j].Person.ID
 	})
-	if len(out) > limit {
-		out = out[:limit]
-	}
-	return out
+	// A non-positive limit means every match, the same as the keyword path, so
+	// the two modes agree on what --limit 0 does.
+	return capList(out, limit)
 }
 
 // fuseChannels merges the two channel rankings the same way.
@@ -571,8 +574,5 @@ func fuseChannels(words, meaning []model.ChannelMatch, limit int) []model.Channe
 		}
 		return out[i].Channel.ID < out[j].Channel.ID
 	})
-	if len(out) > limit {
-		out = out[:limit]
-	}
-	return out
+	return capList(out, limit)
 }

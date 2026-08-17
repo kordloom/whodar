@@ -99,7 +99,12 @@ func BuildDirectory(ix *index.Index) Directory {
 		d.People = append(d.People, row)
 	}
 	sort.Slice(d.People, func(i, j int) bool {
-		return strings.ToLower(d.People[i].Name) < strings.ToLower(d.People[j].Name)
+		if li, lj := strings.ToLower(d.People[i].Name), strings.ToLower(d.People[j].Name); li != lj {
+			return li < lj
+		}
+		// Two people can share a display name, so the unique id keeps the order
+		// stable between runs rather than following random map iteration.
+		return d.People[i].ID < d.People[j].ID
 	})
 
 	for _, ch := range g.Channels {
@@ -108,7 +113,10 @@ func BuildDirectory(ix *index.Index) Directory {
 		})
 	}
 	sort.Slice(d.Channels, func(i, j int) bool {
-		return strings.ToLower(d.Channels[i].Name) < strings.ToLower(d.Channels[j].Name)
+		if li, lj := strings.ToLower(d.Channels[i].Name), strings.ToLower(d.Channels[j].Name); li != lj {
+			return li < lj
+		}
+		return d.Channels[i].Name < d.Channels[j].Name
 	})
 
 	for tid, t := range g.Teams {
@@ -119,7 +127,10 @@ func BuildDirectory(ix *index.Index) Directory {
 		d.Teams = append(d.Teams, row)
 	}
 	sort.Slice(d.Teams, func(i, j int) bool {
-		return strings.ToLower(d.Teams[i].Name) < strings.ToLower(d.Teams[j].Name)
+		if li, lj := strings.ToLower(d.Teams[i].Name), strings.ToLower(d.Teams[j].Name); li != lj {
+			return li < lj
+		}
+		return d.Teams[i].Org < d.Teams[j].Org
 	})
 
 	for tid, count := range topicSize {
