@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/github"
 	"github.com/kordloom/whodar/internal/util"
 )
@@ -39,6 +40,9 @@ type GitHubOptions struct {
 	MaxRepos int
 	// ResolveEmails fetches each user's profile to join by email.
 	ResolveEmails bool
+	// Episodes records merged changes, so recall can point back at the change
+	// that fixed something.
+	Episodes bool
 	// Log receives progress lines; nil discards them.
 	Log io.Writer
 }
@@ -60,6 +64,8 @@ type GitHub struct {
 	client *github.Client
 	// opts holds the resolved options.
 	opts GitHubOptions
+	// episodes holds the merged changes seen by the last Fetch.
+	episodes []episode.Episode
 }
 
 // NewGitHub returns a GitHub connector authenticating with token.
@@ -84,6 +90,7 @@ func (g *GitHub) Ping(ctx context.Context) error {
 
 // Fetch reads each repository and returns person records weighted by topic.
 func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
+	g.episodes = nil
 	repos, err := g.repoList(ctx)
 	if err != nil {
 		return nil, err
@@ -166,6 +173,11 @@ func (g *GitHub) indexRepo(
 		return nil, fmt.Errorf("pulls: %w", e)
 	}
 	for _, pr := range pulls {
+		if g.opts.Episodes {
+			if ep, ok := changeEpisode(owner, name, pr); ok {
+				g.episodes = append(g.episodes, ep)
+			}
+		}
 		tokens := append(pr.LabelNames(), titleTokens(pr.Title)...)
 		bump(pr.Author(), tokens, pr.UpdatedAt)
 		for _, u := range pr.Reviewers() {
@@ -270,22 +282,21 @@ func (g *GitHub) codeOwners(ctx context.Context, owner, name string) []byte {
 	return nil
 }
 
-// githubPersonRecord builds a person record. A resolved email lets the person
-// join other sources; otherwise the handle keys the record.
+// githubPersonRecord builds a person record. The handle always keys the
+// record and a resolved email travels with it, so the indexer joins the two:
+// without that join a GitHub login resolves to nobody, and work done under a
+// handle cannot be found by the person who did it.
 func githubPersonRecord(login string, topics []string, a github.Account) Record {
-	rec := Record{Kind: KindPerson, Source: "github", Weight: 1, Topics: topics}
+	rec := Record{
+		Kind: KindPerson, Source: "github", Weight: 1, Topics: topics,
+		PersonID: "github:" + strings.ToLower(login),
+	}
 	if a.Email != "" {
 		rec.Email = util.NormalizeEmail(a.Email)
-		rec.Name = a.Name
-		if rec.Name == "" {
-			rec.Name = "@" + login
-		}
-		return rec
 	}
-	rec.PersonID = "github:" + strings.ToLower(login)
-	rec.Name = "@" + login
-	if a.Name != "" {
-		rec.Name = a.Name
+	rec.Name = a.Name
+	if rec.Name == "" {
+		rec.Name = "@" + login
 	}
 	return rec
 }

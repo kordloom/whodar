@@ -767,3 +767,51 @@ section h2 {
   * { transition: none !important; }
   .card:hover, .ask-btn:active { transform: none; }
 }
+
+/* Recall: past conversations, who was in them, and the way back. */
+.recall-me {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.recall-note,
+.recall-scope {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0.6rem 0 1rem;
+}
+
+.recall-scope {
+  margin-top: 1.4rem;
+}
+
+.recall-solution {
+  border-left: 2px solid var(--border);
+  margin: 0.9rem 0 0.4rem;
+  padding-left: 0.9rem;
+}
+
+.recall-summary {
+  font-weight: 500;
+  margin: 0 0 0.6rem;
+}
+
+.recall-note-line {
+  margin: 0 0 0.4rem;
+}
+
+.recall-author {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.recall-more {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0.5rem 0 0;
+}
+
+.recall-link {
+  display: inline-block;
+  margin-top: 0.7rem;
+}

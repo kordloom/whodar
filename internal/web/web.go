@@ -20,6 +20,7 @@ import (
 
 	"github.com/kordloom/whodar/internal/feedback"
 	"github.com/kordloom/whodar/internal/llm"
+	"github.com/kordloom/whodar/internal/recall"
 	"github.com/kordloom/whodar/internal/resolve"
 )
 
@@ -38,6 +39,10 @@ type FeedbackFunc func(feedback.Entry) error
 // PersonFunc returns the full profile for a person identifier, or false when
 // the person is unknown.
 type PersonFunc func(id string) (resolve.JSONProfile, bool)
+
+// RecallFunc answers what one person worked through before. The person is
+// always named, so an answer can only ever cover their own conversations.
+type RecallFunc func(ctx context.Context, person, query string, limit int) (recall.Answer, error)
 
 // ModeInfo tells the UI whether an answer mode or provider can answer right
 // now and what it uses or is missing.
@@ -81,6 +86,16 @@ type Config struct {
 	Directory *resolve.Directory
 	// Modes reports answer-mode readiness at /api/modes; nil disables it.
 	Modes ModesFunc
+	// Recall answers what one person worked through before, at /api/recall;
+	// nil disables it. The request names the person, and nothing here proves
+	// that name, so a caller who can reach this endpoint can ask as anyone.
+	// Set it only where the caller can only be the person running whodar.
+	Recall RecallFunc
+	// RecallMe is the identity the recall view starts with, usually the
+	// person running whodar. It is a starting point, not an authorization:
+	// the caller can change it, which is why recall is served on loopback
+	// only.
+	RecallMe string
 	// Log receives server-side error detail kept out of client responses; nil
 	// discards it.
 	Log io.Writer
@@ -121,7 +136,10 @@ func Handler(cfg Config) (http.Handler, error) {
 	if cfg.Modes != nil {
 		mux.HandleFunc("/api/modes", modesHandler(cfg.Modes))
 	}
-	mux.HandleFunc("/", indexHandler(tmpl, cfg.Version))
+	if cfg.Recall != nil {
+		mux.HandleFunc("/api/recall", recallHandler(cfg.Recall, logw))
+	}
+	mux.HandleFunc("/", indexHandler(tmpl, cfg))
 
 	// securityHeaders wraps outermost so hardening headers reach even the 401
 	// that requireToken writes for a missing or wrong token.
@@ -190,14 +208,23 @@ func tokenOK(token string, r *http.Request) bool {
 }
 
 // indexHandler serves the search page at the root path.
-func indexHandler(tmpl *template.Template, version string) http.HandlerFunc {
+func indexHandler(tmpl *template.Template, cfg Config) http.HandlerFunc {
+	data := struct {
+		// Version is the running whodar version.
+		Version string
+		// Recall reports whether the recall view is available.
+		Recall bool
+		// RecallMe is the identity the recall view starts with, which the
+		// person can change.
+		RecallMe string
+	}{Version: cfg.Version, Recall: cfg.Recall != nil, RecallMe: cfg.RecallMe}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := tmpl.Execute(w, map[string]string{"Version": version}); err != nil {
+		if err := tmpl.Execute(w, data); err != nil {
 			http.Error(w, "template error", http.StatusInternalServerError)
 		}
 	}
@@ -243,6 +270,47 @@ func askHandler(ask AskFunc, logw io.Writer) http.HandlerFunc {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(ans.View(query))
+	}
+}
+
+// recallHandler answers what the named person worked through before. The
+// person is required: recall never searches across the organization.
+func recallHandler(fn RecallFunc, logw io.Writer) http.HandlerFunc {
+	if fn == nil {
+		panic("web: recallHandler requires a Recall function")
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		query := strings.TrimSpace(r.URL.Query().Get("q"))
+		if query == "" {
+			writeError(w, http.StatusBadRequest, "missing q")
+			return
+		}
+		person := strings.TrimSpace(r.URL.Query().Get("me"))
+		if person == "" {
+			writeError(w, http.StatusBadRequest,
+				"missing me: recall returns only conversations you took part in")
+			return
+		}
+		const maxLimit = 25
+		limit := 5
+		if v := r.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= maxLimit {
+				limit = n
+			}
+		}
+		ans, err := fn(r.Context(), person, query, limit)
+		if err != nil {
+			if errors.Is(err, ErrBadRequest) {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			fmt.Fprintf(logw, "web: recall %q: %v\n", query, err)
+			writeError(w, http.StatusBadGateway, "the recall service is unavailable")
+			return
+		}
+		_ = json.NewEncoder(w).Encode(ans)
 	}
 }
 

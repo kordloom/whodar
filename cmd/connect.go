@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/httputil"
 	"github.com/kordloom/whodar/internal/prompt"
 	"github.com/kordloom/whodar/internal/slack"
@@ -390,6 +391,7 @@ func runFirstIndex(cmd *cobra.Command, opts *options, ui *prompt.IO, spec source
 	merge := indexExists(opts)
 	var (
 		recs []connector.Record
+		eps  []episode.Episode
 		err  error
 	)
 	switch spec.id {
@@ -400,19 +402,33 @@ func runFirstIndex(cmd *cobra.Command, opts *options, ui *prompt.IO, spec source
 				return err
 			}
 		}
-		recs, err = fetchSlack(cmd, opts, slackArgs{includePrivate, 180, 5000})
+		remember, cerr := ui.Confirm(
+			"Remember conversations, so whodar recall can find who helped you and when?", true)
+		if cerr != nil {
+			return cerr
+		}
+		recs, eps, err = fetchSlack(cmd, opts, slackArgs{
+			includePrivate: includePrivate, sinceDays: 180, maxMessages: 5000,
+			episodes: remember, maxEpisodes: 200,
+		})
 	case "github":
 		a, gerr := promptGitHubScope(ui)
 		if gerr != nil {
 			return gerr
 		}
-		recs, err = fetchGitHub(cmd, a)
+		// Merged changes, resolved tickets, and resolved incidents are recorded
+		// as a matter of course: they are the same metadata already being
+		// indexed, and they are what recall points back at.
+		a.episodes = true
+		recs, eps, err = fetchGitHub(cmd, a)
 	case "jira":
 		projects, perr := promptList(ui, "Jira project keys to index (space-separated, blank for all)")
 		if perr != nil {
 			return perr
 		}
-		recs, err = fetchJira(cmd, jiraArgs{"", projects, "", 1000})
+		recs, eps, err = fetchJira(cmd, jiraArgs{
+			projects: projects, maxIssues: 1000, episodes: true,
+		})
 	case "confluence":
 		spaces, serr := promptList(ui, "Confluence space keys to index (space-separated, blank for all)")
 		if serr != nil {
@@ -420,7 +436,7 @@ func runFirstIndex(cmd *cobra.Command, opts *options, ui *prompt.IO, spec source
 		}
 		recs, err = fetchConfluence(cmd, confluenceArgs{spaces, "", 2000})
 	case "pagerduty":
-		recs, err = fetchPagerDuty(cmd)
+		recs, eps, err = fetchPagerDuty(cmd, true)
 	case "org-csv":
 		recs, err = fetchLocal(cmd, ui, "Path to the org chart CSV", func(path string) connector.Source {
 			oc := connector.NewOrgCSV(path)
@@ -448,7 +464,7 @@ func runFirstIndex(cmd *cobra.Command, opts *options, ui *prompt.IO, spec source
 	if err != nil {
 		return err
 	}
-	return indexRecords(cmd, opts, recs, indexParams{merge: merge, halfLifeDays: 180})
+	return indexRecords(cmd, opts, recs, indexParams{merge: merge, halfLifeDays: 180, episodes: eps})
 }
 
 // fetchLocal prompts for a required path and fetches records from the source the

@@ -14,7 +14,7 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="/styles.css?v=10">
+	<link rel="stylesheet" href="/styles.css?v=11">
 	<link rel="stylesheet" href="/docs.css?v=2">
 
 </head>
@@ -64,6 +64,7 @@
 				<a href="/#how">Pipeline</a>
 				<a href="/#privacy">Privacy</a>
 				<a href="/#modes">Ranking</a>
+				<a href="/pricing">Pricing</a>
 				<a href="/docs/" class="on">Docs</a>
 				<a href="/#start">Install</a>
 			</nav>
@@ -96,6 +97,15 @@ guarantees in one place.</p>
 by you (mode <code>0600</code>). It is never uploaded. Besides the graph and ranking signals
 it holds a capped sample of each person's Slack messages, which is what ranking
 matches against. No other source's message bodies are kept.</li>
+<li>Past conversations live beside it at <code>~/.whodar/episodes.json</code>, same permissions,
+written only when you index with <code>--episodes</code>. A conversation record holds who
+took part, where, when, a link back to it, and the words it matched on. Who spoke
+with whom is information the index alone does not hold, so this is a real
+addition: index without <code>--episodes</code> and none of it is written. <code>whodar archive prune</code> deletes what is already there.</li>
+<li>The words of a conversation are kept only with a Memory license and only when you
+pass <code>--archive</code>. Without both, whodar stores a pointer and nothing more. An
+organization can forbid keeping words outright with <code>&quot;archive&quot;: &quot;deny&quot;</code> in the
+policy file, which no license overrides.</li>
 <li>Credentials are read only from the environment, never from a flag. No token is
 written to disk and nothing is logged.</li>
 <li>Indexing talks only to the sources you name, with your own tokens.</li>
@@ -127,8 +137,8 @@ terminal whodar prompts for the passphrase; in a script it points at the key
 variables and stops.</li>
 <li>The key is the only way back in. Losing it makes an encrypted index unrecoverable,
 so store it as carefully as any other secret and keep a backup.</li>
-<li>The vault covers the index only. <code>feedback.json</code>, which holds your queries and
-votes, stays plain JSON today.</li>
+<li>The vault covers the index and the conversations beside it. <code>feedback.json</code>,
+which holds your queries and votes, stays plain JSON today.</li>
 </ul>
 <h2 id="control-what-a-model-sees">Control what a model sees</h2>
 <p>Answers are computed locally by default. When you opt into an AI model, an egress
@@ -180,6 +190,7 @@ cannot read.</p>
 				<span class="brand-lockup"><span class="brand-word">who<b>dar</b></span><span class="brand-tag">know who knows</span></span>
 			</a>
 			<nav>
+				<a href="/pricing">Pricing</a>
 				<a href="/docs/">Docs</a>
 				<a href="https://github.com/kordloom/whodar">GitHub</a>
 				<a href="/docs/reference">Reference</a>
@@ -189,7 +200,7 @@ cannot read.</p>
 			<span class="foot-note">Source-available under the Business Source License 1.1, converting to Apache 2.0 on 2030-08-03. Copyright 2026 KordLoom LLC.</span>
 		</div>
 	</footer>
-	<script src="/app.js?v=10"></script>
+	<script src="/app.js?v=11"></script>
 
 </body>
 </html>

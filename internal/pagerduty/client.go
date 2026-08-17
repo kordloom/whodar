@@ -112,6 +112,72 @@ type servicesResponse struct {
 	More bool `json:"more"`
 }
 
+// Incident is a resolved operational incident: what broke, and who settled it.
+type Incident struct {
+	// ID is the incident id.
+	ID string `json:"id"`
+	// Number is the human-facing incident number.
+	Number int `json:"incident_number"`
+	// Title is the incident title.
+	Title string `json:"title"`
+	// Status is the incident status, such as resolved.
+	Status string `json:"status"`
+	// HTMLURL links to the incident in PagerDuty.
+	HTMLURL string `json:"html_url"`
+	// CreatedAt is when the incident opened.
+	CreatedAt time.Time `json:"created_at"`
+	// ResolvedAt is when it was resolved; zero when it was not.
+	ResolvedAt time.Time `json:"resolved_at"`
+	// Service names the affected service.
+	Service struct {
+		// ID is the service id.
+		ID string `json:"id"`
+		// Summary is the service name.
+		Summary string `json:"summary"`
+	} `json:"service"`
+	// Assignments are the people the incident was assigned to.
+	Assignments []struct {
+		// Assignee is the assigned user.
+		Assignee User `json:"assignee"`
+	} `json:"assignments"`
+	// Acknowledgements are the people who picked it up.
+	Acknowledgements []struct {
+		// Acknowledger is the user who acknowledged it.
+		Acknowledger User `json:"acknowledger"`
+	} `json:"acknowledgements"`
+}
+
+// Resolved reports whether the incident was settled.
+func (i Incident) Resolved() bool { return i.Status == "resolved" || !i.ResolvedAt.IsZero() }
+
+// People returns everyone who handled the incident, without repeats.
+func (i Incident) People() []User {
+	var out []User
+	seen := make(map[string]bool)
+	add := func(u User) {
+		if u.ID == "" || seen[u.ID] {
+			return
+		}
+		seen[u.ID] = true
+		out = append(out, u)
+	}
+	for _, a := range i.Assignments {
+		add(a.Assignee)
+	}
+	for _, a := range i.Acknowledgements {
+		add(a.Acknowledger)
+	}
+	return out
+}
+
+// incidentsResponse decodes the incidents endpoint.
+type incidentsResponse struct {
+	// Incidents is the page of incidents.
+	Incidents []Incident `json:"incidents"`
+	// More reports whether more pages remain.
+	More bool `json:"more"`
+}
+
 // oncallsResponse decodes the oncalls endpoint.
 type oncallsResponse struct {
 	// OnCalls is the page of on-call assignments.
@@ -154,6 +220,41 @@ func (c *Client) OnCalls(ctx context.Context) ([]OnCall, error) {
 		if !resp.More || len(resp.OnCalls) == 0 {
 			break
 		}
+	}
+	return all, nil
+}
+
+// Incidents returns resolved incidents newer than since, most recent first,
+// with the people who handled them. It is the record of what actually broke
+// and who settled it.
+func (c *Client) Incidents(ctx context.Context, since time.Time, max int) ([]Incident, error) {
+	var all []Incident
+	for page, offset := 0, 0; page < maxPages; page, offset = page+1, offset+100 {
+		params := url.Values{
+			"limit":      {"100"},
+			"offset":     {strconv.Itoa(offset)},
+			"statuses[]": {"resolved"},
+			"sort_by":    {"created_at:desc"},
+			"include[]":  {"assignees"},
+			"time_zone":  {"UTC"},
+			"date_range": {""},
+		}
+		params.Del("date_range")
+		if !since.IsZero() {
+			params.Set("since", since.UTC().Format(time.RFC3339))
+			params.Set("until", time.Now().UTC().Format(time.RFC3339))
+		}
+		var resp incidentsResponse
+		if err := c.get(ctx, "/incidents", params, &resp); err != nil {
+			return nil, err
+		}
+		all = append(all, resp.Incidents...)
+		if !resp.More || len(resp.Incidents) == 0 || (max > 0 && len(all) >= max) {
+			break
+		}
+	}
+	if max > 0 && len(all) > max {
+		all = all[:max]
 	}
 	return all, nil
 }

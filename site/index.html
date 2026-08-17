@@ -29,7 +29,7 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="/styles.css?v=10">
+	<link rel="stylesheet" href="/styles.css?v=11">
 </head>
 <body>
 	<div class="bg" aria-hidden="true"></div>
@@ -75,8 +75,10 @@
 			<nav class="nav-links">
 				<a href="#surfaces">Surfaces</a>
 				<a href="#how">Pipeline</a>
+				<a href="#recall">Recall</a>
 				<a href="#privacy">Privacy</a>
 				<a href="#modes">Ranking</a>
+				<a href="/pricing">Pricing</a>
 				<a href="/docs/">Docs</a>
 				<a href="#start">Install</a>
 			</nav>
@@ -297,9 +299,56 @@
 			</div>
 		</section>
 
+		<section class="section wrap" id="recall">
+			<div class="sec-head reveal">
+				<span class="sec-eyebrow"><span class="n">03 //</span> Recall</span>
+				<h2>It also remembers how you solved it.</h2>
+				<p>You hit this exact problem four months ago. Someone walked you through it and it worked. You cannot remember who, or where, or what they said. whodar can: ask it, and it names the person, the channel, the day, and hands you the link back to the thread.</p>
+			</div>
+			<div class="cards">
+				<article class="card ticks reveal"><i class="tk1"></i><i class="tk2"></i>
+					<div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></div>
+					<h3>Who helped you, and when</h3>
+					<p>An answer is a pointer, never a transcript: the people, the place, the date, and a link into the tool it happened in. Opening it uses your own access.</p>
+					<span class="tag">Shipping</span>
+				</article>
+				<article class="card ticks reveal"><i class="tk1"></i><i class="tk2"></i>
+					<div class="ic"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+					<h3>Wherever the work happened</h3>
+					<p>A Slack thread, a run of channel back-and-forth, a merged pull request, a resolved ticket, a settled incident. Four tools, one memory.</p>
+					<span class="tag">Shipping</span>
+				</article>
+				<article class="card ticks reveal"><i class="tk1"></i><i class="tk2"></i>
+					<div class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h6"/></svg></div>
+					<h3>Or the answer itself</h3>
+					<p>Keep the conversation on your own machines and whodar shows how it was fixed, quoted and cited, long after the source has aged the messages out.</p>
+					<span class="tag">Memory · $5,000 a year</span>
+				</article>
+			</div>
+			<div class="reads reveal">
+				<span class="reads-label">Only yours</span>
+				<div class="sources">
+					<span class="src">Conversations you were in</span><span class="src">Nothing shared</span>
+					<span class="src">Answered privately in Slack</span>
+				</div>
+				<p class="note"><a href="/docs/reference#whodar-recall" target="_blank" rel="noopener">Recall returns only the conversations you took part in. See how it works →</a></p>
+			</div>
+			<div class="reads reveal">
+				<span class="reads-label">Memory</span>
+				<div class="sources">
+					<span class="src">$5,000 a year</span><span class="src">Flat, per organization</span>
+					<span class="src">Any number of people</span>
+				</div>
+				<p class="note">Everything else is free forever. Memory keeps the words, so an answer can show
+					how something was fixed. No seat count and no telemetry, because whodar cannot phone home
+					and would not know your headcount if it wanted to. <a href="/pricing">See what is free
+					and what is not →</a></p>
+			</div>
+		</section>
+
 		<section class="section wrap privacy" id="privacy">
 			<div class="reveal">
-				<span class="sec-eyebrow"><span class="n">03 //</span> Egress control</span>
+				<span class="sec-eyebrow"><span class="n">04 //</span> Egress control</span>
 				<h2>Your org's knowledge <span class="pgrace">never leaves your laptop.</span></h2>
 				<p>Indexed work data is sensitive, so whodar controls what a model can see. The default is strict: answers are computed locally and nothing is sent anywhere.</p>
 				<ul class="plist">
@@ -319,7 +368,7 @@
 
 		<section class="section wrap" id="modes">
 			<div class="sec-head reveal">
-				<span class="sec-eyebrow"><span class="n">04 //</span> Ranking</span>
+				<span class="sec-eyebrow"><span class="n">05 //</span> Ranking</span>
 				<h2>Works great with no model. Even better with one.</h2>
 				<p>Keyword always works with nothing installed. Meaning and AI are layers you add, never a dependency.</p>
 			</div>
@@ -347,7 +396,7 @@
 
 		<section class="section wrap" id="start">
 			<div class="sec-head reveal">
-				<span class="sec-eyebrow"><span class="n">05 //</span> Get whodar</span>
+				<span class="sec-eyebrow"><span class="n">06 //</span> Get whodar</span>
 				<h2>Install once. Add it wherever you ask questions.</h2>
 				<p>One binary holds every surface. Pick one below for the exact steps.</p>
 			</div>
@@ -458,6 +507,7 @@ claude mcp add whodar -- whodar mcp
 				<span class="brand-lockup"><span class="brand-word">who<b>dar</b></span><span class="brand-tag">know who knows</span></span>
 			</a>
 			<nav>
+				<a href="/pricing">Pricing</a>
 				<a href="/docs/">Docs</a>
 				<a href="https://github.com/kordloom/whodar">GitHub</a>
 				<a href="/docs/reference">Reference</a>
@@ -468,6 +518,6 @@ claude mcp add whodar -- whodar mcp
 		</div>
 	</footer>
 
-	<script src="/app.js?v=10"></script>
+	<script src="/app.js?v=11"></script>
 </body>
 </html>

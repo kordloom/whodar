@@ -37,6 +37,29 @@ commitments.
 
 ## What is not gated
 
-Everything in this repository works with no license key, no seat count, no telemetry,
-and no phone-home. whodar runs local by default and stays that way. Nothing here
-degrades or expires if you never contact anyone.
+Finding people and finding your past work need no license key, no seat count, no
+telemetry, and no phone-home: the whole graph, every source, every surface, and
+recall pointing back at the conversations you took part in. whodar runs local by
+default and stays that way.
+
+## Memory
+
+One capability is licensed. Memory keeps the words of each conversation on your own
+machines, so whodar can show how something was fixed long after Slack has aged the
+messages out. Without a license, whodar keeps a pointer to the conversation and
+nothing more.
+
+**$5,000 a year, flat, per organization.** Any number of people, any number of
+sources. There is no seat count to true up, no per-user pricing, and no audit,
+because whodar cannot phone home and does not know your headcount. Paid annually.
+
+Optional: a $5,000 setup engagement to connect your sources, tune ranking to your
+organization, and run the first backfill. Most teams do not need it.
+
+The license is a small signed file, verified against a key compiled into the binary.
+Nothing is checked over the network, so a licensed install works air-gapped. If a
+license expires, whodar drops to the free tier and every byte already on disk stays
+exactly where it is: nothing is deleted, hidden, or held hostage, and what you kept
+stays readable. New conversations simply stop being kept until you renew.
+
+Ask at hello@whodar.dev.

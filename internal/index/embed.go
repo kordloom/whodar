@@ -3,11 +3,11 @@ package index
 import (
 	"context"
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/vector"
 )
 
 // Embedder turns text into a vector. The llm package's Ollama client satisfies
@@ -129,23 +129,8 @@ func cosineScores(vecs map[model.ID][]float32, query []float32) map[model.ID]flo
 	return out
 }
 
-// cosine returns the cosine similarity of a and b, or 0 for empty or mismatched
-// vectors.
-func cosine(a, b []float32) float64 {
-	if len(a) == 0 || len(a) != len(b) {
-		return 0
-	}
-	var dot, na, nb float64
-	for i := range a {
-		dot += float64(a[i]) * float64(b[i])
-		na += float64(a[i]) * float64(a[i])
-		nb += float64(b[i]) * float64(b[i])
-	}
-	if na == 0 || nb == 0 {
-		return 0
-	}
-	return dot / (math.Sqrt(na) * math.Sqrt(nb))
-}
+// cosine returns the cosine similarity of a and b.
+func cosine(a, b []float32) float64 { return vector.Cosine(a, b) }
 
 // personEmbedText is the text representation of a person used for embedding.
 func personEmbedText(p *model.Person, pt *personText) string {

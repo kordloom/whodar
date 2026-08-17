@@ -10,6 +10,7 @@ import (
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/mcp"
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/recall"
 	"github.com/kordloom/whodar/internal/resolve"
 )
 
@@ -33,7 +34,8 @@ who knows what mid-conversation. Register it once:
   Claude Desktop:  add {"whodar": {"command": "whodar", "args": ["mcp"]}}
                    under mcpServers in claude_desktop_config.json
 
-Tools: whodar_ask (keyword or semantic ranking), whodar_person (full
+Tools: whodar_ask (keyword or semantic ranking), whodar_recall (past
+conversations one person took part in), whodar_person (full
 profile), and whodar_directory (people, channels, teams, topics). There is
 no llm mode here on purpose: the calling agent is already a model, so it
 gets ranked candidates with reasons and does its own reading.
@@ -47,8 +49,13 @@ model. Wiring it in is the opt-in.`,
 			}
 			applyFeedback(ix, opts, cmd.ErrOrStderr())
 
+			store, err := opts.loadEpisodes(cmd)
+			if err != nil {
+				return err
+			}
 			srv := mcp.New("whodar", version, cmd.ErrOrStderr())
 			registerMCPTools(srv, ix, opts, embedModel, ollamaURL)
+			registerRecallTool(srv, recall.New(store, ix))
 			fmt.Fprintln(cmd.ErrOrStderr(), "whodar mcp: serving on stdio")
 			return srv.Serve(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout())
 		},
@@ -58,6 +65,52 @@ model. Wiring it in is the opt-in.`,
 		"Ollama embed model for semantic mode (default nomic-embed-text).")
 	f.StringVar(&ollamaURL, "ollama-url", "http://localhost:11434", "Ollama base URL.")
 	return cmd
+}
+
+// registerRecallTool wires the recall tool, which answers what one person
+// worked through before. The caller must name that person, and the answer is
+// scoped to conversations they took part in, so an agent cannot use it to read
+// somebody else's history.
+func registerRecallTool(srv *mcp.Server, res *recall.Resolver) {
+	srv.AddTool(mcp.Tool{
+		Name: "whodar_recall",
+		Description: "Find the past conversation where a person worked something out, and who " +
+			"was in it. Returns people, place, date, and a link back to the conversation, " +
+			"never the messages themselves. Every answer covers only the named person's own " +
+			"conversations. Ask about the person running whodar unless told otherwise.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"question": {"type": "string", "description": "What was worked out, e.g. certificate renewal."},
+				"person": {"type": "string", "description": "Whose history to search: an email, or a source identifier such as slack:U123."},
+				"limit": {"type": "integer", "minimum": 1, "maximum": 25,
+					"description": "Maximum conversations to return, default 5."}
+			},
+			"required": ["question", "person"],
+			"additionalProperties": false
+		}`),
+	}, func(ctx context.Context, args json.RawMessage) (string, error) {
+		var in struct {
+			// Question is what the caller is trying to remember.
+			Question string `json:"question"`
+			// Person is whose conversations to search.
+			Person string `json:"person"`
+			// Limit caps conversations returned.
+			Limit int `json:"limit"`
+		}
+		if err := json.Unmarshal(args, &in); err != nil || in.Question == "" {
+			return "", fmt.Errorf("whodar_recall needs a question")
+		}
+		person := res.Who(in.Person)
+		if person == "" {
+			return "", fmt.Errorf("whodar_recall needs a person, such as an email or slack:U123")
+		}
+		if in.Limit <= 0 || in.Limit > mcpAskLimit {
+			in.Limit = 5
+		}
+		return marshalMCP(res.Resolve(ctx,
+			recall.Query{Text: in.Question, Person: person, Limit: in.Limit}))
+	})
 }
 
 // registerMCPTools wires the ask, person, and directory tools over ix.

@@ -112,8 +112,31 @@ type Issue struct {
 		} `json:"issuetype"`
 		// Updated is the last update time in Jira's ISO 8601 format.
 		Updated string `json:"updated"`
+		// ResolutionDate is when the issue was resolved, empty when it is
+		// still open.
+		ResolutionDate string `json:"resolutiondate"`
+		// Status is the issue's workflow status.
+		Status struct {
+			// Name is the status name, such as Done.
+			Name string `json:"name"`
+			// Category groups statuses; its key is "done" once the issue is
+			// finished, whatever the workflow calls it.
+			Category struct {
+				// Key is the category key.
+				Key string `json:"key"`
+			} `json:"statusCategory"`
+		} `json:"status"`
 	} `json:"fields"`
 }
+
+// Resolved reports whether the issue reached a finished state, which is what
+// makes it a record of how something was settled rather than work in flight.
+func (i Issue) Resolved() bool {
+	return i.Fields.ResolutionDate != "" || i.Fields.Status.Category.Key == "done"
+}
+
+// BaseURL returns the site root, so a caller can build a link to an issue.
+func (c *Client) BaseURL() string { return c.baseURL }
 
 // searchResponse decodes the issue search endpoint.
 type searchResponse struct {

@@ -18,6 +18,8 @@ type Config struct {
 	Locked bool `json:"locked"`
 	// PrivateChannels is "allow" or "deny" for private-channel ingest.
 	PrivateChannels string `json:"private_channels"`
+	// Archive is "allow" or "deny" for retaining conversation content.
+	Archive string `json:"archive"`
 }
 
 // Load reads a policy Config from path. found is false when the file is absent;
@@ -48,6 +50,9 @@ func (c Config) Policy() (Policy, error) {
 	p := New(mode, c.Locked)
 	if strings.EqualFold(strings.TrimSpace(c.PrivateChannels), "deny") {
 		p = p.WithoutPrivateChannels()
+	}
+	if strings.EqualFold(strings.TrimSpace(c.Archive), "deny") {
+		p = p.WithoutArchive()
 	}
 	return p, nil
 }

@@ -13,10 +13,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/feedback"
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/policy"
+	"github.com/kordloom/whodar/internal/recall"
 	"github.com/kordloom/whodar/internal/resolve"
 	"github.com/kordloom/whodar/internal/web"
 )
@@ -44,6 +46,10 @@ type webConfig struct {
 	provider string
 	// openaiURL is an OpenAI-compatible base URL for the openai provider.
 	openaiURL string
+	// episodes holds the conversations recall answers from; nil disables it.
+	episodes *episode.Store
+	// recallMe is the identity the recall view starts with.
+	recallMe string
 	// fbStrength is how hard votes move ranking.
 	fbStrength string
 }
@@ -72,6 +78,12 @@ session cookie. Put TLS in front of it for anything beyond a trusted network.`,
 			if err != nil {
 				return noIndexError(err)
 			}
+			if cfg.episodes, err = opts.loadEpisodes(cmd); err != nil {
+				return err
+			}
+			if cfg.recallMe = os.Getenv(meEnv); cfg.recallMe == "" {
+				cfg.recallMe = gitEmail()
+			}
 			store := applyFeedback(ix, opts, cmd.ErrOrStderr())
 			return serveWeb(cmd, opts, ix, store, cfg)
 		},
@@ -94,6 +106,28 @@ func addWebFlags(cmd *cobra.Command, cfg *webConfig, defaultAddr string) {
 		"OpenAI-compatible base URL, e.g. a local LM Studio or vLLM server.")
 	f.StringVar(&cfg.fbStrength, "feedback", "normal",
 		"How hard votes move ranking: off, low, normal, or high.")
+}
+
+// recallFn returns the web recall handler, or nil when recall is unavailable.
+// An answer is scoped to the person the request names, and the web app cannot
+// prove who is asking: a serve token gates the server, not one person's
+// history, and one token cannot tell two people apart. So recall is served
+// only where the caller can only be the person running whodar: a loopback bind
+// with no token. A token means the server is shared, whether directly or
+// behind a proxy that forwards to loopback, and recall stays off.
+func recallFn(ix *index.Index, cfg webConfig, token string) web.RecallFunc {
+	store := cfg.episodes
+	if store == nil || store.Len() == 0 || !loopbackAddr(cfg.addr) || token != "" {
+		return nil
+	}
+	res := recall.New(store, ix)
+	return func(ctx context.Context, person, query string, limit int) (recall.Answer, error) {
+		who := res.Who(person)
+		if who == "" {
+			return recall.Answer{}, fmt.Errorf("%w: name who is asking", web.ErrBadRequest)
+		}
+		return res.Resolve(ctx, recall.Query{Text: query, Person: who, Limit: limit}), nil
+	}
 }
 
 // serveWeb runs the web UI over ix until interrupted. A nil store disables
@@ -149,7 +183,8 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 
 	handler, err := web.Handler(web.Config{
 		Ask: ask, Feedback: vote, Person: person, Version: version, AuthToken: token,
-		Directory: &dir, Modes: modes, Log: cmd.ErrOrStderr(),
+		Directory: &dir, Modes: modes, Recall: recallFn(ix, cfg, token), RecallMe: cfg.recallMe,
+		Log: cmd.ErrOrStderr(),
 	})
 	if err != nil {
 		return err

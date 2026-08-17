@@ -5,6 +5,8 @@ package connector
 import (
 	"context"
 	"time"
+
+	"github.com/kordloom/whodar/internal/episode"
 )
 
 // Record is one normalized observation from a source. A KindPerson record
@@ -60,6 +62,15 @@ const (
 type Source interface {
 	// Fetch returns the records this source currently provides.
 	Fetch(ctx context.Context) ([]Record, error)
+}
+
+// EpisodeSource is implemented by sources that also observe bounded
+// conversations, such as a chat thread or a resolved ticket. Episodes are
+// collected during Fetch and read afterwards, so a source that does not
+// implement it costs nothing and the Source interface stays one method.
+type EpisodeSource interface {
+	// Episodes returns the conversations seen by the most recent Fetch.
+	Episodes() []episode.Episode
 }
 
 // SourceFunc adapts a function to the Source interface.

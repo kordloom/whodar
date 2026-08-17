@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/slack"
 )
 
@@ -35,6 +36,18 @@ type SlackOptions struct {
 	MaxMessages int
 	// MaxChannels caps channels processed; zero means all.
 	MaxChannels int
+	// Episodes records the conversations behind the messages, so whodar can
+	// point back at the discussion that solved something.
+	Episodes bool
+	// MaxEpisodesPerChannel caps episodes kept per channel; zero uses the
+	// default.
+	MaxEpisodesPerChannel int
+	// Archive retains the content of each conversation, not just a link to
+	// it. It is the only setting that reads thread replies.
+	Archive bool
+	// MaxArchiveMessages caps retained messages per conversation; zero uses
+	// the default.
+	MaxArchiveMessages int
 	// Log receives progress lines; nil discards them.
 	Log io.Writer
 }
@@ -59,6 +72,8 @@ type Slack struct {
 	client *slack.Client
 	// opts holds the resolved ingest bounds.
 	opts SlackOptions
+	// episodes holds the conversations seen by the last Fetch.
+	episodes []episode.Episode
 }
 
 // NewSlack returns a Slack connector authenticating with token.
@@ -112,6 +127,20 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 	}
 	fmt.Fprintf(s.opts.Log, "slack: %d users, %d channels\n", len(users), len(channels))
 
+	// The workspace URL turns a channel and a timestamp into a permalink with
+	// no further calls. Losing it costs links, not episodes, so a failure here
+	// is logged rather than fatal.
+	workspaceURL := ""
+	if s.opts.Episodes {
+		s.episodes = nil
+		auth, err := s.client.AuthTest(ctx)
+		if err != nil {
+			fmt.Fprintf(s.opts.Log, "slack: no workspace url, episodes will have no links: %v\n", err)
+		} else {
+			workspaceURL = auth.URL
+		}
+	}
+
 	oldest := slackOldest(s.opts.SinceDays)
 	skipped := 0
 	for i, ch := range channels {
@@ -120,6 +149,14 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 			break
 		}
 		msgs, err := s.client.History(ctx, ch.ID, oldest, s.opts.MaxMessages)
+		if errors.Is(err, slack.ErrRateLimited) {
+			// Retries are already exhausted, so every remaining channel would
+			// meet the same throttle. Stop and keep what was read rather than
+			// discarding an entire long run.
+			fmt.Fprintf(s.opts.Log,
+				"slack: rate limited at #%s; keeping the %d channels read so far\n", ch.Name, i)
+			break
+		}
 		if errors.Is(err, slack.ErrAPI) {
 			// Any per-channel API error, such as not_in_channel on a public
 			// channel the bot was never invited to, is skipped so one
@@ -144,6 +181,19 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 				Time: authorLatest[pid],
 			})
 		}
+		if s.opts.Episodes {
+			eps := collectEpisodes(ch, msgs, episodeOpts{
+				byID:         byID,
+				workspaceURL: workspaceURL,
+				max:          s.opts.MaxEpisodesPerChannel,
+				archive:      s.opts.Archive,
+				maxArchive:   s.opts.MaxArchiveMessages,
+			})
+			if s.opts.Archive {
+				s.fillArchive(ctx, eps, byID)
+			}
+			s.episodes = append(s.episodes, eps...)
+		}
 		fmt.Fprintf(s.opts.Log, "slack: indexed #%s (%d messages)\n", ch.Name, len(msgs))
 	}
 	if skipped > 0 {
@@ -153,13 +203,16 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 	return records, nil
 }
 
-// personRecord builds a person record from a Slack user.
+// personRecord builds a person record from a Slack user. The record carries
+// the Slack user ID as its identifier and the email alongside it, so the
+// indexer joins the two. Without that join a Slack user ID resolves to nobody,
+// and the bot cannot tell which person is asking.
 func personRecord(u slack.User) Record {
 	return Record{
 		Kind:     KindPerson,
 		Source:   "slack",
 		Weight:   1,
-		PersonID: slackPersonID(u),
+		PersonID: "slack:" + u.ID,
 		Name:     u.Profile.RealName,
 		Email:    u.Profile.Email,
 		Title:    u.Profile.Title,

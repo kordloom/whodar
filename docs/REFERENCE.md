@@ -34,6 +34,11 @@ Dated sources decay: see [recency](#recency). Undated sources describe the
 present and keep full weight. Bot accounts (dependabot and friends) are
 skipped in the git and github sources.
 
+With `--episodes`, four of them also record the past work behind the graph, which
+is what [`whodar recall`](#whodar-recall) points back at: Slack threads and runs
+of channel conversation, merged GitHub pull requests, resolved Jira issues, and
+resolved PagerDuty incidents.
+
 ## whodar index
 
 Builds or extends the index from one source per run.
@@ -51,6 +56,10 @@ Builds or extends the index from one source per run.
 | `--embed-model`     |           | all        | Ollama embed model (default `nomic-embed-text`). |
 | `--ollama-url`      | localhost | all        | Ollama base URL for `--embed`.                   |
 | `--file`            |           | org-csv, codeowners | Path to the CSV or CODEOWNERS file (or repo root). |
+| `--episodes`        | off       | slack, github, jira, pagerduty | Record past conversations so `recall` can point back at them. |
+| `--archive`         | off       | slack      | Keep the words of each conversation, not just a link. Needs a Memory license; implies `--episodes`. |
+| `--max-episodes-per-channel` | `200` | slack | Conversation cap per channel.                   |
+| `--max-archive-messages` | `50`  | slack      | Retained message cap per conversation.           |
 | `--include-private` | off       | slack      | Ingest private channels if policy allows.        |
 | `--since-days`      | `180`     | slack      | History window in days.                          |
 | `--max-messages`    | `5000`    | slack      | Message cap per channel.                         |
@@ -132,6 +141,65 @@ LM Studio, needs no policy opt-in, while a remote one needs `--policy open`.
 Each result carries a `confidence`
 from zero to one: query coverage scaled by evidence strength, where an
 explicit topic is proof, a title slightly less, a passing mention half.
+
+## whodar recall
+
+Finds the past conversation where something was worked out, and who was in it.
+An answer is a pointer, not a transcript: the people, the place, the date, and a
+link back to the conversation in the tool it happened in. Opening the link uses
+your own access to that tool.
+
+    whodar recall [flags] QUESTION
+
+Results cover only conversations you took part in, so whodar has to know who you
+are. It takes `--me`, then `WHODAR_ME`, then your git email.
+
+| Flag                  | Default   | What it does                                     |
+| --------------------- | --------- | ------------------------------------------------ |
+| `--me`                |           | Who is asking: an email or a source identifier such as `slack:U123`. |
+| `--limit`             | `5`       | Maximum conversations to return.                 |
+| `--meaning`           | off       | Match by meaning instead of exact words. Needs an index built with `--episodes --embed`. |
+| `--how`               | off       | Show how it was worked out, for conversations whodar keeps. Needs a Memory license at index time. |
+| `--provider`          | `ollama`  | Model provider for `--how`. Cloud providers need `--policy open`, because the conversation is sent whole. |
+| `--model`             |           | Chat model that writes the account for `--how`.  |
+| `--openai-url`        |           | OpenAI-compatible base URL.                      |
+| `--embed-model`       |           | Ollama embed model for `--meaning`.              |
+| `--ollama-url`        | localhost | Ollama base URL.                                 |
+| `--link-horizon-days` | `0`       | Warn that links older than this many days may have expired. Zero makes no claim. |
+
+Recall is also a Slack command (`/whodar recall ...` or `recall ...` in a
+mention), where it answers only to the person who asked, and an MCP tool
+(`whodar_recall`). The web app serves it on localhost only: the serve token
+gates the server, not one person's history.
+
+## whodar archive
+
+Reports and prunes the conversations whodar keeps.
+
+    whodar archive status                          # what is kept and how far back
+    whodar archive prune --older-than-days 365     # forget conversations over a year old
+    whodar archive prune --content-only            # keep the links, drop the words
+
+`prune` is the only command that deletes remembered conversations, and it deletes
+exactly what you name.
+
+## whodar license
+
+Reports which features this install is licensed for.
+
+    whodar license status
+
+A license is a small signed file. whodar verifies it against a key compiled into
+the binary and never contacts a server, so a licensed install works offline.
+Put it at `license.json` in the data directory, or point `WHODAR_LICENSE` at it
+(the file itself or a path to it).
+
+Without one the free tier is in force: the people graph, and recall pointing back
+at past conversations. A Memory license adds the archive, which keeps the words of
+each conversation on your own machines and can show how something was solved. It
+is $5,000 a year, flat per organization, with no seat count; see
+[COMMERCIAL.md](../COMMERCIAL.md). An expired license drops to the free tier and
+leaves every byte already indexed on disk.
 
 ## whodar feedback
 
@@ -253,6 +321,8 @@ never logged or stored.
 | `WHODAR_GEMINI_KEY`           | llm gemini provider    | Gemini API key.                       |
 | `WHODAR_SERVE_TOKEN`          | serve, demo        | Bearer token; required to bind beyond localhost. |
 | `WHODAR_POLICY_FILE`          | all commands       | Extra policy file; a locked `/etc/whodar/policy.json` overrides it. |
+| `WHODAR_ME`                   | recall, serve      | Who is asking, so recall covers your own conversations. |
+| `WHODAR_LICENSE`              | index, license     | A license, or the path to one.            |
 | `WHODAR_INDEX_KEY`            | index encryption   | Base64 32-byte key that enables at-rest encryption. |
 | `WHODAR_INDEX_PASSPHRASE`     | index encryption   | Passphrase for at-rest encryption; prompted if unset on a terminal. |
 
@@ -309,6 +379,10 @@ host. The policy does not gate indexing, which talks only to the sources you
 name with your tokens when you run `whodar index`, or the bot posting answers
 back to your Slack workspace.
 
+An organization can also pin `"private_channels": "deny"` to keep private
+channels out of the index, and `"archive": "deny"` to forbid keeping the words
+of any conversation, whatever the license says.
+
 An organization can pin the policy with a locked file. A locked
 `/etc/whodar/policy.json` always wins: `WHODAR_POLICY_FILE` and `--policy` are
 then ignored. The lock constrains the installed binary for regular users; it
@@ -323,3 +397,5 @@ Everything lives under `--data-dir` (default `~/.whodar`):
 | --------------- | -------------------------------------------------------------------------------- |
 | `index.json`    | The graph, postings, embeddings, aliases, and a capped Slack text sample per person. |
 | `feedback.json` | Votes and the queries behind them, kept apart so they survive re-indexing. Not covered by `vault` encryption today. |
+| `episodes.json` | Past conversations: who took part, where, when, the link back, and matched terms. Written only with `--episodes`. Holds the words themselves only with a Memory license and `--archive`. Encrypted with the same key as the index. |
+| `license.json`  | The signed license, when one is installed. Verified offline against a key in the binary. |

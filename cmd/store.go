@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/keyring"
 	"github.com/kordloom/whodar/internal/prompt"
@@ -72,6 +73,55 @@ func (o *options) saveIndex(ix *index.Index) error {
 		return ix.Save(o.indexPath())
 	}
 	return ix.Save(o.indexPath(), index.WithCodec(c))
+}
+
+// loadEpisodes reads the episode store, decrypting with the same key as the
+// index. A missing file is an empty store, since a run that has never indexed
+// episodes has no history rather than a problem. When the file is encrypted
+// and no key is set, it prompts on a terminal, so `archive status` reaches an
+// encrypted store the same way `ask` reaches an encrypted index.
+func (o *options) loadEpisodes(cmd *cobra.Command) (*episode.Store, error) {
+	c, err := o.codec()
+	if err != nil {
+		return nil, err
+	}
+	store, err := loadEpisodesWith(o.episodePath(), c)
+	if !errors.Is(err, vault.ErrEncrypted) {
+		return store, err
+	}
+	ui := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr(), cmd.ErrOrStderr())
+	if !ui.Interactive() {
+		return nil, fmt.Errorf(
+			"%w: set %s or %s (see `whodar vault keygen`)", err, keyring.EnvKey, keyring.EnvPassphrase)
+	}
+	pass, perr := ui.Secret("Passphrase")
+	if perr != nil {
+		return nil, perr
+	}
+	pc := vault.NewPassphraseCipher([]byte(pass))
+	o.setCodec(pc)
+	return loadEpisodesWith(o.episodePath(), pc)
+}
+
+// loadEpisodesWith loads the episode store at path with an optional codec.
+func loadEpisodesWith(path string, c vault.Codec) (*episode.Store, error) {
+	if c == nil {
+		return episode.LoadOrNew(path)
+	}
+	return episode.LoadOrNew(path, episode.WithCodec(c))
+}
+
+// saveEpisodes writes the episode store, encrypting it when a key is
+// configured.
+func (o *options) saveEpisodes(store *episode.Store) error {
+	c, err := o.codec()
+	if err != nil {
+		return err
+	}
+	if c == nil {
+		return store.Save(o.episodePath())
+	}
+	return store.Save(o.episodePath(), episode.WithCodec(c))
 }
 
 // loadWith loads the index at path with an optional codec.

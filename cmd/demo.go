@@ -14,6 +14,10 @@ import (
 	"github.com/kordloom/whodar/internal/simorg"
 )
 
+// demoPerson is who the demo's recall view starts as: the engineer the sample
+// conversations involve.
+const demoPerson = "angela@corp.com"
+
 // demoQuery is the question the demo opens with, so the first thing a new
 // user sees is an answered page.
 const demoQuery = "who do I talk to about billing retries"
@@ -49,6 +53,12 @@ WHODAR_ANTHROPIC_KEY) and add --policy redacted.`,
 			if err != nil {
 				return err
 			}
+			if cfg.episodes, err = simorg.BuildEpisodes(ix); err != nil {
+				return err
+			}
+			// The demo has no real user, so recall starts as the person the
+			// sample conversations were had with.
+			cfg.recallMe = demoPerson
 
 			link := "http://" + cfg.addr + "/?q=" + url.QueryEscape(demoQuery)
 			fmt.Fprintf(cmd.ErrOrStderr(),

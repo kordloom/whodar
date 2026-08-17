@@ -20,6 +20,7 @@ import (
 
 	"github.com/kordloom/whodar/internal/confluence"
 	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/github"
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/jira"
@@ -90,9 +91,27 @@ func SlackServer() *httptest.Server {
 		"C3": {
 			slackMessage("U3", "terraform plan for the new cluster is up", daysAgo(2)),
 			slackMessage("U5", "paging policy updated after the incident", daysAgo(4)),
+			// A thread: Angela hit a problem, Carol and Grace worked it out with
+			// her. This is what recall finds months later.
+			slackThread("U1", "the staging certificate renewal keeps failing, anyone seen this",
+				daysAgo(90), 4, []string{"U3", "U5"}, daysAgo(90).Add(20*time.Minute)),
 		},
 		"C4": {
 			slackMessage("U4", "sso login flow now enforces mfa", daysAgo(5)),
+		},
+	}
+
+	// Replies to the certificate thread, which only the archive reads.
+	replies := map[string][]map[string]any{
+		threadKey(daysAgo(90)): {
+			slackMessage("U1", "the staging certificate renewal keeps failing, anyone seen this",
+				daysAgo(90)),
+			slackMessage("U3", "the dns challenge needs the wildcard record on the staging zone",
+				daysAgo(90).Add(5*time.Minute)),
+			slackMessage("U5", "add it, then rerun certbot with --force-renewal",
+				daysAgo(90).Add(12*time.Minute)),
+			slackMessage("U1", "that did it, renewed and staging is green",
+				daysAgo(90).Add(20*time.Minute)),
 		},
 	}
 
@@ -103,6 +122,17 @@ func SlackServer() *httptest.Server {
 	})
 	mux.HandleFunc("/conversations.list", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{"ok": true, "channels": channels})
+	})
+	mux.HandleFunc("/auth.test", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{
+			"ok": true, "user_id": "U0", "url": "https://corp.slack.com/", "team": "Corp",
+		})
+	})
+	mux.HandleFunc("/conversations.replies", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		writeJSON(w, map[string]any{
+			"ok": true, "has_more": false, "messages": replies[r.Form.Get("ts")],
+		})
 	})
 	mux.HandleFunc("/conversations.history", func(w http.ResponseWriter, r *http.Request) {
 		limited := false
@@ -147,14 +177,25 @@ func GitHubServer() *httptest.Server {
 	})
 	mux.HandleFunc("/repos/corp/billing-service/pulls", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, []map[string]any{{
-			"title": "Fix billing retry backoff", "user": map[string]any{"login": "amalone"},
-			"labels": []map[string]any{{"name": "billing"}}, "updated_at": isoDaysAgo(2),
+			"number":   412,
+			"html_url": "https://github.com/corp/billing-service/pull/412",
+			"title":    "Fix billing retry backoff", "user": map[string]any{"login": "amalone"},
+			"labels":     []map[string]any{{"name": "billing"}},
+			"updated_at": isoDaysAgo(2), "merged_at": isoDaysAgo(2),
+		}, {
+			"number":   377,
+			"html_url": "https://github.com/corp/billing-service/pull/377",
+			"title":    "Add dunning retry ceiling", "user": map[string]any{"login": "amalone"},
+			"updated_at": isoDaysAgo(40),
 		}})
 	})
 	mux.HandleFunc("/repos/corp/webapp/pulls", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, []map[string]any{{
-			"title": "Rewrite the react frontend in typescript",
-			"user":  map[string]any{"login": "eve-dev"}, "updated_at": isoDaysAgo(4),
+			"number": 88, "html_url": "https://github.com/corp/webapp/pull/88",
+			"title":               "Rewrite the react frontend in typescript",
+			"user":                map[string]any{"login": "eve-dev"},
+			"requested_reviewers": []map[string]any{{"login": "bsmith"}},
+			"updated_at":          isoDaysAgo(4), "merged_at": isoDaysAgo(4),
 		}})
 	})
 	for _, r := range []string{"billing-service", "webapp"} {
@@ -162,6 +203,9 @@ func GitHubServer() *httptest.Server {
 			writeJSON(w, []map[string]any{})
 		})
 	}
+	mux.HandleFunc("/users/bsmith", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{"login": "bsmith", "name": "Bob Smith", "email": "bob@corp.com"})
+	})
 	mux.HandleFunc("/users/amalone", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{"login": "amalone", "name": "Angela Malone", "email": "angela@corp.com"})
 	})
@@ -197,11 +241,19 @@ func JiraServer() *httptest.Server {
 	bob := map[string]any{"accountId": "j-bob", "displayName": "Bob Smith", "emailAddress": "bob@corp.com"}
 	dan := map[string]any{"accountId": "j-dan", "displayName": "Dan Park", "emailAddress": "dan@corp.com"}
 	frank := map[string]any{"accountId": "j-frank", "displayName": "Frank Ito", "emailAddress": "frank@corp.com"}
+	resolve := func(m map[string]any, ago int) map[string]any {
+		f, _ := m["fields"].(map[string]any)
+		f["resolutiondate"] = jiraDaysAgo(ago)
+		f["status"] = map[string]any{
+			"name": "Done", "statusCategory": map[string]any{"key": "done"},
+		}
+		return m
+	}
 	issues := []map[string]any{
-		issue("DAT-1", "Kafka consumer lag on the stream ingest", bob, nil,
-			[]string{"kafka"}, "Data Platform", 3),
-		issue("SEC-1", "Enforce mfa on the sso login flow", dan, nil,
-			[]string{"sso"}, "Security", 5),
+		resolve(issue("DAT-1", "Kafka consumer lag on the stream ingest", bob, nil,
+			[]string{"kafka"}, "Data Platform", 3), 3),
+		resolve(issue("SEC-1", "Enforce mfa on the sso login flow", dan, nil,
+			[]string{"sso"}, "Security", 5), 5),
 		issue("DAT-2", "Embedding model serving latency", nil, frank,
 			[]string{"embeddings"}, "Data Platform", 8),
 	}
@@ -249,6 +301,25 @@ func PagerDutyServer() *httptest.Server {
 				"escalation_policy": map[string]any{"id": "EP1"}},
 			{"id": "S2", "name": "Platform Kubernetes", "description": "Cluster and deploys",
 				"escalation_policy": map[string]any{"id": "EP2"}},
+		}})
+	})
+	mux.HandleFunc("/incidents", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{"more": false, "incidents": []map[string]any{
+			{
+				"id": "PINC1", "incident_number": 1041, "status": "resolved",
+				"title":      "Billing API latency breached the error budget",
+				"html_url":   "https://corp.pagerduty.com/incidents/PINC1",
+				"created_at": isoDaysAgo(30), "resolved_at": isoDaysAgo(30),
+				"service": map[string]any{"id": "S1", "summary": "Billing API"},
+				"assignments": []map[string]any{
+					{"assignee": map[string]any{
+						"id": "P1", "name": "Angela Malone", "email": "angela@corp.com"}},
+				},
+				"acknowledgements": []map[string]any{
+					{"acknowledger": map[string]any{
+						"id": "P2", "name": "Grace Kim", "email": "grace@corp.com"}},
+				},
+			},
 		}})
 	})
 	mux.HandleFunc("/oncalls", func(w http.ResponseWriter, _ *http.Request) {
@@ -352,14 +423,18 @@ func BuildIndex(dir string) (*index.Index, error) {
 	pagerdutySrv := PagerDutyServer()
 	defer pagerdutySrv.Close()
 
+	// BuildIndex builds the people graph; BuildEpisodes collects the
+	// conversations separately, so this source needs no episode options.
+	slackSource := connector.NewSlackWithClient(
+		slack.New("xoxb-demo", slack.WithBaseURL(slackSrv.URL)), connector.SlackOptions{})
+
 	sources := []struct {
 		Name   string
 		Source connector.Source
 	}{
 		{"org-csv", connector.NewOrgCSV(csvPath)},
 		{"codeowners", connector.NewCodeOwners(ownersPath)},
-		{"slack", connector.NewSlackWithClient(
-			slack.New("xoxb-demo", slack.WithBaseURL(slackSrv.URL)), connector.SlackOptions{})},
+		{"slack", slackSource},
 		{"github", connector.NewGitHubWithClient(
 			github.New("ghp-demo", github.WithBaseURL(githubSrv.URL)),
 			connector.GitHubOptions{
@@ -397,6 +472,62 @@ func BuildIndex(dir string) (*index.Index, error) {
 	return ix, nil
 }
 
+// BuildEpisodes returns everything the simulated company worked through: Slack
+// conversations with their content, merged changes, resolved tickets, and
+// resolved incidents, with participants resolved against ix so one person's
+// work is findable across every source. It lets the demo show recall with no
+// credentials.
+func BuildEpisodes(ix *index.Index) (*episode.Store, error) {
+	ctx := context.Background()
+	slackSrv := SlackServer()
+	defer slackSrv.Close()
+	githubSrv := GitHubServer()
+	defer githubSrv.Close()
+	jiraSrv := JiraServer()
+	defer jiraSrv.Close()
+	pagerdutySrv := PagerDutyServer()
+	defer pagerdutySrv.Close()
+
+	sources := []struct {
+		Name   string
+		Source interface {
+			connector.Source
+			connector.EpisodeSource
+		}
+	}{
+		{"slack", connector.NewSlackWithClient(
+			slack.New("xoxb-demo", slack.WithBaseURL(slackSrv.URL)),
+			connector.SlackOptions{Episodes: true, Archive: true})},
+		{"github", connector.NewGitHubWithClient(
+			github.New("ghp-demo", github.WithBaseURL(githubSrv.URL)),
+			connector.GitHubOptions{
+				Repos:    []string{"corp/billing-service", "corp/webapp"},
+				Episodes: true, ResolveEmails: true,
+			})},
+		{"jira", connector.NewJiraWithClient(
+			jira.New(jiraSrv.URL, "demo@corp.com", "token"),
+			connector.JiraOptions{Episodes: true})},
+		{"pagerduty", connector.NewPagerDutyWithClient(
+			pagerduty.New("token", pagerduty.WithBaseURL(pagerdutySrv.URL)),
+			connector.PagerDutyOptions{Episodes: true})},
+	}
+
+	store := episode.New()
+	for _, s := range sources {
+		if _, err := s.Source.Fetch(ctx); err != nil {
+			return nil, fmt.Errorf("simorg: %s episodes: %w", s.Name, err)
+		}
+		eps := s.Source.Episodes()
+		if ix != nil {
+			ix.CanonicalizeEpisodes(eps)
+		}
+		for _, ep := range eps {
+			store.Add(ep)
+		}
+	}
+	return store, nil
+}
+
 // slackUser builds one users.list member.
 func slackUser(id, name, email, title string) map[string]any {
 	return map[string]any{"id": id, "profile": map[string]any{
@@ -420,6 +551,22 @@ func slackMessage(user, text string, when time.Time) map[string]any {
 		"ts": fmt.Sprintf("%d.000100", when.Unix()),
 	}
 }
+
+// slackThread builds a history parent that drew replies, carrying the thread
+// shape Slack reports without a second call.
+func slackThread(
+	user, text string, when time.Time, replyCount int, replyUsers []string, latest time.Time,
+) map[string]any {
+	m := slackMessage(user, text, when)
+	m["thread_ts"] = m["ts"]
+	m["reply_count"] = replyCount
+	m["reply_users"] = replyUsers
+	m["latest_reply"] = fmt.Sprintf("%d.000100", latest.Unix())
+	return m
+}
+
+// threadKey is the timestamp a thread's replies are keyed by.
+func threadKey(when time.Time) string { return fmt.Sprintf("%d.000100", when.Unix()) }
 
 // daysAgo returns a time n days in the past.
 func daysAgo(n int) time.Time { return time.Now().AddDate(0, 0, -n) }

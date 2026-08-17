@@ -27,34 +27,71 @@ func (c *Client) PostMessage(ctx context.Context, channel, threadTS, text string
 	return c.do(ctx, "chat.postMessage", params, &resp)
 }
 
+// PostEphemeral posts text visible only to one user in a channel. Recall
+// answers use it: they name the conversations one person took part in, which
+// is nobody else's business even in a channel they share.
+func (c *Client) PostEphemeral(ctx context.Context, channel, user, text string) error {
+	params := url.Values{"channel": {channel}, "user": {user}, "text": {text}}
+	var resp okResp
+	return c.do(ctx, "chat.postEphemeral", params, &resp)
+}
+
 // authTestResp decodes auth.test.
 type authTestResp struct {
 	apiMeta
 	// UserID is the authenticated bot's own user ID.
 	UserID string `json:"user_id"`
+	// URL is the workspace base URL.
+	URL string `json:"url"`
+	// Team is the workspace name.
+	Team string `json:"team"`
 }
 
-// AuthTest returns the authenticated bot's own user ID. The bot uses it to
-// ignore its own messages and to strip its mention from inbound text.
-func (c *Client) AuthTest(ctx context.Context) (string, error) {
+// Auth describes the authenticated identity and the workspace it belongs to.
+type Auth struct {
+	// UserID is the authenticated bot's own user ID.
+	UserID string
+	// URL is the workspace base URL, such as "https://acme.slack.com/", and is
+	// what message permalinks are built from.
+	URL string
+	// Team is the workspace name.
+	Team string
+}
+
+// AuthTest returns the authenticated identity and workspace. The bot uses the
+// user ID to ignore its own messages and to strip its mention from inbound
+// text; indexing uses the URL to build permalinks offline.
+func (c *Client) AuthTest(ctx context.Context) (Auth, error) {
 	var resp authTestResp
 	if err := c.do(ctx, "auth.test", url.Values{}, &resp); err != nil {
-		return "", err
+		return Auth{}, err
 	}
-	return resp.UserID, nil
+	return Auth{UserID: resp.UserID, URL: resp.URL, Team: resp.Team}, nil
 }
 
 // responseURLPrefix is the only host slash-command response URLs may name,
 // so a forged payload cannot point the bot's POST anywhere else.
 const responseURLPrefix = "https://hooks.slack.com/"
 
-// Respond posts text to a slash-command response URL. The URL is minted by
-// Slack per invocation and needs no token.
+// Respond posts text to a slash-command response URL, visible to the whole
+// channel. The URL is minted by Slack per invocation and needs no token.
 func Respond(ctx context.Context, responseURL, text string) error {
+	return respond(ctx, responseURL, text, "in_channel")
+}
+
+// RespondPrivately posts text to a slash-command response URL so only the
+// person who ran the command sees it.
+func RespondPrivately(ctx context.Context, responseURL, text string) error {
+	return respond(ctx, responseURL, text, "ephemeral")
+}
+
+// respond posts text to a slash-command response URL with the given
+// visibility.
+func respond(ctx context.Context, responseURL, text, responseType string) error {
 	if !strings.HasPrefix(responseURL, responseURLPrefix) {
 		return fmt.Errorf("slack: respond: unexpected response url host")
 	}
-	body, err := json.Marshal(map[string]string{"response_type": "in_channel", "text": text})
+	body, err := json.Marshal(map[string]string{"response_type": responseType, "text": text})
 	if err != nil {
 		return fmt.Errorf("slack: respond: encode: %w", err)
 	}

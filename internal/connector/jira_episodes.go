@@ -1,0 +1,66 @@
+package connector
+
+import (
+	"strings"
+
+	"github.com/kordloom/whodar/internal/episode"
+	"github.com/kordloom/whodar/internal/jira"
+	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/util"
+)
+
+// Episodes returns the resolved issues seen by the most recent Fetch. It is
+// empty unless JiraOptions.Episodes was set.
+func (j *Jira) Episodes() []episode.Episode { return j.episodes }
+
+// jiraPersonID resolves a Jira user to the identifier the index keys them by:
+// their email when the site exposes it, otherwise their account id.
+func jiraPersonID(u jira.User) string {
+	if u.EmailAddress != "" {
+		return util.NormalizeEmail(u.EmailAddress)
+	}
+	if u.AccountID == "" {
+		return ""
+	}
+	return "jira:" + u.AccountID
+}
+
+// issueEpisode records a resolved issue: what was wrong, who settled it, and
+// a link to the ticket. Open issues are skipped, since they say what is
+// wanted rather than how anything was done.
+func issueEpisode(baseURL string, is jira.Issue) (episode.Episode, bool) {
+	if !is.Resolved() {
+		return episode.Episode{}, false
+	}
+	var participants []model.ID
+	seen := make(map[model.ID]bool)
+	for _, u := range []*jira.User{is.Fields.Assignee, is.Fields.Reporter} {
+		if u == nil {
+			continue
+		}
+		id := model.ID(jiraPersonID(*u))
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		participants = append(participants, id)
+	}
+	if len(participants) == 0 {
+		return episode.Episode{}, false
+	}
+	when := jiraTime(is.Fields.ResolutionDate)
+	if when.IsZero() {
+		when = jiraTime(is.Fields.Updated)
+	}
+	return episode.Episode{
+		ID:           "jira:" + is.Key,
+		Source:       "jira",
+		Kind:         episode.KindIssue,
+		Place:        is.Fields.Project.Key,
+		Title:        is.Key + " " + is.Fields.Summary,
+		Participants: participants,
+		Occurred:     when,
+		Permalink:    strings.TrimSuffix(baseURL, "/") + "/browse/" + is.Key,
+		Body:         is.Fields.Summary + " " + strings.Join(issueTopics(is), " "),
+	}, true
+}

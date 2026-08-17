@@ -71,6 +71,8 @@ type Engine struct {
 	limit int
 	// botUserID is the bot's own user id, stripped from inbound text.
 	botUserID string
+	// recall answers what the asker worked through before; nil disables it.
+	recall RecallFunc
 	// now returns the current time; tests pin it.
 	now func() time.Time
 	// mu guards windows.
@@ -140,6 +142,9 @@ func (e *Engine) Answer(ctx context.Context, user, text string) (string, error) 
 // rate-limited user gets one warning per window, and a resolve error gets a
 // generic apology while the error itself is returned for the transport log.
 func (e *Engine) Handle(ctx context.Context, ev Event, r Replier) error {
+	if query, ok := parseRecall(e.strip(ev.Text)); ok {
+		return e.HandleRecall(ctx, ev, r, query)
+	}
 	text, err := e.Answer(ctx, ev.User, ev.Text)
 	if text == "" {
 		return err
@@ -188,15 +193,21 @@ func (e *Engine) pruneWindows(now time.Time) {
 	}
 }
 
+// strip removes the bot's own mention from inbound text, so a message that
+// addresses the bot reads the same as one that does not.
+func (e *Engine) strip(text string) string {
+	if e.botUserID == "" {
+		return text
+	}
+	return strings.TrimSpace(strings.ReplaceAll(text, "<@"+e.botUserID+">", " "))
+}
+
 // parse strips the bot mention and a mode hint, returning the cleaned query and
 // the chosen mode. A trailing or inline "--llm"/"--keyword" (or "mode:llm")
 // selects the mode; otherwise the default applies.
 func (e *Engine) parse(text string) (query, mode string) {
 	mode = e.defaultMode
-	if e.botUserID != "" {
-		text = strings.ReplaceAll(text, "<@"+e.botUserID+">", " ")
-	}
-	fields := strings.Fields(text)
+	fields := strings.Fields(e.strip(text))
 	kept := fields[:0]
 	for _, f := range fields {
 		switch strings.ToLower(f) {

@@ -104,6 +104,10 @@ type account struct {
 
 // PullRequest is the subset of a pull request whodar reads.
 type PullRequest struct {
+	// Number is the pull request number.
+	Number int `json:"number"`
+	// HTMLURL links to the pull request on GitHub.
+	HTMLURL string `json:"html_url"`
 	// Title is the pull request title.
 	Title string `json:"title"`
 	// User is the author.
@@ -116,6 +120,27 @@ type PullRequest struct {
 	Assignees []account `json:"assignees"`
 	// UpdatedAt is when the pull request last changed.
 	UpdatedAt time.Time `json:"updated_at"`
+	// MergedAt is when the pull request was merged; zero when it was not.
+	MergedAt time.Time `json:"merged_at"`
+}
+
+// Merged reports whether the pull request landed, which is what makes it a
+// record of how something was actually changed.
+func (p PullRequest) Merged() bool { return !p.MergedAt.IsZero() }
+
+// People returns everyone who took part: the author first, then reviewers and
+// assignees, without repeats.
+func (p PullRequest) People() []string {
+	out := []string{p.User.Login}
+	seen := map[string]bool{p.User.Login: true}
+	for _, a := range append(append([]account{}, p.RequestedReviewers...), p.Assignees...) {
+		if a.Login == "" || seen[a.Login] {
+			continue
+		}
+		seen[a.Login] = true
+		out = append(out, a.Login)
+	}
+	return out
 }
 
 // Author returns the pull request author's login.

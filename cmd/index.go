@@ -14,7 +14,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/license"
+	"github.com/kordloom/whodar/internal/llm"
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/util"
 )
@@ -51,6 +54,10 @@ func newIndexCmd(opts *options) *cobra.Command {
 		includePrivate   bool
 		sinceDays        int
 		maxMessages      int
+		episodes         bool
+		maxEpisodes      int
+		archive          bool
+		maxArchive       int
 		changesFile      string
 		embed            bool
 		embedModel       string
@@ -97,8 +104,14 @@ Start with the org chart, then merge everything else onto it:
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var (
 				recs []connector.Record
+				eps  []episode.Episode
 				err  error
 			)
+			if archive {
+				if err := guardArchive(cmd, opts); err != nil {
+					return err
+				}
+			}
 			switch source {
 			case "org-csv":
 				if file == "" {
@@ -108,20 +121,26 @@ Start with the org chart, then merge everything else onto it:
 				oc.Log = cmd.ErrOrStderr()
 				recs, err = oc.Fetch(cmd.Context())
 			case "slack":
-				recs, err = fetchSlack(cmd, opts, slackArgs{includePrivate, sinceDays, maxMessages})
+				recs, eps, err = fetchSlack(cmd, opts, slackArgs{
+					includePrivate: includePrivate, sinceDays: sinceDays, maxMessages: maxMessages,
+					episodes: episodes || archive, maxEpisodes: maxEpisodes,
+					archive: archive, maxArchive: maxArchive,
+				})
 			case "codeowners":
 				if file == "" {
 					return fmt.Errorf("%w: --file (CODEOWNERS path or repo root) required for codeowners", ErrBadArgs)
 				}
 				recs, err = connector.NewCodeOwners(file).Fetch(cmd.Context())
 			case "github":
-				recs, err = fetchGitHub(cmd, githubArgs{repos, githubOrg, maxRepos, githubEmails})
+				recs, eps, err = fetchGitHub(cmd,
+					githubArgs{repos, githubOrg, maxRepos, githubEmails, episodes || archive})
 			case "jira":
-				recs, err = fetchJira(cmd, jiraArgs{jiraURL, jiraProjects, jiraJQL, maxIssues})
+				recs, eps, err = fetchJira(cmd,
+					jiraArgs{jiraURL, jiraProjects, jiraJQL, maxIssues, episodes || archive})
 			case "confluence":
 				recs, err = fetchConfluence(cmd, confluenceArgs{confluenceSpaces, confluenceCQL, maxPages})
 			case "pagerduty":
-				recs, err = fetchPagerDuty(cmd)
+				recs, eps, err = fetchPagerDuty(cmd, episodes || archive)
 			case "git":
 				if len(repoPaths) == 0 {
 					return fmt.Errorf("%w: --repo-path is required for git", ErrBadArgs)
@@ -142,6 +161,7 @@ Start with the org chart, then merge everything else onto it:
 			return indexRecords(cmd, opts, recs, indexParams{
 				merge: merge, halfLifeDays: halfLifeDays, aliasesFile: aliasesFile,
 				embed: embed, embedModel: embedModel, ollamaURL: ollamaURL, changesFile: changesFile,
+				episodes: eps,
 			})
 		},
 	}
@@ -151,6 +171,12 @@ Start with the org chart, then merge everything else onto it:
 	f.BoolVar(&includePrivate, "include-private", false, "Ingest private Slack channels if policy allows.")
 	f.IntVar(&sinceDays, "since-days", 180, "Slack history window in days.")
 	f.IntVar(&maxMessages, "max-messages", 5000, "Slack message cap per channel.")
+	f.BoolVar(&episodes, "episodes", false,
+		"Record past conversations so whodar recall can point back at them.")
+	f.IntVar(&maxEpisodes, "max-episodes-per-channel", 200, "Episode cap per channel.")
+	f.BoolVar(&archive, "archive", false,
+		"Slack only: keep the words of each conversation, not just a link. Needs a Memory license, implies --episodes.")
+	f.IntVar(&maxArchive, "max-archive-messages", 50, "Retained message cap per conversation.")
 	f.StringVar(&changesFile, "changes-file", "", "Write the index diff as JSON to this path.")
 	f.BoolVar(&merge, "merge", false, "Merge into the existing index instead of replacing it.")
 	f.StringVar(&aliasesFile, "aliases", "",
@@ -195,6 +221,9 @@ type indexParams struct {
 	ollamaURL string
 	// changesFile writes the index diff as JSON to this path when set.
 	changesFile string
+	// episodes are the conversations a source observed, stored beside the
+	// index so recall can point back at them.
+	episodes []episode.Episode
 }
 
 // indexRecords folds recs into the on-disk index and reports what changed. It
@@ -251,6 +280,9 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 	if err := opts.saveIndex(ix); err != nil {
 		return err
 	}
+	if err := saveEpisodes(cmd, opts, ix, p); err != nil {
+		return err
+	}
 
 	out := cmd.ErrOrStderr()
 	fmt.Fprintf(out,
@@ -266,6 +298,71 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 	return nil
 }
 
+// guardArchive refuses to retain conversation content unless the organization
+// is licensed for it and its own policy allows it. Both checks are local: the
+// license is verified against a compiled-in key, and the policy is a file the
+// organization controls.
+func guardArchive(cmd *cobra.Command, opts *options) error {
+	if !opts.pol.AllowArchive() {
+		return fmt.Errorf("%w: keeping conversation content is disabled by policy", ErrBadArgs)
+	}
+	state := license.Resolve(opts.dataDir, time.Now())
+	if !state.Has(license.Memory) {
+		return fmt.Errorf(
+			"%w: keeping the words of a conversation needs a Memory license "+
+				"($5,000 a year, flat per organization). %s Ask at hello@whodar.dev",
+			ErrBadArgs, state.Reason())
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "archive: %s\n", state.Reason())
+	return nil
+}
+
+// saveEpisodes merges newly observed conversations into the episode store.
+// Episodes always merge, even when the index itself is rebuilt: a source stops
+// serving old messages long before they stop being worth remembering, so
+// dropping them would throw away history whodar may be the last to hold.
+func saveEpisodes(cmd *cobra.Command, opts *options, ix *index.Index, p indexParams) error {
+	eps := p.episodes
+	if len(eps) == 0 {
+		return nil
+	}
+	// Participants arrive as each source names them. Resolving them against
+	// the graph is what makes one person's work findable across every tool.
+	ix.CanonicalizeEpisodes(eps)
+	store, err := opts.loadEpisodes(cmd)
+	if err != nil {
+		return err
+	}
+	// A conversation can only be embedded while its text is in hand: the store
+	// keeps terms, not messages, so an episode indexed without embeddings can
+	// never gain them later.
+	var embedder *llm.Ollama
+	if p.embed {
+		embedder = newOllama("", p.embedModel, p.ollamaURL)
+		fmt.Fprintf(cmd.ErrOrStderr(), "embedding %d conversations via Ollama...\n", len(eps))
+	}
+	before := store.Len()
+	for _, ep := range eps {
+		body := strings.TrimSpace(ep.Body + " " + ep.Text())
+		store.Add(ep)
+		if embedder == nil || body == "" {
+			continue
+		}
+		vec, err := embedder.Embed(cmd.Context(), body)
+		if err != nil {
+			return fmt.Errorf("embed conversation: %w", err)
+		}
+		store.SetVector(ep.ID, vec)
+	}
+	if err := opts.saveEpisodes(store); err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(),
+		"recorded %d conversations (%d new) into %s\n",
+		len(eps), store.Len()-before, opts.episodePath())
+	return nil
+}
+
 // slackArgs holds the Slack-specific index flags.
 type slackArgs struct {
 	// includePrivate requests private-channel ingest.
@@ -274,24 +371,42 @@ type slackArgs struct {
 	sinceDays int
 	// maxMessages caps messages per channel.
 	maxMessages int
+	// episodes records the conversations behind the messages.
+	episodes bool
+	// maxEpisodes caps episodes kept per channel.
+	maxEpisodes int
+	// archive retains the content of each conversation.
+	archive bool
+	// maxArchive caps retained messages per conversation.
+	maxArchive int
 }
 
 // fetchSlack builds Slack records, enforcing the private-channel policy guard.
-func fetchSlack(cmd *cobra.Command, opts *options, a slackArgs) ([]connector.Record, error) {
+func fetchSlack(
+	cmd *cobra.Command, opts *options, a slackArgs,
+) ([]connector.Record, []episode.Episode, error) {
 	token := os.Getenv(slackTokenEnv)
 	if token == "" {
-		return nil, fmt.Errorf("%w: set %s", ErrBadArgs, slackTokenEnv)
+		return nil, nil, fmt.Errorf("%w: set %s", ErrBadArgs, slackTokenEnv)
 	}
 	if a.includePrivate && !opts.pol.AllowPrivateChannels() {
-		return nil, fmt.Errorf("%w: private-channel ingest is disabled by policy", ErrBadArgs)
+		return nil, nil, fmt.Errorf("%w: private-channel ingest is disabled by policy", ErrBadArgs)
 	}
 	src := connector.NewSlack(token, connector.SlackOptions{
-		IncludePrivate: a.includePrivate,
-		SinceDays:      a.sinceDays,
-		MaxMessages:    a.maxMessages,
-		Log:            cmd.ErrOrStderr(),
+		IncludePrivate:        a.includePrivate,
+		SinceDays:             a.sinceDays,
+		MaxMessages:           a.maxMessages,
+		Episodes:              a.episodes,
+		MaxEpisodesPerChannel: a.maxEpisodes,
+		Archive:               a.archive,
+		MaxArchiveMessages:    a.maxArchive,
+		Log:                   cmd.ErrOrStderr(),
 	})
-	return src.Fetch(cmd.Context())
+	recs, err := src.Fetch(cmd.Context())
+	if err != nil {
+		return nil, nil, err
+	}
+	return recs, src.Episodes(), nil
 }
 
 // githubArgs holds the GitHub-specific index flags.
@@ -304,21 +419,28 @@ type githubArgs struct {
 	maxRepos int
 	// emails resolves user emails to join other sources.
 	emails bool
+	// episodes records merged changes.
+	episodes bool
 }
 
 // fetchGitHub builds GitHub records from the configured repositories or org.
-func fetchGitHub(cmd *cobra.Command, a githubArgs) ([]connector.Record, error) {
+func fetchGitHub(cmd *cobra.Command, a githubArgs) ([]connector.Record, []episode.Episode, error) {
 	token := os.Getenv(githubTokenEnv)
 	if token == "" {
-		return nil, fmt.Errorf("%w: set %s", ErrBadArgs, githubTokenEnv)
+		return nil, nil, fmt.Errorf("%w: set %s", ErrBadArgs, githubTokenEnv)
 	}
 	if len(a.repos) == 0 && a.org == "" {
-		return nil, fmt.Errorf("%w: --repo or --github-org required for github", ErrBadArgs)
+		return nil, nil, fmt.Errorf("%w: --repo or --github-org required for github", ErrBadArgs)
 	}
 	src := connector.NewGitHub(token, connector.GitHubOptions{
-		Repos: a.repos, Org: a.org, MaxRepos: a.maxRepos, ResolveEmails: a.emails, Log: cmd.ErrOrStderr(),
+		Repos: a.repos, Org: a.org, MaxRepos: a.maxRepos, ResolveEmails: a.emails,
+		Episodes: a.episodes, Log: cmd.ErrOrStderr(),
 	})
-	return src.Fetch(cmd.Context())
+	recs, err := src.Fetch(cmd.Context())
+	if err != nil {
+		return nil, nil, err
+	}
+	return recs, src.Episodes(), nil
 }
 
 // jiraArgs holds the Jira-specific index flags.
@@ -331,11 +453,13 @@ type jiraArgs struct {
 	jql string
 	// maxIssues caps issues read.
 	maxIssues int
+	// episodes records resolved issues.
+	episodes bool
 }
 
 // fetchJira builds Jira records, reading the URL and credentials from flags and
 // the environment.
-func fetchJira(cmd *cobra.Command, a jiraArgs) ([]connector.Record, error) {
+func fetchJira(cmd *cobra.Command, a jiraArgs) ([]connector.Record, []episode.Episode, error) {
 	site := a.url
 	if site == "" {
 		site = os.Getenv(jiraURLEnv)
@@ -343,13 +467,18 @@ func fetchJira(cmd *cobra.Command, a jiraArgs) ([]connector.Record, error) {
 	email := os.Getenv(jiraEmailEnv)
 	token := os.Getenv(jiraTokenEnv)
 	if site == "" || email == "" || token == "" {
-		return nil, fmt.Errorf("%w: set --jira-url (or %s), %s, and %s",
+		return nil, nil, fmt.Errorf("%w: set --jira-url (or %s), %s, and %s",
 			ErrBadArgs, jiraURLEnv, jiraEmailEnv, jiraTokenEnv)
 	}
 	src := connector.NewJira(site, email, token, connector.JiraOptions{
-		Projects: a.projects, JQL: a.jql, MaxIssues: a.maxIssues, Log: cmd.ErrOrStderr(),
+		Projects: a.projects, JQL: a.jql, MaxIssues: a.maxIssues,
+		Episodes: a.episodes, Log: cmd.ErrOrStderr(),
 	})
-	return src.Fetch(cmd.Context())
+	recs, err := src.Fetch(cmd.Context())
+	if err != nil {
+		return nil, nil, err
+	}
+	return recs, src.Episodes(), nil
 }
 
 // confluenceArgs holds the Confluence-specific index flags.
@@ -378,13 +507,19 @@ func fetchConfluence(cmd *cobra.Command, a confluenceArgs) ([]connector.Record, 
 }
 
 // fetchPagerDuty builds PagerDuty records from services and on-call data.
-func fetchPagerDuty(cmd *cobra.Command) ([]connector.Record, error) {
+func fetchPagerDuty(cmd *cobra.Command, episodes bool) ([]connector.Record, []episode.Episode, error) {
 	token := os.Getenv(pagerdutyTokenEnv)
 	if token == "" {
-		return nil, fmt.Errorf("%w: set %s", ErrBadArgs, pagerdutyTokenEnv)
+		return nil, nil, fmt.Errorf("%w: set %s", ErrBadArgs, pagerdutyTokenEnv)
 	}
-	src := connector.NewPagerDuty(token, connector.PagerDutyOptions{Log: cmd.ErrOrStderr()})
-	return src.Fetch(cmd.Context())
+	src := connector.NewPagerDuty(token, connector.PagerDutyOptions{
+		Episodes: episodes, Log: cmd.ErrOrStderr(),
+	})
+	recs, err := src.Fetch(cmd.Context())
+	if err != nil {
+		return nil, nil, err
+	}
+	return recs, src.Episodes(), nil
 }
 
 // reportChanges prints a one-line summary and capped lists of who and what
