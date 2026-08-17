@@ -20,9 +20,20 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-// magic prefixes every encrypted file. Plain JSON starts with '{', so the two
-// are never confused. The trailing character is the format version.
-const magic = "WHODARv1"
+// Format versions. The prefix marks an encrypted file, and its trailing
+// character is the version. Plain JSON starts with '{', so the two are never
+// confused. Every version is the same length, which is what lets a caller peek
+// a fixed number of bytes to tell an encrypted file from a plain one.
+const (
+	// magicV1 is the original format. Its passphrase keys were derived with
+	// weaker Argon2id parameters, so it is still read but never written.
+	magicV1 = "WHODARv1"
+	// magicV2 derives passphrase keys with the parameters argonTime names. It
+	// is what every write produces.
+	magicV2 = "WHODARv2"
+	// magic is the version new files are written in.
+	magic = magicV2
+)
 
 // MagicLen is the number of leading bytes IsEncrypted inspects, so a caller can
 // peek a file's prefix instead of reading it whole.
@@ -42,13 +53,29 @@ const (
 	saltLen = 16
 )
 
-// Argon2id derivation parameters for passphrase mode. They are fixed and bound
-// into the version, so changing them requires a new magic version.
+// Argon2id derivation parameters for passphrase mode. They are bound into the
+// format version, so a change here needs a new version that keeps reading the
+// old one. These are RFC 9106's second recommended profile: 64 MiB of memory
+// with three passes. The first version used a single pass, which is the memory
+// of this profile with the time cost of the other, and weaker than either.
 const (
-	argonTime    = 1
+	argonTime    = 3
 	argonMemory  = 64 * 1024
 	argonThreads = 4
 )
+
+// argonTimeV1 is the single pass the original format used. Files written then
+// still open with it.
+const argonTimeV1 = 1
+
+// argonTimeFor returns the pass count a file of the given version was sealed
+// with.
+func argonTimeFor(version string) uint32 {
+	if version == magicV1 {
+		return argonTimeV1
+	}
+	return argonTime
+}
 
 // Codec transforms file contents at rest.
 type Codec interface {
@@ -59,8 +86,19 @@ type Codec interface {
 	Decode(stored []byte) ([]byte, error)
 }
 
-// IsEncrypted reports whether data carries the vault magic prefix.
-func IsEncrypted(data []byte) bool { return bytes.HasPrefix(data, []byte(magic)) }
+// IsEncrypted reports whether data carries a vault magic prefix of any version.
+func IsEncrypted(data []byte) bool { return versionOf(data) != "" }
+
+// versionOf returns the format version prefixing data, or empty when data is
+// not an encrypted file.
+func versionOf(data []byte) string {
+	for _, v := range []string{magicV2, magicV1} {
+		if bytes.HasPrefix(data, []byte(v)) {
+			return v
+		}
+	}
+	return ""
+}
 
 // Plain is the identity codec: it writes and reads bytes unchanged. Decoding
 // encrypted data returns ErrEncrypted so a caller can prompt for a key.
@@ -119,10 +157,11 @@ func (c *Cipher) Encode(plaintext []byte) ([]byte, error) {
 // write. A key that cannot read the file's mode returns ErrKeyMode; a wrong key
 // or tampered data returns ErrCorrupt.
 func (c *Cipher) Decode(stored []byte) ([]byte, error) {
-	if !IsEncrypted(stored) {
+	version := versionOf(stored)
+	if version == "" {
 		return stored, nil
 	}
-	buf := stored[len(magic):]
+	buf := stored[len(version):]
 	if len(buf) < 1 {
 		return nil, ErrCorrupt
 	}
@@ -145,7 +184,10 @@ func (c *Cipher) Decode(stored []byte) ([]byte, error) {
 		}
 		salt = buf[:saltLen]
 		buf = buf[saltLen:]
-		key = argon2.IDKey(c.passphrase, salt, argonTime, argonMemory, argonThreads, keyLen)
+		// The pass count is whatever the file was sealed with, so a file
+		// written by an older version still opens.
+		key = argon2.IDKey(
+			c.passphrase, salt, argonTimeFor(version), argonMemory, argonThreads, keyLen)
 	default:
 		return nil, ErrCorrupt
 	}
@@ -159,15 +201,16 @@ func (c *Cipher) Decode(stored []byte) ([]byte, error) {
 	}
 	nonce := buf[:gcm.NonceSize()]
 	ciphertext := buf[gcm.NonceSize():]
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, header(mode, salt))
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, header(version, mode, salt))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrCorrupt, err)
 	}
 	return plaintext, nil
 }
 
-// seal builds an encrypted file: the header, a fresh nonce, and the ciphertext.
-// The header is authenticated as additional data.
+// seal builds an encrypted file in the current format: the header, a fresh
+// nonce, and the ciphertext. The header is authenticated as additional data,
+// so the version, the key mode, and the salt cannot be altered.
 func seal(key []byte, mode byte, salt, plaintext []byte) ([]byte, error) {
 	gcm, err := newGCM(key)
 	if err != nil {
@@ -177,16 +220,17 @@ func seal(key []byte, mode byte, salt, plaintext []byte) ([]byte, error) {
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, fmt.Errorf("vault: nonce: %w", err)
 	}
-	head := header(mode, salt)
+	head := header(magic, mode, salt)
 	out := append([]byte(nil), head...)
 	out = append(out, nonce...)
 	return gcm.Seal(out, nonce, plaintext, head), nil
 }
 
-// header returns the authenticated prefix: magic, key mode, and any salt.
-func header(mode byte, salt []byte) []byte {
-	out := make([]byte, 0, len(magic)+1+len(salt))
-	out = append(out, magic...)
+// header returns the authenticated prefix: the format version, the key mode,
+// and any salt.
+func header(version string, mode byte, salt []byte) []byte {
+	out := make([]byte, 0, len(version)+1+len(salt))
+	out = append(out, version...)
 	out = append(out, mode)
 	out = append(out, salt...)
 	return out

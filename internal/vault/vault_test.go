@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"testing"
+
+	"golang.org/x/crypto/argon2"
 )
 
 // TestKeyRoundTrip verifies a key-mode seal decrypts to the original and hides
@@ -132,5 +134,74 @@ func TestCipherReadsPlaintext(t *testing.T) {
 	}
 	if !bytes.Equal(got, plaintext) {
 		t.Fatalf("got %q, want %q", got, plaintext)
+	}
+}
+
+// sealV1 builds a file exactly as the original format did, so the current code
+// can be checked against something it did not write.
+func sealV1(t *testing.T, passphrase, plaintext []byte) []byte {
+	t.Helper()
+	salt := make([]byte, saltLen)
+	for i := range salt {
+		salt[i] = byte(i)
+	}
+	key := argon2.IDKey(passphrase, salt, argonTimeV1, argonMemory, argonThreads, keyLen)
+	gcm, err := newGCM(key)
+	if err != nil {
+		t.Fatalf("newGCM: %v", err)
+	}
+	head := header(magicV1, modePass, salt)
+	nonce := make([]byte, gcm.NonceSize())
+	out := append([]byte(nil), head...)
+	out = append(out, nonce...)
+	return gcm.Seal(out, nonce, plaintext, head)
+}
+
+// TestReadsOlderFormat verifies a file sealed by the original format still
+// opens. The passphrase parameters were strengthened, which changes the key a
+// passphrase derives, so an index encrypted before the change would be
+// unreadable if the version were not honored on the way in.
+func TestReadsOlderFormat(t *testing.T) {
+	t.Parallel()
+	pass := []byte("correct horse battery staple")
+	want := []byte(`{"graph":{"people":{}}}`)
+	old := sealV1(t, pass, want)
+
+	if !IsEncrypted(old) {
+		t.Fatal("a file in the older format is not recognized as encrypted")
+	}
+	got, err := NewPassphraseCipher(pass).Decode(old)
+	if err != nil {
+		t.Fatalf("older format did not open: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("decoded %q, want %q", got, want)
+	}
+}
+
+// TestWritesCurrentFormat verifies new files carry the current version, so the
+// stronger parameters actually take effect rather than being defined and
+// ignored.
+func TestWritesCurrentFormat(t *testing.T) {
+	t.Parallel()
+	sealed, err := NewPassphraseCipher([]byte("pass")).Encode([]byte("plaintext"))
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	if got := versionOf(sealed); got != magicV2 {
+		t.Errorf("new file version = %q, want %q", got, magicV2)
+	}
+	if argonTime <= argonTimeV1 {
+		t.Errorf("argonTime = %d, want more passes than the original %d", argonTime, argonTimeV1)
+	}
+}
+
+// TestOlderFormatRejectsWrongPassphrase verifies the older path still fails
+// closed rather than returning something on a bad passphrase.
+func TestOlderFormatRejectsWrongPassphrase(t *testing.T) {
+	t.Parallel()
+	old := sealV1(t, []byte("right"), []byte("secret"))
+	if _, err := NewPassphraseCipher([]byte("wrong")).Decode(old); err == nil {
+		t.Fatal("a wrong passphrase opened a file in the older format")
 	}
 }
