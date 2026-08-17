@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
 
 // NormalizeEmail returns email trimmed of surrounding whitespace and
@@ -14,6 +15,24 @@ import (
 // or spacing never splits one human across records from different sources.
 func NormalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// Truncate returns s cut to at most max bytes without splitting a UTF-8 rune.
+// Source text such as a pull request description or an issue body is indexed
+// for the words it carries, so a pasted log dump is cut rather than allowed to
+// drown the text that explains something.
+func Truncate(s string, max int) string {
+	if max <= 0 || len(s) <= max {
+		if max <= 0 {
+			return ""
+		}
+		return s
+	}
+	cut := max
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
 }
 
 // WriteFileAtomic writes data to path through a same-directory temporary file

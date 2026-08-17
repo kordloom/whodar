@@ -7,7 +7,14 @@ import (
 	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/github"
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/util"
 )
+
+// maxChangeBody caps the pull request description taken into the searchable
+// text. Descriptions carry the reason for a change, but they also carry
+// templates and generated checklists, so they are cut rather than indexed
+// whole.
+const maxChangeBody = 8000
 
 // Episodes returns the merged changes seen by the most recent Fetch, newest
 // first. It is empty unless GitHubOptions.Episodes was set.
@@ -41,6 +48,7 @@ func changeEpisode(owner, repo string, pr github.PullRequest) (episode.Episode, 
 		Participants: participants,
 		Occurred:     pr.MergedAt,
 		Permalink:    pr.HTMLURL,
-		Body:         pr.Title + " " + strings.Join(pr.LabelNames(), " "),
+		Body: strings.TrimSpace(pr.Title + " " + strings.Join(pr.LabelNames(), " ") +
+			" " + util.Truncate(pr.Body, maxChangeBody)),
 	}, true
 }

@@ -110,6 +110,10 @@ type PullRequest struct {
 	HTMLURL string `json:"html_url"`
 	// Title is the pull request title.
 	Title string `json:"title"`
+	// Body is the pull request description, which is where the reason for a
+	// change is usually written. The list endpoint returns it, so reading it
+	// costs no extra request.
+	Body string `json:"body"`
 	// User is the author.
 	User account `json:"user"`
 	// Labels are the applied labels.

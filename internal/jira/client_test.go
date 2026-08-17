@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -97,4 +99,64 @@ func TestNewEmptyPanics(t *testing.T) {
 		}
 	}()
 	New("", "e", "t")
+}
+
+// TestSearchRequestsEveryFieldItDecodes guards the bug class that made whodar
+// produce no Jira episodes at all: Jira returns only the fields the query
+// names, so a field the Issue struct decodes but the query omits is silently
+// always empty, and nothing in a mock-backed test reveals it. Reflection keeps
+// the query honest as fields are added.
+func TestSearchRequestsEveryFieldItDecodes(t *testing.T) {
+	t.Parallel()
+	asked := make(map[string]bool)
+	for _, name := range strings.Split(searchFields, ",") {
+		asked[strings.TrimSpace(name)] = true
+	}
+	fields := reflect.TypeOf(Issue{}.Fields)
+	for i := range fields.NumField() {
+		name, _, _ := strings.Cut(fields.Field(i).Tag.Get("json"), ",")
+		if name == "" || name == "-" {
+			continue
+		}
+		if !asked[name] {
+			t.Errorf("Issue decodes %q but Search does not request it, so it is always empty", name)
+		}
+	}
+}
+
+// TestSearchResolvedFieldsRoundTrip verifies an issue that a real Jira reports
+// as resolved decodes as resolved, through both the resolution date and the
+// status category a custom workflow uses.
+func TestSearchResolvedFieldsRoundTrip(t *testing.T) {
+	t.Parallel()
+	var gotFields string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotFields = r.URL.Query().Get("fields")
+		io.WriteString(w, `{"total":3,"startAt":0,"issues":[`+
+			`{"key":"OPS-1","fields":{"summary":"Retries storm",`+
+			`"resolutiondate":"2026-06-20T09:30:00.000-0500",`+
+			`"status":{"name":"Done","statusCategory":{"key":"done"}}}},`+
+			`{"key":"OPS-2","fields":{"summary":"Shipped",`+
+			`"status":{"name":"Released","statusCategory":{"key":"done"}}}},`+
+			`{"key":"OPS-3","fields":{"summary":"Still open",`+
+			`"status":{"name":"In Progress","statusCategory":{"key":"indeterminate"}}}}]}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	issues, err := New(srv.URL, "me@x.com", "token").Search(context.Background(), "", 0)
+	if err != nil || len(issues) != 3 {
+		t.Fatalf("Search = %d issues, err %v", len(issues), err)
+	}
+	if !strings.Contains(gotFields, "resolutiondate") || !strings.Contains(gotFields, "status") {
+		t.Fatalf("fields param = %q, missing what Resolved reads", gotFields)
+	}
+	if !issues[0].Resolved() {
+		t.Error("issue with a resolution date did not report resolved")
+	}
+	if !issues[1].Resolved() {
+		t.Error("issue in a done status category did not report resolved")
+	}
+	if issues[2].Resolved() {
+		t.Error("in-progress issue reported resolved")
+	}
 }

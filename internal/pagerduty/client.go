@@ -237,9 +237,7 @@ func (c *Client) Incidents(ctx context.Context, since time.Time, max int) ([]Inc
 			"sort_by":    {"created_at:desc"},
 			"include[]":  {"assignees"},
 			"time_zone":  {"UTC"},
-			"date_range": {""},
 		}
-		params.Del("date_range")
 		if !since.IsZero() {
 			params.Set("since", since.UTC().Format(time.RFC3339))
 			params.Set("until", time.Now().UTC().Format(time.RFC3339))

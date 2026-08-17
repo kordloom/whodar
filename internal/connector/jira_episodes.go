@@ -61,6 +61,7 @@ func issueEpisode(baseURL string, is jira.Issue) (episode.Episode, bool) {
 		Participants: participants,
 		Occurred:     when,
 		Permalink:    strings.TrimSuffix(baseURL, "/") + "/browse/" + is.Key,
-		Body:         is.Fields.Summary + " " + strings.Join(issueTopics(is), " "),
+		Body: strings.TrimSpace(is.Fields.Summary + " " +
+			strings.Join(issueTopics(is), " ") + " " + is.Description()),
 	}, true
 }

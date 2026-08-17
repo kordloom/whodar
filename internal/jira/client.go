@@ -90,6 +90,10 @@ type Issue struct {
 	Fields struct {
 		// Summary is the issue title.
 		Summary string `json:"summary"`
+		// Description is the issue description as Jira sends it, which on Cloud
+		// is a rich-text node tree rather than a string. Use Description to read
+		// it as words.
+		Description json.RawMessage `json:"description"`
 		// Assignee is the assigned user, if any.
 		Assignee *User `json:"assignee"`
 		// Reporter is the reporting user, if any.
@@ -135,6 +139,11 @@ func (i Issue) Resolved() bool {
 	return i.Fields.ResolutionDate != "" || i.Fields.Status.Category.Key == "done"
 }
 
+// Description returns the issue description as plain words, empty when the
+// issue has none. It is what an issue says beyond its title, and is the text
+// worth searching when someone asks how something was settled.
+func (i Issue) Description() string { return adfText(i.Fields.Description) }
+
 // BaseURL returns the site root, so a caller can build a link to an issue.
 func (c *Client) BaseURL() string { return c.baseURL }
 
@@ -147,6 +156,13 @@ type searchResponse struct {
 	// Total is the total matching count.
 	Total int `json:"total"`
 }
+
+// searchFields are the issue fields Search asks for. Jira returns only the
+// fields named here, so every field any caller reads must appear: omitting
+// resolutiondate or status silently makes Resolved report false for every
+// issue, and no issue ever becomes an episode.
+const searchFields = "summary,assignee,reporter,components,labels,project," +
+	"issuetype,updated,resolutiondate,status,description"
 
 // Search returns up to max issues matching jql, paginating in pages of 100. A
 // non-positive max returns all matches.
@@ -164,7 +180,7 @@ func (c *Client) Search(ctx context.Context, jql string, max int) ([]Issue, erro
 			"jql":        {jql},
 			"startAt":    {strconv.Itoa(startAt)},
 			"maxResults": {strconv.Itoa(page)},
-			"fields":     {"summary,assignee,reporter,components,labels,project,issuetype,updated"},
+			"fields":     {searchFields},
 		}
 		var resp searchResponse
 		if err := c.get(ctx, searchPath, params, &resp); err != nil {

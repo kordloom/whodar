@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/google/go-cmp/cmp"
 )
@@ -72,6 +73,45 @@ func TestWriteFileAtomic(t *testing.T) {
 			}
 			if len(entries) != 1 {
 				t.Errorf("directory holds %d entries, want only the target: %v", len(entries), entries)
+			}
+		})
+	}
+}
+
+// TestTruncate verifies the cut respects the byte cap and never splits a rune,
+// since indexed source text arrives in every language.
+func TestTruncate(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		In   string
+		Max  int
+		Want string
+	}{{ // Test 0: Shorter than the cap.
+		In: "billing", Max: 20, Want: "billing",
+	}, { // Test 1: Exactly the cap.
+		In: "billing", Max: 7, Want: "billing",
+	}, { // Test 2: Cut on an ASCII boundary.
+		In: "billing retries", Max: 7, Want: "billing",
+	}, { // Test 3: A cut that would split a multi-byte rune drops it whole.
+		In: "café", Max: 4, Want: "caf",
+	}, { // Test 4: Emoji are not split.
+		In: "ok 🎉", Max: 5, Want: "ok ",
+	}, { // Test 5: A zero cap yields nothing.
+		In: "billing", Max: 0, Want: "",
+	}, { // Test 6: A negative cap yields nothing.
+		In: "billing", Max: -1, Want: "",
+	}, { // Test 7: Empty input.
+		In: "", Max: 10, Want: "",
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			got := Truncate(test.In, test.Max)
+			if got != test.Want {
+				t.Errorf("Truncate(%q, %d) = %q, want %q", test.In, test.Max, got, test.Want)
+			}
+			if !utf8.ValidString(got) {
+				t.Errorf("Truncate(%q, %d) = %q, not valid UTF-8", test.In, test.Max, got)
 			}
 		})
 	}
