@@ -261,10 +261,10 @@ func rewriteHref(dest string, hrefs map[string]string) string {
 	case "readme.md":
 		return "/" + anchor
 	case "license":
-		return "https://github.com/dcadolph/whodar/blob/main/LICENSE"
+		return "https://github.com/kordloom/whodar/blob/main/LICENSE"
 	}
 	if strings.HasSuffix(base, ".md") {
-		return "https://github.com/dcadolph/whodar/blob/main/" + trimRelative(path) + anchor
+		return "https://github.com/kordloom/whodar/blob/main/" + trimRelative(path) + anchor
 	}
 	return dest
 }
@@ -275,7 +275,7 @@ func rewriteImage(dest string) string {
 	if dest == "" || hasScheme(dest) {
 		return dest
 	}
-	return "https://raw.githubusercontent.com/dcadolph/whodar/main/docs/" +
+	return "https://raw.githubusercontent.com/kordloom/whodar/main/docs/" +
 		strings.TrimPrefix(trimRelative(dest), "docs/")
 }
 

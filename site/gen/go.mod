@@ -1,4 +1,4 @@
-module github.com/dcadolph/whodar/site/gen
+module github.com/kordloom/whodar/site/gen
 
 go 1.26.4
 
