@@ -183,6 +183,10 @@ into one index with <code>--merge</code>. People join across sources by email, o
 <p>Dated sources decay: see <a href="#recency">recency</a>. Undated sources describe the
 present and keep full weight. Bot accounts (dependabot and friends) are
 skipped in the git and github sources.</p>
+<p>With <code>--episodes</code>, four of them also record the past work behind the graph, which
+is what <a href="#whodar-recall"><code>whodar recall</code></a> points back at: Slack threads and runs
+of channel conversation, merged GitHub pull requests, resolved Jira issues, and
+resolved PagerDuty incidents.</p>
 <h2 id="whodar-index">whodar index</h2>
 <p>Builds or extends the index from one source per run.</p>
 <pre><code>whodar index --source SOURCE [scope flags] [--merge]
@@ -250,6 +254,30 @@ skipped in the git and github sources.</p>
 <td></td>
 <td>org-csv, codeowners</td>
 <td>Path to the CSV or CODEOWNERS file (or repo root).</td>
+</tr>
+<tr>
+<td><code>--episodes</code></td>
+<td>off</td>
+<td>slack, github, jira, pagerduty</td>
+<td>Record past conversations so <code>recall</code> can point back at them.</td>
+</tr>
+<tr>
+<td><code>--archive</code></td>
+<td>off</td>
+<td>slack</td>
+<td>Keep the words of each conversation, not just a link. Needs a Memory license; implies <code>--episodes</code>.</td>
+</tr>
+<tr>
+<td><code>--max-episodes-per-channel</code></td>
+<td><code>200</code></td>
+<td>slack</td>
+<td>Conversation cap per channel.</td>
+</tr>
+<tr>
+<td><code>--max-archive-messages</code></td>
+<td><code>50</code></td>
+<td>slack</td>
+<td>Retained message cap per conversation.</td>
 </tr>
 <tr>
 <td><code>--include-private</code></td>
@@ -462,6 +490,101 @@ LM Studio, needs no policy opt-in, while a remote one needs <code>--policy open<
 Each result carries a <code>confidence</code>
 from zero to one: query coverage scaled by evidence strength, where an
 explicit topic is proof, a title slightly less, a passing mention half.</p>
+<h2 id="whodar-recall">whodar recall</h2>
+<p>Finds the past conversation where something was worked out, and who was in it.
+An answer is a pointer, not a transcript: the people, the place, the date, and a
+link back to the conversation in the tool it happened in. Opening the link uses
+your own access to that tool.</p>
+<pre><code>whodar recall [flags] QUESTION
+</code></pre>
+<p>Results cover only conversations you took part in, so whodar has to know who you
+are. It takes <code>--me</code>, then <code>WHODAR_ME</code>, then your git email.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--me</code></td>
+<td></td>
+<td>Who is asking: an email or a source identifier such as <code>slack:U123</code>.</td>
+</tr>
+<tr>
+<td><code>--limit</code></td>
+<td><code>5</code></td>
+<td>Maximum conversations to return.</td>
+</tr>
+<tr>
+<td><code>--meaning</code></td>
+<td>off</td>
+<td>Match by meaning instead of exact words. Needs an index built with <code>--episodes --embed</code>.</td>
+</tr>
+<tr>
+<td><code>--how</code></td>
+<td>off</td>
+<td>Show how it was worked out, for conversations whodar keeps. Needs a Memory license at index time.</td>
+</tr>
+<tr>
+<td><code>--provider</code></td>
+<td><code>ollama</code></td>
+<td>Model provider for <code>--how</code>. Cloud providers need <code>--policy open</code>, because the conversation is sent whole.</td>
+</tr>
+<tr>
+<td><code>--model</code></td>
+<td></td>
+<td>Chat model that writes the account for <code>--how</code>.</td>
+</tr>
+<tr>
+<td><code>--openai-url</code></td>
+<td></td>
+<td>OpenAI-compatible base URL.</td>
+</tr>
+<tr>
+<td><code>--embed-model</code></td>
+<td></td>
+<td>Ollama embed model for <code>--meaning</code>.</td>
+</tr>
+<tr>
+<td><code>--ollama-url</code></td>
+<td>localhost</td>
+<td>Ollama base URL.</td>
+</tr>
+<tr>
+<td><code>--link-horizon-days</code></td>
+<td><code>0</code></td>
+<td>Warn that links older than this many days may have expired. Zero makes no claim.</td>
+</tr>
+</tbody>
+</table>
+<p>Recall is also a Slack command (<code>/whodar recall ...</code> or <code>recall ...</code> in a
+mention), where it answers only to the person who asked, and an MCP tool
+(<code>whodar_recall</code>). The web app serves it on localhost only: the serve token
+gates the server, not one person's history.</p>
+<h2 id="whodar-archive">whodar archive</h2>
+<p>Reports and prunes the conversations whodar keeps.</p>
+<pre><code>whodar archive status                          # what is kept and how far back
+whodar archive prune --older-than-days 365     # forget conversations over a year old
+whodar archive prune --content-only            # keep the links, drop the words
+</code></pre>
+<p><code>prune</code> is the only command that deletes remembered conversations, and it deletes
+exactly what you name.</p>
+<h2 id="whodar-license">whodar license</h2>
+<p>Reports which features this install is licensed for.</p>
+<pre><code>whodar license status
+</code></pre>
+<p>A license is a small signed file. whodar verifies it against a key compiled into
+the binary and never contacts a server, so a licensed install works offline.
+Put it at <code>license.json</code> in the data directory, or point <code>WHODAR_LICENSE</code> at it
+(the file itself or a path to it).</p>
+<p>Without one the free tier is in force: the people graph, and recall pointing back
+at past conversations. A Memory license adds the archive, which keeps the words of
+each conversation on your own machines and can show how something was solved. An
+expired license drops to the free tier and leaves every byte already indexed on
+disk.</p>
 <h2 id="whodar-feedback">whodar feedback</h2>
 <p>Records, reviews, and clears votes on answers.</p>
 <pre><code>whodar feedback record QUESTION (--person ID | --channel NAME) (--helpful | --not-helpful) [--comment TEXT]
@@ -760,6 +883,16 @@ never logged or stored.</p>
 <td>Extra policy file; a locked <code>/etc/whodar/policy.json</code> overrides it.</td>
 </tr>
 <tr>
+<td><code>WHODAR_ME</code></td>
+<td>recall, serve</td>
+<td>Who is asking, so recall covers your own conversations.</td>
+</tr>
+<tr>
+<td><code>WHODAR_LICENSE</code></td>
+<td>index, license</td>
+<td>A license, or the path to one.</td>
+</tr>
+<tr>
 <td><code>WHODAR_INDEX_KEY</code></td>
 <td>index encryption</td>
 <td>Base64 32-byte key that enables at-rest encryption.</td>
@@ -813,7 +946,10 @@ host. The policy does not gate indexing, which talks only to the sources you
 name with your tokens when you run <code>whodar index</code>, or the bot posting answers
 back to your Slack workspace.</p>
 <p>An organization can pin the policy with a locked file. A locked
-<code>/etc/whodar/policy.json</code> always wins: <code>WHODAR_POLICY_FILE</code> and <code>--policy</code> are
+An organization can also pin <code>&quot;private_channels&quot;: &quot;deny&quot;</code> to keep private
+channels out of the index, and <code>&quot;archive&quot;: &quot;deny&quot;</code> to forbid keeping the words
+of any conversation, whatever the license says.</p>
+<p><code>/etc/whodar/policy.json</code> always wins: <code>WHODAR_POLICY_FILE</code> and <code>--policy</code> are
 then ignored. The lock constrains the installed binary for regular users; it
 is not a security boundary against an administrator. Private-channel ingest
 can be denied the same way. See <code>examples/policy.json</code>.</p>
@@ -834,6 +970,14 @@ can be denied the same way. See <code>examples/policy.json</code>.</p>
 <tr>
 <td><code>feedback.json</code></td>
 <td>Votes and the queries behind them, kept apart so they survive re-indexing. Not covered by <code>vault</code> encryption today.</td>
+</tr>
+<tr>
+<td><code>episodes.json</code></td>
+<td>Past conversations: who took part, where, when, the link back, and matched terms. Written only with <code>--episodes</code>. Holds the words themselves only with a Memory license and <code>--archive</code>. Encrypted with the same key as the index.</td>
+</tr>
+<tr>
+<td><code>license.json</code></td>
+<td>The signed license, when one is installed. Verified offline against a key in the binary.</td>
 </tr>
 </tbody>
 </table>
