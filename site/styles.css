@@ -412,3 +412,43 @@ h1 .sig { color: var(--signal); text-shadow: 0 0 28px rgba(52, 229, 197, 0.4); }
 	.reveal { opacity: 1; transform: none; transition: none; }
 	html { scroll-behavior: auto; }
 }
+
+/* Pricing: two tiers, the free one first because it is the product most people
+   will ever need. Reuses the card system and adds a price header and a list. */
+.tiers { grid-template-columns: repeat(2, 1fr); max-width: 900px; margin: 0 auto; }
+.tier { gap: 8px; }
+.tier-name { font-family: var(--disp); font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.tier-for { color: var(--muted); font-size: 15px; margin: 0; }
+.tier-price { margin: 16px 0 0; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.tier-price b { font-family: var(--disp); font-size: 38px; font-weight: 800; line-height: 1; }
+.tier-price .cadence { color: var(--muted); font-size: 14px; font-family: var(--mono); }
+.tier-sub { color: var(--muted); font-size: 13px; font-family: var(--mono); margin: 0 0 6px; }
+.tier-payoff {
+	margin: 10px 0 4px; padding: 14px 16px; border-radius: 10px; font-size: 15px; line-height: 1.6;
+	background: rgba(52, 229, 197, 0.05); border: 1px solid rgba(52, 229, 197, 0.14);
+}
+.tier-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 9px; }
+.tier-list li { position: relative; padding-left: 22px; font-size: 15px; line-height: 1.55; color: var(--muted); }
+.tier-list li::before {
+	content: ""; position: absolute; left: 4px; top: 8px; width: 6px; height: 6px;
+	border-radius: 50%; background: var(--signal);
+}
+.tier-list li b { color: var(--fg); font-weight: 600; }
+.tier .btn, .tier .ghost { margin-top: 14px; align-self: flex-start; }
+.assurance { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.assurance h3 { font-family: var(--disp); font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+.assurance p { color: var(--muted); font-size: 15px; line-height: 1.65; }
+.faq { display: grid; gap: 10px; max-width: 860px; }
+.faq details {
+	border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 16px 18px;
+}
+.faq summary { cursor: pointer; font-weight: 600; font-size: 16px; }
+.faq details[open] summary { margin-bottom: 10px; color: var(--signal); }
+.faq p { color: var(--muted); font-size: 15px; line-height: 1.7; }
+.pricing-note {
+	margin: 34px auto 0; max-width: 860px; color: var(--muted); font-size: 15px; line-height: 1.7;
+	padding: 18px 20px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel);
+}
+@media (max-width: 900px) {
+	.tiers, .assurance { grid-template-columns: 1fr; }
+}
