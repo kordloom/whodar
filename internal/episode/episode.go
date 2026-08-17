@@ -59,6 +59,10 @@ type Episode struct {
 	// Archive holds retained conversation content. It is empty unless the
 	// archive is licensed and enabled, and it is what a Memory answer quotes.
 	Archive []Note `json:"archive,omitempty"`
+	// Body is the conversation text a connector hands over so the episode can
+	// be indexed. The store tokenizes it and drops it, and it is never
+	// serialized: an episode on disk holds terms, not messages.
+	Body string `json:"-"`
 }
 
 // Note is one retained message inside an archived episode.

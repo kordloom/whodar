@@ -17,7 +17,8 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	s := newTestStore()
 	ep := testEpisode("a", 10, "me@x.com", "billy@x.com")
 	ep.Archive = []Note{{Author: "billy@x.com", At: fixedNow, Text: "bump the cert"}}
-	s.Add(ep, "certificate renewal expired")
+	ep.Body = "certificate renewal expired"
+	s.Add(ep)
 	s.SetVector("a", []float32{0.5, 0.25})
 	if err := s.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -57,7 +58,7 @@ func TestSaveLoadEncrypted(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "episodes.json")
 	codec := vault.NewPassphraseCipher([]byte("a long passphrase"))
 	s := newTestStore()
-	s.Add(testEpisode("a", 10, "me@x.com"), "certificate renewal")
+	s.Add(withBody(testEpisode("a", 10, "me@x.com"), "certificate renewal"))
 	if err := s.Save(path, WithCodec(codec)); err != nil {
 		t.Fatalf("Save: %v", err)
 	}

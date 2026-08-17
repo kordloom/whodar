@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/text"
 )
 
 // DefaultHalfLife is the age at which an episode's score halves. Recall
@@ -79,22 +79,24 @@ func (s *Store) All() []*Episode {
 // duration disables decay.
 func (s *Store) SetHalfLife(d time.Duration) { s.halfLife = d }
 
-// Add stores an episode and indexes text against it. Adding an episode that is
-// already present replaces it, so re-indexing a source is idempotent. Text is
-// tokenized and discarded; only the resulting terms are kept.
-func (s *Store) Add(ep Episode, text string) {
+// Add stores an episode and indexes its body. Adding an episode that is
+// already present replaces it, so re-indexing a source is idempotent. The body
+// is tokenized and dropped; only the resulting terms are kept.
+func (s *Store) Add(ep Episode) {
 	if ep.ID == "" {
 		return
 	}
 	if old, ok := s.episodes[ep.ID]; ok {
 		s.forget(old)
 	}
+	body := ep.Body
 	stored := ep
+	stored.Body = ""
 	s.episodes[ep.ID] = &stored
 	for _, p := range stored.Participants {
 		s.byParticipant[p] = append(s.byParticipant[p], stored.ID)
 	}
-	for _, term := range index.Terms(strings.TrimSpace(text + " " + stored.Text())) {
+	for _, term := range text.Terms(strings.TrimSpace(body+" "+stored.Text())) {
 		posting := s.postings[term]
 		if posting == nil {
 			posting = make(map[string]float64)
@@ -173,7 +175,7 @@ type Result struct {
 // repetition cannot dominate, scaled by how much of the question an episode
 // covers and by how recently it happened.
 func (s *Store) Search(q Query) []Result {
-	terms := index.Terms(q.Text)
+	terms := text.Terms(q.Text)
 	if len(terms) == 0 {
 		return nil
 	}

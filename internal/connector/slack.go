@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/slack"
 )
 
@@ -35,6 +36,12 @@ type SlackOptions struct {
 	MaxMessages int
 	// MaxChannels caps channels processed; zero means all.
 	MaxChannels int
+	// Episodes records the conversations behind the messages, so whodar can
+	// point back at the discussion that solved something.
+	Episodes bool
+	// MaxEpisodesPerChannel caps episodes kept per channel; zero uses the
+	// default.
+	MaxEpisodesPerChannel int
 	// Log receives progress lines; nil discards them.
 	Log io.Writer
 }
@@ -59,6 +66,8 @@ type Slack struct {
 	client *slack.Client
 	// opts holds the resolved ingest bounds.
 	opts SlackOptions
+	// episodes holds the conversations seen by the last Fetch.
+	episodes []episode.Episode
 }
 
 // NewSlack returns a Slack connector authenticating with token.
@@ -112,6 +121,20 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 	}
 	fmt.Fprintf(s.opts.Log, "slack: %d users, %d channels\n", len(users), len(channels))
 
+	// The workspace URL turns a channel and a timestamp into a permalink with
+	// no further calls. Losing it costs links, not episodes, so a failure here
+	// is logged rather than fatal.
+	workspaceURL := ""
+	if s.opts.Episodes {
+		s.episodes = nil
+		auth, err := s.client.AuthTest(ctx)
+		if err != nil {
+			fmt.Fprintf(s.opts.Log, "slack: no workspace url, episodes will have no links: %v\n", err)
+		} else {
+			workspaceURL = auth.URL
+		}
+	}
+
 	oldest := slackOldest(s.opts.SinceDays)
 	skipped := 0
 	for i, ch := range channels {
@@ -151,6 +174,10 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 				Kind: KindPerson, Source: "slack", Weight: 1, PersonID: pid, Text: text,
 				Time: authorLatest[pid],
 			})
+		}
+		if s.opts.Episodes {
+			s.episodes = append(s.episodes,
+				collectEpisodes(ch, msgs, byID, workspaceURL, s.opts.MaxEpisodesPerChannel)...)
 		}
 		fmt.Fprintf(s.opts.Log, "slack: indexed #%s (%d messages)\n", ch.Name, len(msgs))
 	}

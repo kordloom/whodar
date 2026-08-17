@@ -35,14 +35,20 @@ func testEpisode(id string, daysAgo int, participants ...model.ID) Episode {
 	}
 }
 
+// withBody attaches the conversation text an episode is indexed by.
+func withBody(ep Episode, body string) Episode {
+	ep.Body = body
+	return ep
+}
+
 // TestSearchScopesToParticipant verifies that a person-scoped query returns
 // only episodes that person took part in, which is the whole access model for
 // personal recall.
 func TestSearchScopesToParticipant(t *testing.T) {
 	t.Parallel()
 	s := newTestStore()
-	s.Add(testEpisode("a", 10, "me@x.com", "billy@x.com"), "certificate renewal expired")
-	s.Add(testEpisode("b", 10, "someone@x.com"), "certificate renewal expired")
+	s.Add(withBody(testEpisode("a", 10, "me@x.com", "billy@x.com"), "certificate renewal expired"))
+	s.Add(withBody(testEpisode("b", 10, "someone@x.com"), "certificate renewal expired"))
 
 	got := s.Search(Query{Text: "certificate renewal", Person: "me@x.com"})
 	if len(got) != 1 || got[0].Episode.ID != "a" {
@@ -71,25 +77,25 @@ func TestSearchRanking(t *testing.T) {
 		Name:  "coverage",
 		Query: "kafka consumer lag",
 		Add: func(s *Store) {
-			s.Add(testEpisode("full", 30, "me@x.com"), "kafka consumer lag rebalance")
-			s.Add(testEpisode("partial", 30, "me@x.com"), "kafka broker restart")
+			s.Add(withBody(testEpisode("full", 30, "me@x.com"), "kafka consumer lag rebalance"))
+			s.Add(withBody(testEpisode("partial", 30, "me@x.com"), "kafka broker restart"))
 		},
 		WantTop: "full",
 	}, { // Test 1: With equal coverage, the recent episode wins.
 		Name:  "recency",
 		Query: "kafka lag",
 		Add: func(s *Store) {
-			s.Add(testEpisode("recent", 10, "me@x.com"), "kafka lag")
-			s.Add(testEpisode("old", 900, "me@x.com"), "kafka lag")
+			s.Add(withBody(testEpisode("recent", 10, "me@x.com"), "kafka lag"))
+			s.Add(withBody(testEpisode("old", 900, "me@x.com"), "kafka lag"))
 		},
 		WantTop: "recent",
 	}, { // Test 2: Repetition saturates, so a long noisy thread does not win.
 		Name:  "saturation",
 		Query: "kafka lag",
 		Add: func(s *Store) {
-			s.Add(testEpisode("noisy", 30, "me@x.com"),
-				"kafka kafka kafka kafka kafka kafka kafka kafka")
-			s.Add(testEpisode("onpoint", 30, "me@x.com"), "kafka lag")
+			s.Add(withBody(testEpisode("noisy", 30, "me@x.com"),
+				"kafka kafka kafka kafka kafka kafka kafka kafka"))
+			s.Add(withBody(testEpisode("onpoint", 30, "me@x.com"), "kafka lag"))
 		},
 		WantTop: "onpoint",
 	}}
@@ -114,7 +120,7 @@ func TestSearchRanking(t *testing.T) {
 func TestSearchEmptyQuery(t *testing.T) {
 	t.Parallel()
 	s := newTestStore()
-	s.Add(testEpisode("a", 1, "me@x.com"), "kafka lag")
+	s.Add(withBody(testEpisode("a", 1, "me@x.com"), "kafka lag"))
 	if got := s.Search(Query{Text: "how do I", Person: "me@x.com"}); len(got) != 0 {
 		t.Errorf("stopword-only query = %+v, want no results", got)
 	}
@@ -125,8 +131,8 @@ func TestSearchEmptyQuery(t *testing.T) {
 func TestAddReplacesEpisode(t *testing.T) {
 	t.Parallel()
 	s := newTestStore()
-	s.Add(testEpisode("a", 10, "me@x.com"), "certificate renewal")
-	s.Add(testEpisode("a", 10, "me@x.com"), "database migration")
+	s.Add(withBody(testEpisode("a", 10, "me@x.com"), "certificate renewal"))
+	s.Add(withBody(testEpisode("a", 10, "me@x.com"), "database migration"))
 
 	if s.Len() != 1 {
 		t.Errorf("Len = %d, want 1", s.Len())
@@ -162,8 +168,9 @@ func TestPurge(t *testing.T) {
 	s := newTestStore()
 	old := testEpisode("old", 400, "me@x.com")
 	old.Archive = []Note{{Author: "me@x.com", At: fixedNow, Text: "the fix"}}
-	s.Add(old, "kafka lag")
-	s.Add(testEpisode("new", 10, "me@x.com"), "kafka lag")
+	old.Body = "kafka lag"
+	s.Add(old)
+	s.Add(withBody(testEpisode("new", 10, "me@x.com"), "kafka lag"))
 
 	if n := s.PurgeArchive(); n != 1 {
 		t.Errorf("PurgeArchive = %d, want 1", n)
