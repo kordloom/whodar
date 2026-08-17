@@ -16,6 +16,12 @@ import (
 	"golang.org/x/term"
 )
 
+// ErrInputClosed reports that input ended before an answer was given, such as
+// Ctrl+D or a closed pipe. It wraps io.EOF for callers that still test for it,
+// but it is distinct so a network error that happens to unwrap to io.EOF is
+// never mistaken for the user ending input.
+var ErrInputClosed = fmt.Errorf("prompt: input closed: %w", io.EOF)
+
 // ErrAborted reports that the user backed out of a prompt, for example by
 // answering the menu with "q". Callers treat it as a clean, zero-status exit.
 var ErrAborted = errors.New("prompt: aborted")
@@ -136,8 +142,11 @@ func (p *IO) readLine() (string, error) {
 	s, err := p.r.ReadString('\n')
 	s = strings.TrimSpace(strings.TrimRight(s, "\r\n"))
 	if err != nil {
-		if errors.Is(err, io.EOF) && s != "" {
-			return s, nil
+		if errors.Is(err, io.EOF) {
+			if s != "" {
+				return s, nil
+			}
+			return "", ErrInputClosed
 		}
 		return "", err
 	}

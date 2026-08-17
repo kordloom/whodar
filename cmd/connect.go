@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -634,7 +633,11 @@ func specIDs() []string {
 // quietAbort maps a user backing out, by menu quit or end of input, to a clean
 // exit rather than an error.
 func quietAbort(err error) error {
-	if errors.Is(err, prompt.ErrAborted) || errors.Is(err, io.EOF) {
+	// Only a prompt-level abort or end-of-input is a clean exit. A network
+	// error that happens to unwrap to io.EOF, such as a server closing a
+	// connection mid-fetch, must not be swallowed as if the user backed out,
+	// which would report a failed first index as success.
+	if errors.Is(err, prompt.ErrAborted) || errors.Is(err, prompt.ErrInputClosed) {
 		return nil
 	}
 	return err

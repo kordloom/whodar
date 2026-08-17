@@ -48,18 +48,47 @@ func (o *options) loadIndex(cmd *cobra.Command) (*index.Index, error) {
 	if !errors.Is(err, vault.ErrEncrypted) {
 		return ix, err
 	}
+	return unlockAndLoad(cmd, o, "Index passphrase", func(pc vault.Codec) (*index.Index, error) {
+		return loadWith(o.indexPath(), pc)
+	})
+}
+
+// unlockAndLoad prompts for a passphrase and retries a few times on a wrong
+// one, since a typo is the everyday cause of a failed decrypt and re-running
+// the whole command to try again is a poor way to spend it. On success it
+// records the working codec so a later save reuses it. It is shared by the
+// index and episode loaders so both behave alike. When input is not a
+// terminal it cannot prompt, so it points at the key variables instead.
+func unlockAndLoad[T any](
+	cmd *cobra.Command, o *options, label string, load func(vault.Codec) (T, error),
+) (T, error) {
+	var zero T
 	ui := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr(), cmd.ErrOrStderr())
 	if !ui.Interactive() {
-		return nil, fmt.Errorf(
-			"%w: set %s or %s (see `whodar vault keygen`)", err, keyring.EnvKey, keyring.EnvPassphrase)
+		return zero, fmt.Errorf(
+			"%w: set %s or %s (see `whodar vault keygen`)",
+			vault.ErrEncrypted, keyring.EnvKey, keyring.EnvPassphrase)
 	}
-	pass, perr := ui.Secret("Index passphrase")
-	if perr != nil {
-		return nil, perr
+	const attempts = 3
+	for i := range attempts {
+		pass, perr := ui.Secret(label)
+		if perr != nil {
+			return zero, perr
+		}
+		pc := vault.NewPassphraseCipher([]byte(pass))
+		v, err := load(pc)
+		if err == nil {
+			o.setCodec(pc)
+			return v, nil
+		}
+		if !errors.Is(err, vault.ErrCorrupt) {
+			return zero, err
+		}
+		if i < attempts-1 {
+			fmt.Fprintln(cmd.ErrOrStderr(), "That passphrase did not work. Try again.")
+		}
 	}
-	pc := vault.NewPassphraseCipher([]byte(pass))
-	o.setCodec(pc)
-	return loadWith(o.indexPath(), pc)
+	return zero, fmt.Errorf("%w: gave up after %d attempts", vault.ErrCorrupt, attempts)
 }
 
 // saveIndex writes the index, encrypting it when a key is configured. It reuses
@@ -89,18 +118,9 @@ func (o *options) loadEpisodes(cmd *cobra.Command) (*episode.Store, error) {
 	if !errors.Is(err, vault.ErrEncrypted) {
 		return store, err
 	}
-	ui := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr(), cmd.ErrOrStderr())
-	if !ui.Interactive() {
-		return nil, fmt.Errorf(
-			"%w: set %s or %s (see `whodar vault keygen`)", err, keyring.EnvKey, keyring.EnvPassphrase)
-	}
-	pass, perr := ui.Secret("Passphrase")
-	if perr != nil {
-		return nil, perr
-	}
-	pc := vault.NewPassphraseCipher([]byte(pass))
-	o.setCodec(pc)
-	return loadEpisodesWith(o.episodePath(), pc)
+	return unlockAndLoad(cmd, o, "Conversations passphrase", func(pc vault.Codec) (*episode.Store, error) {
+		return loadEpisodesWith(o.episodePath(), pc)
+	})
 }
 
 // loadEpisodesWith loads the episode store at path with an optional codec.

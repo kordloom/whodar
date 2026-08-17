@@ -3,6 +3,9 @@ package cmd
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"io"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -187,4 +190,28 @@ func runCmdStdin(t *testing.T, stdin string, args ...string) (stdout, stderr []b
 	root.SetArgs(args)
 	err = root.Execute()
 	return out.Bytes(), errBuf.Bytes(), err
+}
+
+// TestQuietAbortDistinguishesNetworkEOF verifies a clean exit only for a user
+// backing out, not for a network error that unwraps to io.EOF. A server
+// closing a connection mid-fetch during the first index once slipped through
+// as success because both were io.EOF.
+func TestQuietAbortDistinguishesNetworkEOF(t *testing.T) {
+	t.Parallel()
+	// A user ending input, or quitting the menu, is a clean exit.
+	if err := quietAbort(prompt.ErrInputClosed); err != nil {
+		t.Errorf("end of input should abort cleanly, got %v", err)
+	}
+	if err := quietAbort(prompt.ErrAborted); err != nil {
+		t.Errorf("menu quit should abort cleanly, got %v", err)
+	}
+	// A network read that failed with io.EOF is a real failure and must survive.
+	netErr := &url.Error{Op: "Post", URL: "https://x.example/api", Err: io.EOF}
+	if err := quietAbort(fmt.Errorf("jira search: %w", netErr)); err == nil {
+		t.Error("a network EOF was swallowed as a clean abort")
+	}
+	// Nil stays nil.
+	if err := quietAbort(nil); err != nil {
+		t.Errorf("nil became %v", err)
+	}
 }
