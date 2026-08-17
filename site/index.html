@@ -403,8 +403,7 @@
 			<div class="guide reveal">
 				<div class="guide-menu" role="tablist">
 					<button class="gm on" data-tab="download" type="button">Download</button>
-						<button class="gm" data-tab="docker" type="button">Docker</button>
-					<button class="gm" data-tab="cli" type="button">Command line</button>
+						<button class="gm" data-tab="cli" type="button">Command line</button>
 					<button class="gm" data-tab="web" type="button">Web app</button>
 					<button class="gm" data-tab="slack" type="button">Slack</button>
 					<button class="gm" data-tab="mcp" type="button">Coding agents</button>
@@ -425,19 +424,6 @@ go install github.com/kordloom/whodar@latest</code></pre>
 						</div>
 						<p class="note"><a href="/docs/getting-started#install">Full install guide →</a></p>
 					</div>
-					<div class="gp" data-pane="docker">
-							<p>Run the web app or the Slack bot from a container. The image is multi-arch and serves the web UI by default.</p>
-							<div class="code">
-								<button class="copy" aria-label="Copy">Copy</button>
-								<pre><code><span class="c"># pull the image</span>
-docker pull ghcr.io/kordloom/whodar
-
-<span class="c"># serve the web UI on http://127.0.0.1:8765</span>
-docker run -p 8765:8765 <span class="o">-e WHODAR_SERVE_TOKEN=secret</span> \
-  -v ~/.whodar:/home/nonroot/.whodar ghcr.io/kordloom/whodar</code></pre>
-							</div>
-							<p class="note">The container binds 0.0.0.0, so it needs <code>WHODAR_SERVE_TOKEN</code> and every request must carry it. Mount your index at <code>/home/nonroot/.whodar</code>. <a href="/docs/deploy">Deploy guide →</a></p>
-						</div>
 						<div class="gp" data-pane="cli">
 						<p>Ask from your terminal. Answers are JSON on stdout, so you can pipe them into anything.</p>
 						<div class="code">
