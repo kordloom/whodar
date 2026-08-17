@@ -76,7 +76,8 @@ func registerRecallTool(srv *mcp.Server, res *recall.Resolver) {
 		Name: "whodar_recall",
 		Description: "Find the past conversation where a person worked something out, and who " +
 			"was in it. Returns people, place, date, and a link back to the conversation, " +
-			"never the messages themselves. Scoped to one person's own conversations.",
+			"never the messages themselves. Every answer covers only the named person's own " +
+			"conversations. Ask about the person running whodar unless told otherwise.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {

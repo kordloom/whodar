@@ -48,6 +48,10 @@ func New(store *episode.Store, ix *index.Index) *Resolver {
 	if store == nil || ix == nil {
 		panic("recall: New requires a store and an index")
 	}
+	// Identities join as more sources are indexed, so a conversation recorded
+	// under a handle last month belongs to a person known by email today.
+	// Re-resolving here keeps old records findable without rewriting them.
+	ix.CanonicalizeStore(store)
 	return &Resolver{store: store, ix: ix}
 }
 

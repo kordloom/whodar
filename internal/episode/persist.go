@@ -158,6 +158,34 @@ func (s *Store) PurgeArchive() int {
 	return n
 }
 
+// Relink replaces an episode's participants and repoints the lookup that finds
+// it by person. It is how an identity join reaches conversations already
+// stored.
+func (s *Store) Relink(id string, participants []model.ID) {
+	ep, ok := s.episodes[id]
+	if !ok {
+		return
+	}
+	for _, p := range ep.Participants {
+		ids := s.byParticipant[p]
+		kept := make([]string, 0, len(ids))
+		for _, existing := range ids {
+			if existing != id {
+				kept = append(kept, existing)
+			}
+		}
+		if len(kept) == 0 {
+			delete(s.byParticipant, p)
+			continue
+		}
+		s.byParticipant[p] = kept
+	}
+	ep.Participants = participants
+	for _, p := range participants {
+		s.byParticipant[p] = append(s.byParticipant[p], id)
+	}
+}
+
 // HasPerson reports whether any episode includes a person.
 func (s *Store) HasPerson(id model.ID) bool { return len(s.byParticipant[id]) > 0 }
 

@@ -45,6 +45,10 @@ your own access to that tool.
 Results cover only conversations you took part in. Identify yourself with --me,
 WHODAR_ME, or leave it unset to use your git email.
 
+--me scopes the answer; it is not a login. Anyone who can read the index file can
+ask as anyone in it, so treat the index the way you would treat the exports it was
+built from.
+
 Examples:
   whodar recall "certificate renewal"
   whodar recall --me jane@example.com "kafka consumer lag"`,

@@ -154,3 +154,45 @@ func TestUnknownParticipantStillNamed(t *testing.T) {
 		t.Errorf("unnamed participant = %q, want slack:u9", got)
 	}
 }
+
+// TestIdentityJoinReachesOldConversations verifies a conversation recorded
+// under a source handle becomes findable by the person once a later index
+// links that handle to their email. Sources are indexed one at a time, so this
+// is the normal case, not an edge case.
+func TestIdentityJoinReachesOldConversations(t *testing.T) {
+	t.Parallel()
+	store := episode.New()
+	store.Add(episode.Episode{
+		ID: "github:corp/billing:412", Source: "github", Kind: episode.KindChange,
+		Place: "corp/billing", Title: "Fix billing retry backoff",
+		// Recorded before anyone knew whose login this was.
+		Participants: []model.ID{"github:amalone"},
+		Occurred:     time.Now().AddDate(0, 0, -30),
+		Body:         "billing retry backoff",
+	})
+
+	// Before the join, the person cannot reach their own work.
+	bare := index.New()
+	if got := New(store, bare).Resolve(context.Background(), Query{
+		Text: "billing retry", Person: "angela@corp.com",
+	}); len(got.Episodes) != 0 {
+		t.Fatalf("episodes = %+v, want none before the identity join", got.Episodes)
+	}
+
+	// A later index links the handle to the person.
+	joined := index.New()
+	joined.Build([]connector.Record{{
+		Kind: connector.KindPerson, Source: "github",
+		PersonID: "github:amalone", Name: "Angela Malone", Email: "angela@corp.com",
+	}})
+
+	ans := New(store, joined).Resolve(context.Background(), Query{
+		Text: "billing retry", Person: "angela@corp.com",
+	})
+	if len(ans.Episodes) != 1 {
+		t.Fatalf("episodes = %+v, want the change found after the join", ans.Episodes)
+	}
+	if ans.Episodes[0].Source != "github" {
+		t.Errorf("source = %q, want github", ans.Episodes[0].Source)
+	}
+}
