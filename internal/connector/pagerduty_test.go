@@ -36,11 +36,13 @@ func TestPagerDutyFetch(t *testing.T) {
 		t.Fatalf("Fetch: %v", err)
 	}
 
+	// A record carries both the source's own id and any email, so key by the
+	// email when there is one: that is the identity the index settles on.
 	byKey := make(map[string]Record)
 	for _, r := range recs {
-		key := r.PersonID
+		key := r.Email
 		if key == "" {
-			key = r.Email
+			key = r.PersonID
 		}
 		byKey[key] = r
 	}

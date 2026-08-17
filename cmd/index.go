@@ -127,13 +127,15 @@ Start with the org chart, then merge everything else onto it:
 				}
 				recs, err = connector.NewCodeOwners(file).Fetch(cmd.Context())
 			case "github":
-				recs, err = fetchGitHub(cmd, githubArgs{repos, githubOrg, maxRepos, githubEmails})
+				recs, eps, err = fetchGitHub(cmd,
+					githubArgs{repos, githubOrg, maxRepos, githubEmails, episodes || archive})
 			case "jira":
-				recs, err = fetchJira(cmd, jiraArgs{jiraURL, jiraProjects, jiraJQL, maxIssues})
+				recs, eps, err = fetchJira(cmd,
+					jiraArgs{jiraURL, jiraProjects, jiraJQL, maxIssues, episodes || archive})
 			case "confluence":
 				recs, err = fetchConfluence(cmd, confluenceArgs{confluenceSpaces, confluenceCQL, maxPages})
 			case "pagerduty":
-				recs, err = fetchPagerDuty(cmd)
+				recs, eps, err = fetchPagerDuty(cmd, episodes || archive)
 			case "git":
 				if len(repoPaths) == 0 {
 					return fmt.Errorf("%w: --repo-path is required for git", ErrBadArgs)
@@ -273,7 +275,7 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 	if err := opts.saveIndex(ix); err != nil {
 		return err
 	}
-	if err := saveEpisodes(cmd, opts, p); err != nil {
+	if err := saveEpisodes(cmd, opts, ix, p); err != nil {
 		return err
 	}
 
@@ -313,11 +315,14 @@ func guardArchive(cmd *cobra.Command, opts *options) error {
 // Episodes always merge, even when the index itself is rebuilt: a source stops
 // serving old messages long before they stop being worth remembering, so
 // dropping them would throw away history whodar may be the last to hold.
-func saveEpisodes(cmd *cobra.Command, opts *options, p indexParams) error {
+func saveEpisodes(cmd *cobra.Command, opts *options, ix *index.Index, p indexParams) error {
 	eps := p.episodes
 	if len(eps) == 0 {
 		return nil
 	}
+	// Participants arrive as each source names them. Resolving them against
+	// the graph is what makes one person's work findable across every tool.
+	ix.CanonicalizeEpisodes(eps)
 	store, err := opts.loadEpisodes()
 	if err != nil {
 		return err
@@ -413,21 +418,28 @@ type githubArgs struct {
 	maxRepos int
 	// emails resolves user emails to join other sources.
 	emails bool
+	// episodes records merged changes.
+	episodes bool
 }
 
 // fetchGitHub builds GitHub records from the configured repositories or org.
-func fetchGitHub(cmd *cobra.Command, a githubArgs) ([]connector.Record, error) {
+func fetchGitHub(cmd *cobra.Command, a githubArgs) ([]connector.Record, []episode.Episode, error) {
 	token := os.Getenv(githubTokenEnv)
 	if token == "" {
-		return nil, fmt.Errorf("%w: set %s", ErrBadArgs, githubTokenEnv)
+		return nil, nil, fmt.Errorf("%w: set %s", ErrBadArgs, githubTokenEnv)
 	}
 	if len(a.repos) == 0 && a.org == "" {
-		return nil, fmt.Errorf("%w: --repo or --github-org required for github", ErrBadArgs)
+		return nil, nil, fmt.Errorf("%w: --repo or --github-org required for github", ErrBadArgs)
 	}
 	src := connector.NewGitHub(token, connector.GitHubOptions{
-		Repos: a.repos, Org: a.org, MaxRepos: a.maxRepos, ResolveEmails: a.emails, Log: cmd.ErrOrStderr(),
+		Repos: a.repos, Org: a.org, MaxRepos: a.maxRepos, ResolveEmails: a.emails,
+		Episodes: a.episodes, Log: cmd.ErrOrStderr(),
 	})
-	return src.Fetch(cmd.Context())
+	recs, err := src.Fetch(cmd.Context())
+	if err != nil {
+		return nil, nil, err
+	}
+	return recs, src.Episodes(), nil
 }
 
 // jiraArgs holds the Jira-specific index flags.
@@ -440,11 +452,13 @@ type jiraArgs struct {
 	jql string
 	// maxIssues caps issues read.
 	maxIssues int
+	// episodes records resolved issues.
+	episodes bool
 }
 
 // fetchJira builds Jira records, reading the URL and credentials from flags and
 // the environment.
-func fetchJira(cmd *cobra.Command, a jiraArgs) ([]connector.Record, error) {
+func fetchJira(cmd *cobra.Command, a jiraArgs) ([]connector.Record, []episode.Episode, error) {
 	site := a.url
 	if site == "" {
 		site = os.Getenv(jiraURLEnv)
@@ -452,13 +466,18 @@ func fetchJira(cmd *cobra.Command, a jiraArgs) ([]connector.Record, error) {
 	email := os.Getenv(jiraEmailEnv)
 	token := os.Getenv(jiraTokenEnv)
 	if site == "" || email == "" || token == "" {
-		return nil, fmt.Errorf("%w: set --jira-url (or %s), %s, and %s",
+		return nil, nil, fmt.Errorf("%w: set --jira-url (or %s), %s, and %s",
 			ErrBadArgs, jiraURLEnv, jiraEmailEnv, jiraTokenEnv)
 	}
 	src := connector.NewJira(site, email, token, connector.JiraOptions{
-		Projects: a.projects, JQL: a.jql, MaxIssues: a.maxIssues, Log: cmd.ErrOrStderr(),
+		Projects: a.projects, JQL: a.jql, MaxIssues: a.maxIssues,
+		Episodes: a.episodes, Log: cmd.ErrOrStderr(),
 	})
-	return src.Fetch(cmd.Context())
+	recs, err := src.Fetch(cmd.Context())
+	if err != nil {
+		return nil, nil, err
+	}
+	return recs, src.Episodes(), nil
 }
 
 // confluenceArgs holds the Confluence-specific index flags.
@@ -487,13 +506,19 @@ func fetchConfluence(cmd *cobra.Command, a confluenceArgs) ([]connector.Record, 
 }
 
 // fetchPagerDuty builds PagerDuty records from services and on-call data.
-func fetchPagerDuty(cmd *cobra.Command) ([]connector.Record, error) {
+func fetchPagerDuty(cmd *cobra.Command, episodes bool) ([]connector.Record, []episode.Episode, error) {
 	token := os.Getenv(pagerdutyTokenEnv)
 	if token == "" {
-		return nil, fmt.Errorf("%w: set %s", ErrBadArgs, pagerdutyTokenEnv)
+		return nil, nil, fmt.Errorf("%w: set %s", ErrBadArgs, pagerdutyTokenEnv)
 	}
-	src := connector.NewPagerDuty(token, connector.PagerDutyOptions{Log: cmd.ErrOrStderr()})
-	return src.Fetch(cmd.Context())
+	src := connector.NewPagerDuty(token, connector.PagerDutyOptions{
+		Episodes: episodes, Log: cmd.ErrOrStderr(),
+	})
+	recs, err := src.Fetch(cmd.Context())
+	if err != nil {
+		return nil, nil, err
+	}
+	return recs, src.Episodes(), nil
 }
 
 // reportChanges prints a one-line summary and capped lists of who and what

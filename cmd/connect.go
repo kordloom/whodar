@@ -416,13 +416,19 @@ func runFirstIndex(cmd *cobra.Command, opts *options, ui *prompt.IO, spec source
 		if gerr != nil {
 			return gerr
 		}
-		recs, err = fetchGitHub(cmd, a)
+		// Merged changes, resolved tickets, and resolved incidents are recorded
+		// as a matter of course: they are the same metadata already being
+		// indexed, and they are what recall points back at.
+		a.episodes = true
+		recs, eps, err = fetchGitHub(cmd, a)
 	case "jira":
 		projects, perr := promptList(ui, "Jira project keys to index (space-separated, blank for all)")
 		if perr != nil {
 			return perr
 		}
-		recs, err = fetchJira(cmd, jiraArgs{"", projects, "", 1000})
+		recs, eps, err = fetchJira(cmd, jiraArgs{
+			projects: projects, maxIssues: 1000, episodes: true,
+		})
 	case "confluence":
 		spaces, serr := promptList(ui, "Confluence space keys to index (space-separated, blank for all)")
 		if serr != nil {
@@ -430,7 +436,7 @@ func runFirstIndex(cmd *cobra.Command, opts *options, ui *prompt.IO, spec source
 		}
 		recs, err = fetchConfluence(cmd, confluenceArgs{spaces, "", 2000})
 	case "pagerduty":
-		recs, err = fetchPagerDuty(cmd)
+		recs, eps, err = fetchPagerDuty(cmd, true)
 	case "org-csv":
 		recs, err = fetchLocal(cmd, ui, "Path to the org chart CSV", func(path string) connector.Source {
 			oc := connector.NewOrgCSV(path)

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/jira"
 	"github.com/kordloom/whodar/internal/util"
 )
@@ -19,6 +20,9 @@ type JiraOptions struct {
 	JQL string
 	// MaxIssues caps issues read; zero uses a default.
 	MaxIssues int
+	// Episodes records resolved issues, so recall can point back at the
+	// ticket that settled something.
+	Episodes bool
 	// Log receives progress lines; nil discards them.
 	Log io.Writer
 }
@@ -41,6 +45,8 @@ type Jira struct {
 	client *jira.Client
 	// opts holds the resolved options.
 	opts JiraOptions
+	// episodes holds the resolved issues seen by the last Fetch.
+	episodes []episode.Episode
 }
 
 // NewJira returns a Jira connector for the site, authenticating with an email
@@ -66,6 +72,7 @@ func (j *Jira) Ping(ctx context.Context) error {
 
 // Fetch searches issues and returns one record per person, weighted by topic.
 func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
+	j.episodes = nil
 	query := j.jql()
 	issues, err := j.client.Search(ctx, query, j.opts.MaxIssues)
 	if err != nil {
@@ -101,6 +108,11 @@ func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 	}
 
 	for _, is := range issues {
+		if j.opts.Episodes {
+			if ep, ok := issueEpisode(j.client.BaseURL(), is); ok {
+				j.episodes = append(j.episodes, ep)
+			}
+		}
 		tokens := issueTopics(is)
 		updated := jiraTime(is.Fields.Updated)
 		bump(is.Fields.Assignee, tokens, updated)
@@ -173,14 +185,16 @@ func jiraUserKey(u jira.User) string {
 	return ""
 }
 
-// jiraPersonRecord builds a person record. An email lets the person join other
-// sources; otherwise the account id keys the record.
+// jiraPersonRecord builds a person record. The account id always keys the
+// record and any email travels with it, so the indexer joins the two and work
+// recorded under a Jira account is findable by the person who did it.
 func jiraPersonRecord(u jira.User, topics []string) Record {
 	rec := Record{Kind: KindPerson, Source: "jira", Weight: 1, Topics: topics, Name: u.DisplayName}
+	if u.AccountID != "" {
+		rec.PersonID = "jira:" + u.AccountID
+	}
 	if u.EmailAddress != "" {
 		rec.Email = util.NormalizeEmail(u.EmailAddress)
-	} else {
-		rec.PersonID = "jira:" + u.AccountID
 	}
 	if rec.Name == "" {
 		if rec.Email != "" {

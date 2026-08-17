@@ -49,7 +49,7 @@ WHODAR_ANTHROPIC_KEY) and add --policy redacted.`,
 			if err != nil {
 				return err
 			}
-			if cfg.episodes, err = simorg.BuildEpisodes(); err != nil {
+			if cfg.episodes, err = simorg.BuildEpisodes(ix); err != nil {
 				return err
 			}
 

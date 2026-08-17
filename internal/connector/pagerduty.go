@@ -6,12 +6,20 @@ import (
 	"io"
 	"strings"
 
+	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/pagerduty"
 	"github.com/kordloom/whodar/internal/util"
 )
 
 // PagerDutyOptions configures the PagerDuty connector.
 type PagerDutyOptions struct {
+	// Episodes records resolved incidents, so recall can point back at the
+	// incident that was settled and who settled it.
+	Episodes bool
+	// IncidentDays bounds how far back incidents are read; zero uses a year.
+	IncidentDays int
+	// MaxIncidents caps incidents read; zero means all in the window.
+	MaxIncidents int
 	// Log receives progress lines; nil discards them.
 	Log io.Writer
 }
@@ -31,6 +39,8 @@ type PagerDuty struct {
 	client *pagerduty.Client
 	// opts holds the resolved options.
 	opts PagerDutyOptions
+	// episodes holds the resolved incidents seen by the last Fetch.
+	episodes []episode.Episode
 }
 
 // NewPagerDuty returns a PagerDuty connector authenticating with token.
@@ -56,6 +66,14 @@ func (p *PagerDuty) Ping(ctx context.Context) error {
 // Fetch reads services and on-call assignments, returning one record per person
 // weighted by the topics of the services they are on call for.
 func (p *PagerDuty) Fetch(ctx context.Context) ([]Record, error) {
+	p.episodes = nil
+	if p.opts.Episodes {
+		if err := p.collectIncidents(ctx); err != nil {
+			// An incident history that cannot be read costs recall, not the
+			// on-call graph the run is really for.
+			fmt.Fprintf(p.opts.Log, "pagerduty: %v\n", err)
+		}
+	}
 	services, err := p.client.Services(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("pagerduty services: %w", err)
@@ -114,14 +132,16 @@ func pagerdutyUserKey(u pagerduty.User) string {
 	return ""
 }
 
-// pagerdutyPersonRecord builds a person record. An email lets the person join
-// other sources; otherwise the user id keys the record.
+// pagerdutyPersonRecord builds a person record. The user id always keys the
+// record and any email travels with it, so the indexer joins the two and work
+// recorded under a PagerDuty id is findable by the person who did it.
 func pagerdutyPersonRecord(u pagerduty.User, topics []string) Record {
 	rec := Record{Kind: KindPerson, Source: "pagerduty", Weight: 1, Topics: topics, Name: u.Name}
+	if u.ID != "" {
+		rec.PersonID = "pagerduty:" + u.ID
+	}
 	if u.Email != "" {
 		rec.Email = util.NormalizeEmail(u.Email)
-	} else {
-		rec.PersonID = "pagerduty:" + u.ID
 	}
 	if rec.Name == "" {
 		if rec.Email != "" {

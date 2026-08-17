@@ -177,14 +177,25 @@ func GitHubServer() *httptest.Server {
 	})
 	mux.HandleFunc("/repos/corp/billing-service/pulls", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, []map[string]any{{
-			"title": "Fix billing retry backoff", "user": map[string]any{"login": "amalone"},
-			"labels": []map[string]any{{"name": "billing"}}, "updated_at": isoDaysAgo(2),
+			"number":   412,
+			"html_url": "https://github.com/corp/billing-service/pull/412",
+			"title":    "Fix billing retry backoff", "user": map[string]any{"login": "amalone"},
+			"labels":     []map[string]any{{"name": "billing"}},
+			"updated_at": isoDaysAgo(2), "merged_at": isoDaysAgo(2),
+		}, {
+			"number":   377,
+			"html_url": "https://github.com/corp/billing-service/pull/377",
+			"title":    "Add dunning retry ceiling", "user": map[string]any{"login": "amalone"},
+			"updated_at": isoDaysAgo(40),
 		}})
 	})
 	mux.HandleFunc("/repos/corp/webapp/pulls", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, []map[string]any{{
-			"title": "Rewrite the react frontend in typescript",
-			"user":  map[string]any{"login": "eve-dev"}, "updated_at": isoDaysAgo(4),
+			"number": 88, "html_url": "https://github.com/corp/webapp/pull/88",
+			"title":               "Rewrite the react frontend in typescript",
+			"user":                map[string]any{"login": "eve-dev"},
+			"requested_reviewers": []map[string]any{{"login": "bsmith"}},
+			"updated_at":          isoDaysAgo(4), "merged_at": isoDaysAgo(4),
 		}})
 	})
 	for _, r := range []string{"billing-service", "webapp"} {
@@ -192,6 +203,9 @@ func GitHubServer() *httptest.Server {
 			writeJSON(w, []map[string]any{})
 		})
 	}
+	mux.HandleFunc("/users/bsmith", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{"login": "bsmith", "name": "Bob Smith", "email": "bob@corp.com"})
+	})
 	mux.HandleFunc("/users/amalone", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{"login": "amalone", "name": "Angela Malone", "email": "angela@corp.com"})
 	})
@@ -227,11 +241,19 @@ func JiraServer() *httptest.Server {
 	bob := map[string]any{"accountId": "j-bob", "displayName": "Bob Smith", "emailAddress": "bob@corp.com"}
 	dan := map[string]any{"accountId": "j-dan", "displayName": "Dan Park", "emailAddress": "dan@corp.com"}
 	frank := map[string]any{"accountId": "j-frank", "displayName": "Frank Ito", "emailAddress": "frank@corp.com"}
+	resolve := func(m map[string]any, ago int) map[string]any {
+		f, _ := m["fields"].(map[string]any)
+		f["resolutiondate"] = jiraDaysAgo(ago)
+		f["status"] = map[string]any{
+			"name": "Done", "statusCategory": map[string]any{"key": "done"},
+		}
+		return m
+	}
 	issues := []map[string]any{
-		issue("DAT-1", "Kafka consumer lag on the stream ingest", bob, nil,
-			[]string{"kafka"}, "Data Platform", 3),
-		issue("SEC-1", "Enforce mfa on the sso login flow", dan, nil,
-			[]string{"sso"}, "Security", 5),
+		resolve(issue("DAT-1", "Kafka consumer lag on the stream ingest", bob, nil,
+			[]string{"kafka"}, "Data Platform", 3), 3),
+		resolve(issue("SEC-1", "Enforce mfa on the sso login flow", dan, nil,
+			[]string{"sso"}, "Security", 5), 5),
 		issue("DAT-2", "Embedding model serving latency", nil, frank,
 			[]string{"embeddings"}, "Data Platform", 8),
 	}
@@ -279,6 +301,25 @@ func PagerDutyServer() *httptest.Server {
 				"escalation_policy": map[string]any{"id": "EP1"}},
 			{"id": "S2", "name": "Platform Kubernetes", "description": "Cluster and deploys",
 				"escalation_policy": map[string]any{"id": "EP2"}},
+		}})
+	})
+	mux.HandleFunc("/incidents", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{"more": false, "incidents": []map[string]any{
+			{
+				"id": "PINC1", "incident_number": 1041, "status": "resolved",
+				"title":      "Billing API latency breached the error budget",
+				"html_url":   "https://corp.pagerduty.com/incidents/PINC1",
+				"created_at": isoDaysAgo(30), "resolved_at": isoDaysAgo(30),
+				"service": map[string]any{"id": "S1", "summary": "Billing API"},
+				"assignments": []map[string]any{
+					{"assignee": map[string]any{
+						"id": "P1", "name": "Angela Malone", "email": "angela@corp.com"}},
+				},
+				"acknowledgements": []map[string]any{
+					{"acknowledger": map[string]any{
+						"id": "P2", "name": "Grace Kim", "email": "grace@corp.com"}},
+				},
+			},
 		}})
 	})
 	mux.HandleFunc("/oncalls", func(w http.ResponseWriter, _ *http.Request) {
@@ -430,21 +471,58 @@ func BuildIndex(dir string) (*index.Index, error) {
 	return ix, nil
 }
 
-// BuildEpisodes returns the conversations the simulated Slack workspace holds,
-// with their content, so the demo can show recall without credentials. It must
-// run after BuildIndex, which is what fetches them.
-func BuildEpisodes() (*episode.Store, error) {
-	srv := SlackServer()
-	defer srv.Close()
-	src := connector.NewSlackWithClient(
-		slack.New("xoxb-demo", slack.WithBaseURL(srv.URL)),
-		connector.SlackOptions{Episodes: true, Archive: true})
-	if _, err := src.Fetch(context.Background()); err != nil {
-		return nil, fmt.Errorf("simorg: slack episodes: %w", err)
+// BuildEpisodes returns everything the simulated company worked through: Slack
+// conversations with their content, merged changes, resolved tickets, and
+// resolved incidents, with participants resolved against ix so one person's
+// work is findable across every source. It lets the demo show recall with no
+// credentials.
+func BuildEpisodes(ix *index.Index) (*episode.Store, error) {
+	ctx := context.Background()
+	slackSrv := SlackServer()
+	defer slackSrv.Close()
+	githubSrv := GitHubServer()
+	defer githubSrv.Close()
+	jiraSrv := JiraServer()
+	defer jiraSrv.Close()
+	pagerdutySrv := PagerDutyServer()
+	defer pagerdutySrv.Close()
+
+	sources := []struct {
+		Name   string
+		Source interface {
+			connector.Source
+			connector.EpisodeSource
+		}
+	}{
+		{"slack", connector.NewSlackWithClient(
+			slack.New("xoxb-demo", slack.WithBaseURL(slackSrv.URL)),
+			connector.SlackOptions{Episodes: true, Archive: true})},
+		{"github", connector.NewGitHubWithClient(
+			github.New("ghp-demo", github.WithBaseURL(githubSrv.URL)),
+			connector.GitHubOptions{
+				Repos:    []string{"corp/billing-service", "corp/webapp"},
+				Episodes: true, ResolveEmails: true,
+			})},
+		{"jira", connector.NewJiraWithClient(
+			jira.New(jiraSrv.URL, "demo@corp.com", "token"),
+			connector.JiraOptions{Episodes: true})},
+		{"pagerduty", connector.NewPagerDutyWithClient(
+			pagerduty.New("token", pagerduty.WithBaseURL(pagerdutySrv.URL)),
+			connector.PagerDutyOptions{Episodes: true})},
 	}
+
 	store := episode.New()
-	for _, ep := range src.Episodes() {
-		store.Add(ep)
+	for _, s := range sources {
+		if _, err := s.Source.Fetch(ctx); err != nil {
+			return nil, fmt.Errorf("simorg: %s episodes: %w", s.Name, err)
+		}
+		eps := s.Source.Episodes()
+		if ix != nil {
+			ix.CanonicalizeEpisodes(eps)
+		}
+		for _, ep := range eps {
+			store.Add(ep)
+		}
 	}
 	return store, nil
 }
