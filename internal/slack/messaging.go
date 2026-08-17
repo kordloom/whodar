@@ -69,26 +69,37 @@ func (c *Client) AuthTest(ctx context.Context) (Auth, error) {
 	return Auth{UserID: resp.UserID, URL: resp.URL, Team: resp.Team}, nil
 }
 
-// responseURLPrefix is the only host slash-command response URLs may name,
-// so a forged payload cannot point the bot's POST anywhere else.
+// responseURLPrefix is the only host slash-command response URLs may name, so
+// a forged payload cannot point the bot's POST anywhere else.
 const responseURLPrefix = "https://hooks.slack.com/"
+
+// Response visibility values Slack understands.
+const (
+	// inChannel shows the reply to everyone in the channel.
+	inChannel = "in_channel"
+	// ephemeral shows the reply only to the person who ran the command.
+	ephemeral = "ephemeral"
+)
 
 // Respond posts text to a slash-command response URL, visible to the whole
 // channel. The URL is minted by Slack per invocation and needs no token.
 func Respond(ctx context.Context, responseURL, text string) error {
-	return respond(ctx, responseURL, text, "in_channel")
+	return respond(ctx, responseURL, text, inChannel, responseURLPrefix)
 }
 
 // RespondPrivately posts text to a slash-command response URL so only the
-// person who ran the command sees it.
+// person who ran the command sees it. Recall answers take this path, so the
+// visibility it sends is a privacy boundary rather than a preference.
 func RespondPrivately(ctx context.Context, responseURL, text string) error {
-	return respond(ctx, responseURL, text, "ephemeral")
+	return respond(ctx, responseURL, text, ephemeral, responseURLPrefix)
 }
 
 // respond posts text to a slash-command response URL with the given
-// visibility.
-func respond(ctx context.Context, responseURL, text, responseType string) error {
-	if !strings.HasPrefix(responseURL, responseURLPrefix) {
+// visibility. allowedPrefix is the only host the URL may name; it is a
+// parameter rather than a package variable so a test can point at a local
+// server without mutating shared state that another test is reading.
+func respond(ctx context.Context, responseURL, text, responseType, allowedPrefix string) error {
+	if allowedPrefix == "" || !strings.HasPrefix(responseURL, allowedPrefix) {
 		return fmt.Errorf("slack: respond: unexpected response url host")
 	}
 	body, err := json.Marshal(map[string]string{"response_type": responseType, "text": text})

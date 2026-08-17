@@ -54,12 +54,58 @@ func TestNotesFrom(t *testing.T) {
 		t.Errorf("note = %+v, want the text and its time", notes[0])
 	}
 
+	// A pasted log must be cut to its own cap rather than consuming the whole
+	// conversation's budget. The messages after it are where the problem gets
+	// solved, so losing them would leave the archive worth nothing.
 	long := []slack.Message{
-		{User: "U1", Text: strings.Repeat("x", maxArchiveBytes-1), TS: ts(1000)},
-		{User: "U2", Text: "this one does not fit", TS: ts(1100)},
+		{User: "U1", Text: strings.Repeat("x", maxArchiveBytes*3), TS: ts(1000)},
+		{User: "U2", Text: "renew it with certbot", TS: ts(1100)},
 	}
-	if got := notesFrom(long, testUsers); len(got) != 1 {
-		t.Errorf("notes past the cap = %d, want the cap to stop at one", len(got))
+	got := notesFrom(long, testUsers)
+	if len(got) != 2 {
+		t.Fatalf("notes = %d, want the pasted log cut and the answer after it kept", len(got))
+	}
+	if len(got[0].Text) != maxNoteBytes {
+		t.Errorf("pasted log kept %d bytes, want it cut to %d", len(got[0].Text), maxNoteBytes)
+	}
+	if got[1].Text != "renew it with certbot" {
+		t.Errorf("message after the log = %q, want it kept whole", got[1].Text)
+	}
+
+	// The conversation budget still stops accumulation once it is used up.
+	var many []slack.Message
+	for i := range 20 {
+		many = append(many, slack.Message{
+			User: "U1", Text: strings.Repeat("y", maxNoteBytes), TS: ts(1000 + i),
+		})
+	}
+	if got := notesFrom(many, testUsers); len(got) != maxArchiveBytes/maxNoteBytes {
+		t.Errorf("notes = %d, want the budget to stop at %d", len(got), maxArchiveBytes/maxNoteBytes)
+	}
+}
+
+// TestNotesFromFiles verifies a message carrying only a shared file is kept as
+// what it is called, since whodar never reads file content but the name is
+// often the most useful thing in the conversation.
+func TestNotesFromFiles(t *testing.T) {
+	t.Parallel()
+	msgs := []slack.Message{
+		{User: "U1", Subtype: "file_share", TS: ts(1000), Files: []slack.File{
+			{Name: "q3-billing-retry-postmortem.pdf", Filetype: "pdf"},
+		}},
+		{User: "U2", Text: "see page 4", TS: ts(1100), Files: []slack.File{
+			{Name: "trace.mp4", Title: "screen recording", Filetype: "mp4"},
+		}},
+	}
+	notes := notesFrom(msgs, testUsers)
+	if len(notes) != 2 {
+		t.Fatalf("notes = %+v, want both kept", notes)
+	}
+	if !strings.Contains(notes[0].Text, "q3-billing-retry-postmortem.pdf") {
+		t.Errorf("file-only note = %q, want it to name the file", notes[0].Text)
+	}
+	if notes[1].Text != "see page 4" {
+		t.Errorf("note with text = %q, want what was written", notes[1].Text)
 	}
 }
 

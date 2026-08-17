@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync"
 	"testing"
 )
@@ -157,4 +158,42 @@ func TestNewEmptyTokenPanics(t *testing.T) {
 		}
 	}()
 	New("")
+}
+
+// TestReplies verifies cursor pagination, the limit trim, and the empty-args
+// fast path of the one call that reads conversation content.
+func TestReplies(t *testing.T) {
+	t.Parallel()
+	var queries []url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		queries = append(queries, r.PostForm)
+		if r.PostFormValue("cursor") == "" {
+			io.WriteString(w, `{"ok":true,"has_more":true,
+				"response_metadata":{"next_cursor":"c2"},
+				"messages":[{"ts":"1.0","user":"U1","text":"parent"},
+					{"ts":"2.0","user":"U2","text":"first reply"}]}`)
+			return
+		}
+		io.WriteString(w, `{"ok":true,"has_more":false,
+			"messages":[{"ts":"3.0","user":"U3","text":"second reply"},
+				{"ts":"4.0","user":"U1","text":"third reply"}]}`)
+	}))
+	t.Cleanup(srv.Close)
+	c := New("xoxb-test", WithBaseURL(srv.URL), WithHTTPClient(srv.Client()))
+
+	got, err := c.Replies(context.Background(), "C1", "1.0", 3)
+	if err != nil || len(got) != 3 {
+		t.Fatalf("Replies = %d messages, err %v, want 3", len(got), err)
+	}
+	if got[0].Text != "parent" || got[2].Text != "second reply" {
+		t.Errorf("messages = %+v", got)
+	}
+	if len(queries) != 2 || queries[0].Get("ts") != "1.0" || queries[1].Get("cursor") != "c2" {
+		t.Errorf("queries = %v", queries)
+	}
+
+	if msgs, err := c.Replies(context.Background(), "", "", 10); err != nil || msgs != nil {
+		t.Errorf("Replies with empty args = %v, %v, want nil, nil", msgs, err)
+	}
 }

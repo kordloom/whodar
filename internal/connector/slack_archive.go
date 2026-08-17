@@ -9,6 +9,7 @@ import (
 	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/slack"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // Archive bounds. A retained conversation is meant to be read by a person, so
@@ -18,6 +19,10 @@ const (
 	defaultMaxArchiveMessages = 50
 	// maxArchiveBytes caps retained text per conversation.
 	maxArchiveBytes = 12000
+	// maxNoteBytes caps one retained message. A conversation is kept to be
+	// read, so a single pasted log is cut rather than allowed to stand in for
+	// the discussion around it.
+	maxNoteBytes = 2000
 )
 
 // fillArchive retains the content of each threaded conversation, which is what
@@ -75,22 +80,42 @@ func addAuthors(ep *episode.Episode) {
 // bot messages and stopping at the size cap.
 func notesFrom(msgs []slack.Message, byID map[string]slack.User) []episode.Note {
 	var notes []episode.Note
-	bytes := 0
+	kept := 0
 	for _, m := range msgs {
-		if m.Subtype != "" || m.User == "" || m.BotID != "" || m.Text == "" {
+		if !m.FromPerson() {
 			continue
 		}
-		if bytes+len(m.Text) > maxArchiveBytes {
+		text := noteText(m)
+		if text == "" {
+			continue
+		}
+		// Each message is cut to its own cap first, so one pasted log cannot
+		// exhaust the budget and drop the messages after it, which are usually
+		// where the problem gets solved.
+		if kept+len(text) > maxArchiveBytes {
 			break
 		}
-		bytes += len(m.Text)
+		kept += len(text)
 		notes = append(notes, episode.Note{
 			Author: model.ID(slackUserRef(m.User, byID)),
 			At:     slackTime(m.TS),
-			Text:   m.Text,
+			Text:   text,
 		})
 	}
 	return notes
+}
+
+// noteText returns what to retain for one message: what was written, or a line
+// naming what was shared when the message carries only files. File content is
+// never read, only what Slack already said the file is called.
+func noteText(m slack.Message) string {
+	if m.Text != "" {
+		return util.Truncate(m.Text, maxNoteBytes)
+	}
+	if names := m.FileNames(); len(names) > 0 {
+		return util.Truncate("shared "+strings.Join(names, ", "), maxNoteBytes)
+	}
+	return ""
 }
 
 // threadTSOf recovers the thread timestamp from an episode id of the form

@@ -8,6 +8,7 @@ import (
 	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/slack"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // Episode bounds for Slack. A thread is an episode outright; loose messages
@@ -23,6 +24,9 @@ const (
 	minWindowPeople = 2
 	// maxEpisodeText caps the text tokenized per episode, in bytes.
 	maxEpisodeText = 2000
+	// maxMessageText caps one message's contribution, so a pasted stack trace
+	// cannot fill an episode's whole budget and crowd out the discussion.
+	maxMessageText = 600
 	// defaultMaxEpisodesPerChannel caps episodes kept per channel so one busy
 	// channel cannot dominate the store.
 	defaultMaxEpisodesPerChannel = 200
@@ -60,7 +64,7 @@ func collectEpisodes(ch slack.Channel, msgs []slack.Message, opts episodeOpts) [
 	}
 	ordered := make([]slack.Message, 0, len(msgs))
 	for _, m := range msgs {
-		if m.Subtype != "" || m.User == "" || m.BotID != "" {
+		if !m.FromPerson() {
 			continue
 		}
 		ordered = append(ordered, m)
@@ -153,7 +157,7 @@ func threadEpisode(
 		Messages:     m.ReplyCount + 1,
 		// Only the parent is on hand, and it is where the problem gets stated,
 		// which is what someone searches for later.
-		Body: m.Text,
+		Body: util.Truncate(m.SearchText(), maxMessageText),
 	}
 }
 
@@ -203,7 +207,7 @@ func episodeText(msgs []slack.Message) string {
 		if b.Len() >= maxEpisodeText {
 			break
 		}
-		b.WriteString(m.Text)
+		b.WriteString(util.Truncate(m.SearchText(), maxMessageText))
 		b.WriteString(" ")
 	}
 	return strings.TrimSpace(b.String())

@@ -142,6 +142,78 @@ type Message struct {
 	ReplyUsers []string `json:"reply_users"`
 	// LatestReply is the timestamp of the most recent reply in the thread.
 	LatestReply string `json:"latest_reply"`
+	// Files are the files shared in the message. Only the metadata Slack
+	// already sent is read; whodar never downloads file content.
+	Files []File `json:"files"`
+}
+
+// File is a file shared in a message. Slack sends this metadata inside the
+// history payload that whodar already reads, so a shared document costs no
+// extra request. Only the name and kind are kept: whodar never downloads a
+// file, so a video, an installer, or a slide deck is never transferred, stored,
+// or indexed beyond what it is called.
+type File struct {
+	// Name is the file name as uploaded.
+	Name string `json:"name"`
+	// Title is the display title, which is the name when none was given.
+	Title string `json:"title"`
+	// Filetype is Slack's short kind, such as "pdf" or "mp4".
+	Filetype string `json:"filetype"`
+}
+
+// humanSubtypes are the message subtypes a person authors. Slack marks
+// everything else, such as joins, leaves, and topic changes, with a subtype
+// too, and those are channel bookkeeping rather than conversation.
+var humanSubtypes = map[string]bool{
+	"file_share": true, "thread_broadcast": true, "me_message": true,
+}
+
+// FromPerson reports whether the message is one a human wrote, which is what
+// an episode is built from. A file share is a person talking and is kept; a
+// join notice or a bot post is not.
+func (m Message) FromPerson() bool {
+	return m.User != "" && m.BotID == "" && (m.Subtype == "" || humanSubtypes[m.Subtype])
+}
+
+// FileNames returns what each shared file is called, preferring the title when
+// one was given. It never reads file content.
+func (m Message) FileNames() []string {
+	out := make([]string, 0, len(m.Files))
+	for _, f := range m.Files {
+		name := f.Title
+		if name == "" {
+			name = f.Name
+		}
+		if name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// SearchText returns the words of a message for indexing: what was written,
+// plus what any shared file is called. A file name such as
+// "billing-retry-postmortem.pdf" is often the most searchable thing in a
+// conversation, and it is metadata Slack already sent.
+func (m Message) SearchText() string {
+	if len(m.Files) == 0 {
+		return m.Text
+	}
+	parts := make([]string, 0, len(m.Files)*2+1)
+	if m.Text != "" {
+		parts = append(parts, m.Text)
+	}
+	seen := make(map[string]bool)
+	for _, f := range m.Files {
+		for _, s := range []string{f.Name, f.Title} {
+			if s == "" || seen[s] {
+				continue
+			}
+			seen[s] = true
+			parts = append(parts, s)
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // Permalink builds the archive URL for a message from data every history page
