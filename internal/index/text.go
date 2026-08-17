@@ -16,9 +16,6 @@ func tokenize(s string) []string { return text.Tokenize(s) }
 // produced by exactly the same normalization.
 func Terms(s string) []string { return text.Terms(s) }
 
-// fold removes diacritics so accented and unaccented spellings match.
-func fold(s string) string { return text.Fold(s) }
-
 // slug normalizes text into a lowercase hyphenated identifier.
 func slug(s string) string { return text.Slug(s) }
 

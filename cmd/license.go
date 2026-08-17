@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -136,9 +135,4 @@ func expiryText(t time.Time) string {
 		return ""
 	}
 	return t.Format(time.DateOnly)
-}
-
-// licensePath returns the license file path under the data directory.
-func (o *options) licensePath() string {
-	return filepath.Join(o.dataDir, license.FileName)
 }
