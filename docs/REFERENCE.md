@@ -263,7 +263,7 @@ Takes the same flags as `serve`.
 
 Serves the index to MCP clients over stdio, so agents such as Claude Code
 and Claude Desktop can ask who knows what mid-conversation. Tools:
-`whodar_ask`, `whodar_person`, `whodar_directory`.
+`whodar_ask`, `whodar_recall`, `whodar_person`, `whodar_directory`.
 
     whodar mcp [--embed-model name] [--ollama-url url]
 
@@ -400,5 +400,5 @@ Everything lives under `--data-dir` (default `~/.whodar`):
 | --------------- | -------------------------------------------------------------------------------- |
 | `index.json`    | The graph, postings, embeddings, aliases, and a capped Slack text sample per person. |
 | `feedback.json` | Votes and the queries behind them, kept apart so they survive re-indexing. Not covered by `vault` encryption today. |
-| `episodes.json` | Past conversations: who took part, where, when, the link back, and matched terms. Written only with `--episodes`. Holds the words themselves only with a Memory license and `--archive`. Encrypted with the same key as the index. |
+| `episodes.json` | Past conversations: who took part, where, when, the link back, and matched terms. Written by `whodar index --episodes`, and by `whodar connect`, which records conversations as a matter of course. Holds the words themselves only with a Memory license and `--archive`. Encrypted with the same key as the index. |
 | `license.json`  | The signed license, when one is installed. Verified offline against a key in the binary. |

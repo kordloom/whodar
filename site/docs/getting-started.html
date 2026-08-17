@@ -393,10 +393,10 @@ registration is one line:</p>
 <code>claude_desktop_config.json</code>:</p>
 <pre><code>{&quot;whodar&quot;: {&quot;command&quot;: &quot;whodar&quot;, &quot;args&quot;: [&quot;mcp&quot;]}}
 </code></pre>
-<p>The agent gets three tools: <code>whodar_ask</code> (ranked people and channels with
-reasons and confidence, keyword or semantic), <code>whodar_person</code> (a full
-profile), and <code>whodar_directory</code> (browse people, channels, teams, or
-topics). There is no llm mode over MCP on purpose: the calling agent is
+<p>The agent gets four tools: <code>whodar_ask</code> (ranked people and channels with
+reasons and confidence, keyword or semantic), <code>whodar_recall</code> (the past
+conversations one person took part in), <code>whodar_person</code> (a full profile),
+and <code>whodar_directory</code> (browse people, channels, teams, or topics). There is no llm mode over MCP on purpose: the calling agent is
 already a model, so it reads the ranked candidates itself.</p>
 <p>One thing to be clear-eyed about: answers flow to whichever agent you wire
 this into, and on to that agent's model. Registering the server is the

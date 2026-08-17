@@ -308,10 +308,10 @@ For Claude Desktop, add this under `mcpServers` in
 
     {"whodar": {"command": "whodar", "args": ["mcp"]}}
 
-The agent gets three tools: `whodar_ask` (ranked people and channels with
-reasons and confidence, keyword or semantic), `whodar_person` (a full
-profile), and `whodar_directory` (browse people, channels, teams, or
-topics). There is no llm mode over MCP on purpose: the calling agent is
+The agent gets four tools: `whodar_ask` (ranked people and channels with
+reasons and confidence, keyword or semantic), `whodar_recall` (the past
+conversations one person took part in), `whodar_person` (a full profile),
+and `whodar_directory` (browse people, channels, teams, or topics). There is no llm mode over MCP on purpose: the calling agent is
 already a model, so it reads the ranked candidates itself.
 
 One thing to be clear-eyed about: answers flow to whichever agent you wire

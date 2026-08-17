@@ -477,8 +477,10 @@ Reading an encrypted index without the key fails rather than exposing anything. 
 </tr>
 </tbody>
 </table>
-<p>Modes: <code>keyword</code> needs no model and always works. <code>semantic</code> matches on
-meaning using embeddings built with <code>index --embed</code>. <code>llm</code> retrieves
+<p>Modes: <code>keyword</code> needs no model and always works. <code>semantic</code> blends meaning
+with your exact words, using embeddings built with <code>index --embed</code>, so a
+paraphrase can find what the words alone would miss without losing the
+matches the words already had. <code>llm</code> retrieves
 candidates, then a model re-ranks them and writes a short recommendation; it
 cannot invent people. The default provider is a local Ollama server. The
 <code>anthropic</code> (Claude), <code>openai</code>, and <code>gemini</code> providers are cloud models gated
@@ -713,7 +715,7 @@ from the network. Sample data only; it is discarded when the demo stops.</p>
 <h2 id="whodar-mcp">whodar mcp</h2>
 <p>Serves the index to MCP clients over stdio, so agents such as Claude Code
 and Claude Desktop can ask who knows what mid-conversation. Tools:
-<code>whodar_ask</code>, <code>whodar_person</code>, <code>whodar_directory</code>.</p>
+<code>whodar_ask</code>, <code>whodar_recall</code>, <code>whodar_person</code>, <code>whodar_directory</code>.</p>
 <pre><code>whodar mcp [--embed-model name] [--ollama-url url]
 </code></pre>
 <p>Register with <code>claude mcp add whodar -- whodar mcp</code>, or a <code>mcpServers</code>
@@ -976,7 +978,7 @@ can be denied the same way. See <code>examples/policy.json</code>.</p>
 </tr>
 <tr>
 <td><code>episodes.json</code></td>
-<td>Past conversations: who took part, where, when, the link back, and matched terms. Written only with <code>--episodes</code>. Holds the words themselves only with a Memory license and <code>--archive</code>. Encrypted with the same key as the index.</td>
+<td>Past conversations: who took part, where, when, the link back, and matched terms. Written by <code>whodar index --episodes</code>, and by <code>whodar connect</code>, which records conversations as a matter of course. Holds the words themselves only with a Memory license and <code>--archive</code>. Encrypted with the same key as the index.</td>
 </tr>
 <tr>
 <td><code>license.json</code></td>
