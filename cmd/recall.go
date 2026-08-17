@@ -91,6 +91,7 @@ Examples:
 					Text: query, Person: person, Limit: limit, Meaning: meaning, Explain: explain,
 				})
 			warnEmptyRecall(cmd, res, ans, person)
+			warnUnexplained(cmd, ans, explain)
 			return writeJSON(cmd.OutOrStdout(), ans, opts.pretty)
 		},
 	}
@@ -147,6 +148,25 @@ func attachSummarizer(
 		res.SetSummarizer(chat)
 		return nil
 	}
+}
+
+// warnUnexplained says why --how produced no written account. The words of a
+// conversation are kept only under a Memory license, so a run without them
+// returns ordinary results and the flag would otherwise look like it did
+// nothing at all.
+func warnUnexplained(cmd *cobra.Command, ans recall.Answer, explain bool) {
+	if !explain || len(ans.Episodes) == 0 {
+		return
+	}
+	for _, ep := range ans.Episodes {
+		if ep.Solution != nil {
+			return
+		}
+	}
+	fmt.Fprintln(cmd.ErrOrStderr(),
+		"--how found no kept conversation to work from. The words are kept by "+
+			"`whodar index --episodes --archive`, which needs a Memory license. Without them, "+
+			"recall still names who helped and links back to the conversation itself.")
 }
 
 // resolveMe determines who is asking, preferring the flag, then the

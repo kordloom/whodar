@@ -49,9 +49,9 @@ func (s State) Reason() string {
 				"Everything already indexed stays on disk.",
 			s.License.Org, s.License.Expires.Format(time.DateOnly))
 	case errors.Is(s.Err, ErrInvalid):
-		return "The license could not be verified, so the free tier is in force: " + s.Err.Error()
+		return "The license could not be verified, so the free tier is in force: " + s.Err.Error() + "."
 	case s.Err != nil:
-		return "The license could not be read, so the free tier is in force: " + s.Err.Error()
+		return "The license could not be read, so the free tier is in force: " + s.Err.Error() + "."
 	default:
 		return fmt.Sprintf("Licensed to %s for the %s tier.", s.License.Org, s.License.Tier)
 	}

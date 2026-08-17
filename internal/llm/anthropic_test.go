@@ -26,7 +26,7 @@ func TestAnthropicChat(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Errorf("decode request: %v", err)
 		}
-		if req.Model != "claude-opus-4-8" || req.System == "" || len(req.Messages) != 1 {
+		if req.Model != anthropicDefaultModel || req.System == "" || len(req.Messages) != 1 {
 			t.Errorf("request = %+v", req)
 		}
 		_, _ = io.WriteString(w, `{"content":[{"type":"text","text":"{\"people\":[\"1\"]}"}],"stop_reason":"end_turn"}`)

@@ -167,7 +167,7 @@ Start with the org chart, then merge everything else onto it:
 	}
 	f := cmd.Flags()
 	f.StringVar(&source, "source", "org-csv", "Source type: org-csv, slack, codeowners, github, jira, confluence, pagerduty, or git.")
-	f.StringVar(&file, "file", "", "Path to the source file (org-csv).")
+	f.StringVar(&file, "file", "", "Path to the source file: the CSV for org-csv, the CODEOWNERS file or repo root for codeowners.")
 	f.BoolVar(&includePrivate, "include-private", false, "Ingest private Slack channels if policy allows.")
 	f.IntVar(&sinceDays, "since-days", 180, "Slack history window in days.")
 	f.IntVar(&maxMessages, "max-messages", 5000, "Slack message cap per channel.")
@@ -257,6 +257,16 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 	if p.merge {
 		ix.Add(recs)
 	} else {
+		// A replacing run that read nothing would write an empty index over a
+		// good one and report success. The usual cause is a token that expired
+		// or lost a scope, which each connector reports as a skip rather than
+		// as a failure, so the existing index is kept instead.
+		if len(recs) == 0 {
+			return fmt.Errorf(
+				"%w: the existing index was left alone. Check the messages above: "+
+					"the usual cause is a token that expired or lost a scope. "+
+					"Use --merge to add to an index without replacing it", ErrNoRecords)
+		}
 		ix.Build(recs)
 	}
 	if joined := ix.AutoJoin(); joined > 0 {
@@ -311,7 +321,7 @@ func guardArchive(cmd *cobra.Command, opts *options) error {
 		return fmt.Errorf(
 			"%w: keeping the words of a conversation needs a Memory license "+
 				"($5,000 a year, flat per organization). %s Ask at hello@whodar.dev",
-			ErrBadArgs, state.Reason())
+			ErrLicense, state.Reason())
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "archive: %s\n", state.Reason())
 	return nil

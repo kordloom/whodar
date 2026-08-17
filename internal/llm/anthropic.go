@@ -17,8 +17,9 @@ const (
 	anthropicBaseURL = "https://api.anthropic.com"
 	// anthropicVersion is the required API version header value.
 	anthropicVersion = "2023-06-01"
-	// anthropicDefaultModel is used when no model is configured.
-	anthropicDefaultModel = "claude-opus-4-8"
+	// anthropicDefaultModel is used when no model is configured. Override it
+	// with WithAnthropicModel to trade capability for cost.
+	anthropicDefaultModel = "claude-opus-5"
 	// anthropicMaxTokens bounds the reply; answers here are one JSON object.
 	anthropicMaxTokens = 1024
 )
