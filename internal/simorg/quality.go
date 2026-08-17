@@ -1,0 +1,200 @@
+package simorg
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/episode"
+	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/recall"
+	"github.com/kordloom/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/slack"
+)
+
+// Built is a generated company after the real pipeline has run over it: the
+// index and conversations whodar would have from those sources, alongside the
+// answers the company was built to have.
+type Built struct {
+	// Org is the generated company.
+	Org *Org
+	// Index is the graph the connectors produced.
+	Index *index.Index
+	// Episodes are the conversations the connectors produced.
+	Episodes *episode.Store
+}
+
+// Build runs the real ingest path over a generated company. It uses the same
+// connectors, the same indexer, and the same episode store the binary uses, so
+// what is measured afterwards is whodar rather than a stand-in for it.
+func Build(spec Spec, dir string) (*Built, error) {
+	org := Generate(spec)
+	defer org.Close()
+
+	csvPath := filepath.Join(dir, "org.csv")
+	if err := os.WriteFile(csvPath, []byte(org.CSV), 0o600); err != nil {
+		return nil, fmt.Errorf("simorg: write org csv: %w", err)
+	}
+
+	ctx := context.Background()
+	ix := index.New()
+
+	csvRecs, err := connector.NewOrgCSV(csvPath).Fetch(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("simorg: org csv: %w", err)
+	}
+	ix.Add(csvRecs)
+
+	src := connector.NewSlackWithClient(
+		slack.New("xoxb-generated", slack.WithBaseURL(org.Slack.URL)),
+		connector.SlackOptions{Episodes: true, Archive: true, MaxMessages: 100000})
+	slackRecs, err := src.Fetch(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("simorg: slack: %w", err)
+	}
+	ix.Add(slackRecs)
+	ix.AutoJoin()
+	ix.Canonicalize()
+
+	eps := src.Episodes()
+	ix.CanonicalizeEpisodes(eps)
+	store := episode.New()
+	for _, ep := range eps {
+		store.Add(ep)
+	}
+	return &Built{Org: org, Index: ix, Episodes: store}, nil
+}
+
+// Score is how well whodar answered a set of questions with known answers.
+type Score struct {
+	// Asked is how many questions were put to it.
+	Asked int
+	// Top1 is how many were answered correctly by the first result.
+	Top1 int
+	// Top3 is how many had the right answer in the first three.
+	Top3 int
+	// Missed lists questions whose answer never appeared, worst first, capped
+	// so a failure prints something a person can read.
+	Missed []string
+	// ReciprocalRank sums 1/rank over every question, which rewards being
+	// close when it is not exactly right.
+	ReciprocalRank float64
+}
+
+// Precision1 is the share answered correctly by the first result.
+func (s Score) Precision1() float64 { return ratio(s.Top1, s.Asked) }
+
+// Precision3 is the share whose answer appeared in the first three.
+func (s Score) Precision3() float64 { return ratio(s.Top3, s.Asked) }
+
+// MRR is the mean reciprocal rank, the usual single number for ranking
+// quality: 1.0 means every answer came first, 0.5 means second on average.
+func (s Score) MRR() float64 { return ratio64(s.ReciprocalRank, s.Asked) }
+
+// String renders a score for a test log.
+func (s Score) String() string {
+	return fmt.Sprintf("asked=%d p@1=%.2f p@3=%.2f mrr=%.2f", s.Asked, s.Precision1(), s.Precision3(), s.MRR())
+}
+
+// ratio divides safely.
+func ratio(n, d int) float64 { return ratio64(float64(n), d) }
+
+// ratio64 divides safely.
+func ratio64(n float64, d int) float64 {
+	if d == 0 {
+		return 0
+	}
+	return n / float64(d)
+}
+
+// maxMissed caps how many failures a score records, so a bad run reports a
+// readable sample instead of thousands of lines.
+const maxMissed = 8
+
+// ScoreWhoKnows asks every who-knows question and scores where the owner
+// ranked. The owner is the only right answer by construction: they are the
+// only person made fluent in that subject.
+func (b *Built) ScoreWhoKnows(limit int) Score {
+	res := resolve.NewKeyword(b.Index)
+	var score Score
+	for _, q := range b.Org.Questions {
+		if q.Kind != KindWhoKnows {
+			continue
+		}
+		score.Asked++
+		ans, err := res.Resolve(context.Background(), q.Text, limit)
+		if err != nil {
+			score.record(q.Text, 0)
+			continue
+		}
+		rank := 0
+		for i, m := range ans.People {
+			if m.Person != nil && m.Person.ID == q.WantPerson {
+				rank = i + 1
+				break
+			}
+		}
+		score.record(q.Text, rank)
+	}
+	return score
+}
+
+// ScoreRecall asks each thread's own asker about the problem they raised, and
+// scores where that conversation ranked. Nobody else is asked, because recall
+// only ever answers about a person's own conversations.
+func (b *Built) ScoreRecall(limit int) Score {
+	res := recall.New(b.Episodes, b.Index)
+	var score Score
+	for _, q := range b.Org.Questions {
+		if q.Kind != KindRecall {
+			continue
+		}
+		score.Asked++
+		ans := res.Resolve(context.Background(),
+			recall.Query{Text: q.Text, Person: q.Asker, Limit: limit})
+		rank := 0
+		for i, ep := range ans.Episodes {
+			if episodeMatches(ep, q) {
+				rank = i + 1
+				break
+			}
+		}
+		score.record(q.Text, rank)
+	}
+	return score
+}
+
+// episodeMatches reports whether a returned conversation is the one the
+// question was planted from, identified by the person who helped and the place
+// it happened, which is what the answer actually shows a reader.
+func episodeMatches(ep recall.Episode, q Question) bool {
+	for _, p := range ep.People {
+		if model.ID(p.Email) == q.WantPerson {
+			return true
+		}
+	}
+	return false
+}
+
+// record folds one result into a score. A rank of zero means the answer never
+// appeared at all.
+func (s *Score) record(question string, rank int) {
+	switch {
+	case rank == 1:
+		s.Top1++
+		s.Top3++
+		s.ReciprocalRank++
+	case rank > 0 && rank <= 3:
+		s.Top3++
+		s.ReciprocalRank += 1 / float64(rank)
+	case rank > 3:
+		s.ReciprocalRank += 1 / float64(rank)
+	default:
+		if len(s.Missed) < maxMissed {
+			s.Missed = append(s.Missed, question)
+		}
+	}
+}
