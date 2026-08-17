@@ -26,12 +26,14 @@ var stopwords = map[string]bool{
 	"where": true, "when": true, "which": true, "why": true,
 }
 
-// Tokenize lowercases and folds text, then splits it into searchable tokens,
+// Tokenize folds and lowercases text, then splits it into searchable tokens,
 // dropping stopwords and tokens shorter than two bytes. Folding removes
 // diacritics so "josé" and "jose" share a token, and letters of any script are
-// kept so a non-ASCII name is not mangled or dropped.
+// kept so a non-ASCII name is not mangled or dropped. Folding runs first
+// because NFKD expands compatibility characters like ㏜ into letters ("Sv")
+// that must still be lowercased.
 func Tokenize(s string) []string {
-	fields := strings.FieldsFunc(Fold(strings.ToLower(s)), func(r rune) bool {
+	fields := strings.FieldsFunc(strings.ToLower(Fold(s)), func(r rune) bool {
 		return !isWordRune(r)
 	})
 	out := fields[:0]
@@ -64,8 +66,12 @@ func isWordRune(r rune) bool {
 
 // Fold removes diacritics by decomposing to NFKD and dropping the combining
 // marks, so "josé" folds to "jose". Letters from scripts without combining
-// marks, such as CJK, pass through unchanged. It is safe for concurrent use.
+// marks, such as CJK, pass through unchanged. Invalid UTF-8 bytes, which
+// appear when a source file was written in a legacy encoding, become the
+// replacement character before normalizing; left in place they make the
+// normalizer skip the characters next to them. It is safe for concurrent use.
 func Fold(s string) string {
+	s = strings.ToValidUTF8(s, "�")
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, r := range norm.NFKD.String(s) {
@@ -83,7 +89,7 @@ func Fold(s string) string {
 func Slug(s string) string {
 	var b strings.Builder
 	hyphen := false
-	for _, r := range Fold(strings.ToLower(strings.TrimSpace(s))) {
+	for _, r := range strings.ToLower(Fold(strings.TrimSpace(s))) {
 		if isWordRune(r) {
 			b.WriteRune(r)
 			hyphen = false
