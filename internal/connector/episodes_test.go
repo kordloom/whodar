@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/kordloom/whodar/internal/episode"
+	"github.com/kordloom/whodar/internal/fakeapi"
 	"github.com/kordloom/whodar/internal/github"
 	"github.com/kordloom/whodar/internal/jira"
 	"github.com/kordloom/whodar/internal/model"
@@ -254,5 +255,37 @@ func TestJiraServerEpisodes(t *testing.T) {
 	// The v2 string description is indexed, not dropped as an unreadable tree.
 	if !strings.Contains(ep.Body, "session timeout") {
 		t.Errorf("body = %q, want the string description indexed", ep.Body)
+	}
+}
+
+// TestPagerDutyResolverBecomesParticipant verifies an incident resolved without
+// a formal assignee still becomes an episode, attributed to whoever resolved
+// it. Real PagerDuty incidents are often settled by hand with no assignment,
+// and the resolver is the surest record of who actually solved the problem, so
+// missing them meant no episode at all.
+func TestPagerDutyResolverBecomesParticipant(t *testing.T) {
+	t.Parallel()
+	api := &fakeapi.PagerDuty{Incidents: []fakeapi.PagerDutyIncident{{
+		ID: "I1", Number: 1, Title: "Disaster Struck", Status: "resolved",
+		ServiceName: "billing", CreatedAt: "2026-08-18T10:00:00Z",
+		ResolvedAt: "2026-08-18T10:30:00Z",
+		// No assignee, no acknowledger: only a resolver, the manual-resolve case.
+		ResolverEmail: "douglas@kordloom.com",
+	}}}
+	srv := api.Server()
+	t.Cleanup(srv.Close)
+
+	p := NewPagerDutyWithClient(
+		pagerduty.New("token", pagerduty.WithBaseURL(srv.URL)),
+		PagerDutyOptions{Episodes: true})
+	if _, err := p.Fetch(context.Background()); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	eps := p.Episodes()
+	if len(eps) != 1 {
+		t.Fatalf("episodes = %d, want the resolved incident with its resolver: %+v", len(eps), eps)
+	}
+	if !hasParticipant(eps[0], "douglas@kordloom.com") {
+		t.Errorf("participants = %v, want the resolver", eps[0].Participants)
 	}
 }

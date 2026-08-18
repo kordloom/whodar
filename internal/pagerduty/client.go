@@ -99,6 +99,10 @@ type Service struct {
 type User struct {
 	// ID is the user id.
 	ID string `json:"id"`
+	// Type is the reference kind, such as "user_reference". It tells a real
+	// person apart from a service or integration that resolved an incident on
+	// its own, which must not be counted as someone who solved it.
+	Type string `json:"type"`
 	// Name is the user's display name.
 	Name string `json:"name"`
 	// Email is the user's email.
@@ -154,10 +158,23 @@ type Incident struct {
 		// Acknowledger is the user who acknowledged it.
 		Acknowledger User `json:"acknowledger"`
 	} `json:"acknowledgements"`
+	// LastStatusChangeBy is who last moved the incident, which on a resolved
+	// incident is who resolved it. An incident settled without a formal
+	// assignee still has this, so it is the surest single record of who
+	// actually solved the problem.
+	LastStatusChangeBy User `json:"last_status_change_by"`
 }
 
 // Resolved reports whether the incident was settled.
 func (i Incident) Resolved() bool { return i.Status == "resolved" || !i.ResolvedAt.IsZero() }
+
+// isUserRef reports whether a reference is a real user rather than a service or
+// integration. PagerDuty leaves the type empty on the assignee and
+// acknowledger objects it nests, so an empty type is treated as a user; only an
+// explicit non-user type, such as a service_reference, is excluded.
+func isUserRef(u User) bool {
+	return u.Type == "" || u.Type == "user_reference" || u.Type == "user"
+}
 
 // People returns everyone who handled the incident, without repeats.
 func (i Incident) People() []User {
@@ -175,6 +192,12 @@ func (i Incident) People() []User {
 	}
 	for _, a := range i.Acknowledgements {
 		add(a.Acknowledger)
+	}
+	// The person who resolved the incident is who settled it, and on a
+	// manually-handled incident they may be the only person on record. A
+	// service or integration that auto-resolved it is not a person, so skip it.
+	if i.Resolved() && isUserRef(i.LastStatusChangeBy) {
+		add(i.LastStatusChangeBy)
 	}
 	return out
 }

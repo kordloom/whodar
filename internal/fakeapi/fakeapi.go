@@ -411,6 +411,10 @@ type PagerDutyIncident struct {
 	AssigneeEmails []string
 	// AcknowledgerEmails are the people who picked it up.
 	AcknowledgerEmails []string
+	// ResolverEmail is who resolved the incident, emitted as
+	// last_status_change_by, which a manually-resolved incident carries even
+	// with no assignee.
+	ResolverEmail string
 }
 
 // PagerDuty is a fake PagerDuty API honoring the status filter and the
@@ -497,6 +501,12 @@ func (i PagerDutyIncident) object() map[string]any {
 	}
 	if i.ResolvedAt != "" {
 		out["resolved_at"] = i.ResolvedAt
+	}
+	if i.ResolverEmail != "" {
+		out["last_status_change_by"] = map[string]any{
+			"id": "PD-" + i.ResolverEmail, "type": "user_reference",
+			"summary": i.ResolverEmail, "email": i.ResolverEmail,
+		}
 	}
 	return out
 }
