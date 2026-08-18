@@ -99,12 +99,19 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 		return nil, err
 	}
 
+	// Repos are fetched concurrently, so serialize every write to the shared
+	// tallies and to the log writer, which a test may back with a plain buffer.
+	g.opts.Log = &lockedWriter{w: g.opts.Log}
+	var mu sync.Mutex
+
 	counts := make(map[string]map[string]int) // login -> token -> count
 	latest := make(map[string]time.Time)      // login -> most recent activity
 	bump := func(login string, tokens []string, t time.Time) {
 		if login == "" || len(tokens) == 0 || strings.HasSuffix(login, "[bot]") {
 			return
 		}
+		mu.Lock()
+		defer mu.Unlock()
 		c := counts[login]
 		if c == nil {
 			c = make(map[string]int)
@@ -120,21 +127,37 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 		}
 	}
 
-	var codeOwnerRecords []Record
+	var (
+		codeOwnerRecords []Record
+		wg               sync.WaitGroup
+	)
+	sem := make(chan struct{}, repoWorkers)
 	for _, full := range repos {
 		owner, name, ok := splitRepo(full)
 		if !ok {
 			continue
 		}
-		recs, err := g.indexRepo(ctx, full, owner, name, bump)
-		codeOwnerRecords = append(codeOwnerRecords, recs...)
-		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return nil, err
-			}
-			fmt.Fprintf(g.opts.Log, "github: skipping %s: %v\n", full, err)
-			continue
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
 		}
+		wg.Add(1)
+		go func(full, owner, name string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			recs, eps, err := g.indexRepo(ctx, full, owner, name, bump)
+			mu.Lock()
+			codeOwnerRecords = append(codeOwnerRecords, recs...)
+			g.episodes = append(g.episodes, eps...)
+			mu.Unlock()
+			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				fmt.Fprintf(g.opts.Log, "github: skipping %s: %v\n", full, err)
+			}
+		}(full, owner, name)
+	}
+	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	accounts := g.resolveAccounts(ctx, counts)
@@ -156,29 +179,30 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 // discarding the repos already indexed.
 func (g *GitHub) indexRepo(
 	ctx context.Context, full, owner, name string, bump func(string, []string, time.Time),
-) ([]Record, error) {
+) ([]Record, []episode.Episode, error) {
 	repo, err := g.client.Repo(ctx, owner, name)
 	if err != nil {
-		return nil, fmt.Errorf("repo: %w", err)
+		return nil, nil, fmt.Errorf("repo: %w", err)
 	}
 	repoTokens := repoTopicSet(repo)
 
 	cons, err := g.client.Contributors(ctx, owner, name)
 	if e := g.usable(full, "contributors", len(cons), err); e != nil {
-		return nil, fmt.Errorf("contributors: %w", e)
+		return nil, nil, fmt.Errorf("contributors: %w", e)
 	}
 	for _, c := range cons {
 		bump(c.Login, repoTokens, time.Time{})
 	}
 
+	var episodes []episode.Episode
 	pulls, err := g.client.PullRequests(ctx, owner, name)
 	if e := g.usable(full, "pulls", len(pulls), err); e != nil {
-		return nil, fmt.Errorf("pulls: %w", e)
+		return nil, nil, fmt.Errorf("pulls: %w", e)
 	}
 	for _, pr := range pulls {
 		if g.opts.Episodes {
 			if ep, ok := changeEpisode(owner, name, pr); ok {
-				g.episodes = append(g.episodes, ep)
+				episodes = append(episodes, ep)
 			}
 		}
 		tokens := append(pr.LabelNames(), titleTokens(pr.Title)...)
@@ -193,7 +217,9 @@ func (g *GitHub) indexRepo(
 
 	issues, err := g.client.Issues(ctx, owner, name)
 	if e := g.usable(full, "issues", len(issues), err); e != nil {
-		return nil, fmt.Errorf("issues: %w", e)
+		// Preserve the episodes already gathered from the pull requests: they
+		// were read successfully, and a later failure should not discard them.
+		return nil, episodes, fmt.Errorf("issues: %w", e)
 	}
 	var issueCount int
 	for _, is := range issues {
@@ -213,7 +239,7 @@ func (g *GitHub) indexRepo(
 		recs, err := parseCodeOwners(ctx, bytes.NewReader(content))
 		switch {
 		case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded):
-			return nil, err
+			return codeOwnerRecords, episodes, err
 		case err != nil:
 			fmt.Fprintf(g.opts.Log, "github: %s CODEOWNERS parse failed: %v\n", full, err)
 		default:
@@ -222,7 +248,7 @@ func (g *GitHub) indexRepo(
 	}
 	fmt.Fprintf(g.opts.Log, "github: indexed %s (%d contributors, %d pulls, %d issues)\n",
 		full, len(cons), len(pulls), issueCount)
-	return codeOwnerRecords, nil
+	return codeOwnerRecords, episodes, nil
 }
 
 // usable reports whether a listing error is tolerable. A nil error and a
@@ -262,6 +288,24 @@ func (g *GitHub) repoList(ctx context.Context) ([]string, error) {
 }
 
 // resolveAccounts looks up each login's profile when email resolution is on.
+// repoWorkers bounds how many repositories are fetched at once. GitHub's
+// secondary rate limits punish aggressive concurrency, so this stays modest.
+const repoWorkers = 6
+
+// lockedWriter serializes writes so concurrent per-repo logging cannot
+// interleave or race on the underlying writer.
+type lockedWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+// Write locks around the underlying write.
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
+}
+
 // accountWorkers bounds how many profile lookups run at once. Email resolution
 // is one request per contributor, so a large org means hundreds of them;
 // running a bounded batch concurrently turns minutes of serial waiting into

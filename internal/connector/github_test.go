@@ -191,3 +191,56 @@ func TestGitHubResolvesEmailsConcurrently(t *testing.T) {
 		t.Errorf("%d records got an email, want all %d resolved", withEmail, contributors)
 	}
 }
+
+// TestGitHubFetchesReposConcurrently verifies several repositories are indexed
+// in parallel and every one's people and topics land, with no race on the
+// shared tallies or the log. An org is many repos, so this is the common shape.
+func TestGitHubFetchesReposConcurrently(t *testing.T) {
+	t.Parallel()
+	repos := []string{"acme/billing", "acme/payments", "acme/ledger", "acme/invoicing", "acme/refunds"}
+	mux := http.NewServeMux()
+	for _, full := range repos {
+		full := full
+		name := strings.SplitN(full, "/", 2)[1]
+		mux.HandleFunc("/repos/"+full, func(w http.ResponseWriter, _ *http.Request) {
+			fmt.Fprintf(w, `{"name":%q,"full_name":%q}`, name, full)
+		})
+		mux.HandleFunc("/repos/"+full+"/contributors", func(w http.ResponseWriter, _ *http.Request) {
+			// A contributor unique to this repo, so the merge is observable.
+			fmt.Fprintf(w, `[{"login":"dev-%s","contributions":5}]`, name)
+		})
+		mux.HandleFunc("/repos/"+full+"/pulls", func(w http.ResponseWriter, _ *http.Request) {
+			io.WriteString(w, "[]")
+		})
+		mux.HandleFunc("/repos/"+full+"/issues", func(w http.ResponseWriter, _ *http.Request) {
+			io.WriteString(w, "[]")
+		})
+	}
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	var log strings.Builder
+	client := github.New("token", github.WithBaseURL(srv.URL))
+	src := NewGitHubWithClient(client, GitHubOptions{Repos: repos, Episodes: true, Log: &log})
+	recs, err := src.Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	// Episodes append to a shared slice from each repo goroutine, so this also
+	// guards that concurrent path under the race detector.
+	_ = src.Episodes()
+	got := make(map[string]bool)
+	for _, r := range recs {
+		got[r.PersonID] = true
+	}
+	for _, full := range repos {
+		name := strings.SplitN(full, "/", 2)[1]
+		if !got["github:dev-"+name] {
+			t.Errorf("contributor from %s missing; a concurrent repo was dropped", full)
+		}
+	}
+	// Every repo logged its line, none interleaved into corruption.
+	if n := strings.Count(log.String(), "github: indexed"); n != len(repos) {
+		t.Errorf("logged %d indexed lines, want %d", n, len(repos))
+	}
+}
