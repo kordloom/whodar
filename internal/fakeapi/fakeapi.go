@@ -523,10 +523,16 @@ type ConfluencePage struct {
 
 // sections returns the page split by the expansion each part needs, so the
 // server can withhold anything the client did not ask to expand.
-func (p ConfluencePage) sections() map[string]any {
+func (p ConfluencePage) sections(server bool) map[string]any {
 	user := func(email string) any {
 		if email == "" {
 			return nil
+		}
+		if server {
+			// Server and Data Center: username and user key, no account id or
+			// email, exactly as a public wiki such as Apache's returns.
+			name, _, _ := strings.Cut(email, "@")
+			return map[string]any{"username": name, "userKey": "key-" + name, "displayName": name}
 		}
 		return map[string]any{
 			"accountId":   "acct-" + email,
@@ -553,10 +559,14 @@ func (p ConfluencePage) sections() map[string]any {
 	}
 }
 
-// Confluence is a fake Confluence Cloud site. It withholds anything the client
-// did not name in expand, which is how the real API behaves and what turns a
+// Confluence is a fake Confluence site. It withholds anything the client did
+// not name in expand, which is how the real API behaves and what turns a
 // forgotten expansion into a visibly empty field rather than a passing test.
+// With ServerMode set it behaves as a self-hosted Server or Data Center site:
+// the REST API at the root rather than under /wiki, and username-based users.
 type Confluence struct {
+	// ServerMode serves the Server/Data Center path and user shape.
+	ServerMode bool
 	// Pages are the pages the site holds.
 	Pages []ConfluencePage
 	// Queries records each search query string.
@@ -565,11 +575,18 @@ type Confluence struct {
 
 // Server starts the fake site. The caller closes it.
 func (c *Confluence) Server() *httptest.Server {
+	base := "/wiki/rest/api"
+	if c.ServerMode {
+		base = "/rest/api"
+	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/wiki/rest/api/user/current", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(base+"/space", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{"results": []any{}, "size": 0})
+	})
+	mux.HandleFunc(base+"/user/current", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{"accountId": "acct-me", "email": "me@x.com"})
 	})
-	mux.HandleFunc("/wiki/rest/api/content/search", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(base+"/content/search", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		c.Queries = append(c.Queries, r.URL.RawQuery)
 		expanded := make(map[string]bool)
@@ -590,7 +607,7 @@ func (c *Confluence) Server() *httptest.Server {
 		results := make([]any, 0, end-start)
 		for _, p := range c.Pages[start:end] {
 			out := map[string]any{"title": p.Title, "type": "page"}
-			for name, section := range p.sections() {
+			for name, section := range p.sections(c.ServerMode) {
 				if !expanded[name] {
 					continue
 				}

@@ -75,6 +75,7 @@ Builds or extends the index from one source per run.
 | `--confluence-space`|           | confluence | Space key, repeatable.                           |
 | `--confluence-cql`  |           | confluence | CQL query; overrides `--confluence-space`.       |
 | `--max-pages`       | `2000`    | confluence | Cap pages read.                                  |
+| `--confluence-server`| `false`  | confluence | Self-hosted Server/DC (REST at root, bearer/anonymous).|
 | `--repo-path`       |           | git        | Local repository root, repeatable.               |
 | `--git-since-days`  | `365`     | git        | History window in days.                          |
 | `--max-commits`     | `2000`    | git        | Commit cap per repository.                       |

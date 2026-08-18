@@ -19,15 +19,26 @@ import (
 	"github.com/kordloom/whodar/internal/util"
 )
 
-// searchPath is the Confluence Cloud content search endpoint.
-const searchPath = "/wiki/rest/api/content/search"
+// API bases for the two Confluence deployments. Cloud serves the REST API under
+// a /wiki context path; Server and Data Center serve it at the site root.
+const (
+	apiBaseCloud  = "/wiki/rest/api"
+	apiBaseServer = "/rest/api"
+)
 
-// Client calls the Confluence Cloud REST API.
+// Client calls the Confluence REST API for either a Cloud or a Server/Data
+// Center deployment, which differ in the API context path, authentication, and
+// how they name users.
 type Client struct {
 	// baseURL is the site root, for example https://acme.atlassian.net.
 	baseURL string
-	// auth is the Basic authorization header value.
+	// auth is the Authorization header value, or empty for an anonymous
+	// connection to a public Server/Data Center site.
 	auth string
+	// searchPath is the deployment-appropriate content search endpoint.
+	searchPath string
+	// pingPath verifies reachability and, when authenticated, credentials.
+	pingPath string
 	// http performs requests.
 	http httputil.Doer
 	// maxRetries bounds retries on HTTP 429.
@@ -66,6 +77,35 @@ func New(siteURL, email, token string, opts ...Option) *Client {
 	c := &Client{
 		baseURL:    strings.TrimRight(siteURL, "/"),
 		auth:       "Basic " + base64.StdEncoding.EncodeToString([]byte(email+":"+token)),
+		searchPath: apiBaseCloud + "/content/search",
+		pingPath:   apiBaseCloud + "/user/current",
+		http:       &http.Client{Timeout: apiTimeout},
+		maxRetries: 3,
+	}
+	for _, o := range opts {
+		o(c)
+	}
+	return c
+}
+
+// NewServer returns a Client for a self-hosted Confluence Server or Data Center
+// site, which serves the REST API at the site root rather than under /wiki.
+// token is a personal access token sent as a bearer, or empty for a public
+// site that allows anonymous read, such as an open-source project's wiki. It
+// panics on an empty siteURL.
+func NewServer(siteURL, token string, opts ...Option) *Client {
+	if siteURL == "" {
+		panic("confluence: NewServer requires a siteURL")
+	}
+	auth := ""
+	if token != "" {
+		auth = "Bearer " + token
+	}
+	c := &Client{
+		baseURL:    strings.TrimRight(siteURL, "/"),
+		auth:       auth,
+		searchPath: apiBaseServer + "/content/search",
+		pingPath:   apiBaseServer + "/space?limit=1",
 		http:       &http.Client{Timeout: apiTimeout},
 		maxRetries: 3,
 	}
@@ -77,12 +117,33 @@ func New(siteURL, email, token string, opts ...Option) *Client {
 
 // User is the subset of a Confluence user whodar reads.
 type User struct {
-	// AccountID is the stable account identifier.
+	// AccountID is the stable account identifier on Confluence Cloud.
 	AccountID string `json:"accountId"`
+	// Username is the login on Confluence Server and Data Center, which have no
+	// account id.
+	Username string `json:"username"`
+	// UserKey is the internal user key on Server and Data Center, used when
+	// Username is absent.
+	UserKey string `json:"userKey"`
 	// DisplayName is the user's display name.
 	DisplayName string `json:"displayName"`
-	// Email is the user's email, present when visible to the token.
+	// Email is the user's email, present when the site exposes it. Server and
+	// Data Center sites usually hide it.
 	Email string `json:"email"`
+}
+
+// Identity returns the stable per-site identifier for the user, preferring the
+// account id used by Cloud and falling back to the username or key used by
+// Server and Data Center. It is empty only for a user with none of these.
+func (u User) Identity() string {
+	switch {
+	case u.AccountID != "":
+		return u.AccountID
+	case u.Username != "":
+		return u.Username
+	default:
+		return u.UserKey
+	}
 }
 
 // label is a content label.
@@ -177,7 +238,7 @@ func (c *Client) Pages(ctx context.Context, cql string, max int) ([]Page, error)
 			"expand": {"space,metadata.labels,history,version"},
 		}
 		var resp searchResponse
-		if err := c.get(ctx, searchPath, params, &resp); err != nil {
+		if err := c.get(ctx, c.searchPath, params, &resp); err != nil {
 			return nil, err
 		}
 		all = append(all, resp.Results...)
@@ -193,22 +254,21 @@ func (c *Client) Pages(ctx context.Context, cql string, max int) ([]Page, error)
 	return all, nil
 }
 
-// currentUserPath is the Confluence Cloud current-user endpoint used to
-// validate credentials.
-const currentUserPath = "/wiki/rest/api/user/current"
-
-// Ping verifies the credentials with the current-user endpoint, the cheapest
-// read-only call that proves the site, email, and token line up. It returns nil
-// when they are accepted, a *httputil.StatusError for a non-200 status such as
-// 401 for bad credentials, or the transport error when the site is unreachable.
+// Ping verifies the site is reachable and, when authenticated, that the
+// credentials work. Cloud checks the current user; an anonymous Server
+// connection checks a space listing, since the current-user endpoint needs
+// auth. It returns nil on success, a *httputil.StatusError for a non-200
+// status, or the transport error when the site is unreachable.
 func (c *Client) Ping(ctx context.Context) error {
-	endpoint := c.baseURL + currentUserPath
+	endpoint := c.baseURL + c.pingPath
 	resp, _, err := httputil.Do(ctx, c.http, c.maxRetries, nil, func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 		if err != nil {
 			return nil, fmt.Errorf("new request: %w", err)
 		}
-		req.Header.Set("Authorization", c.auth)
+		if c.auth != "" {
+			req.Header.Set("Authorization", c.auth)
+		}
 		req.Header.Set("Accept", "application/json")
 		return req, nil
 	})
@@ -233,7 +293,9 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 		if err != nil {
 			return nil, fmt.Errorf("new request: %w", err)
 		}
-		req.Header.Set("Authorization", c.auth)
+		if c.auth != "" {
+			req.Header.Set("Authorization", c.auth)
+		}
 		req.Header.Set("Accept", "application/json")
 		return req, nil
 	})

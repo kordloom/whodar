@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -51,4 +52,81 @@ func TestNewEmptyPanics(t *testing.T) {
 		}
 	}()
 	New("", "e", "t")
+}
+
+// TestUserIdentity verifies the identity fallback: Cloud keys on the account
+// id, Server and Data Center on the username or user key.
+func TestUserIdentity(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		In   User
+		Want string
+	}{
+		{User{AccountID: "a1", Username: "jdoe", UserKey: "k1"}, "a1"}, // Test 0: Cloud.
+		{User{Username: "jdoe", UserKey: "k1"}, "jdoe"},                // Test 1: Server username.
+		{User{UserKey: "k1"}, "k1"},                                    // Test 2: Server key.
+		{User{}, ""},                                                   // Test 3: none.
+	}
+	for testNum, test := range tests {
+		if got := test.In.Identity(); got != test.Want {
+			t.Errorf("test %d: Identity() = %q, want %q", testNum, got, test.Want)
+		}
+	}
+}
+
+// TestNewServerAnonymousAtRoot verifies the Server client serves the REST API
+// at the site root without the Cloud /wiki prefix, sends no auth header when
+// the token is empty, and reads Server-shaped users. This is the shape a public
+// wiki such as Apache's Confluence returns.
+func TestNewServerAnonymousAtRoot(t *testing.T) {
+	t.Parallel()
+	var gotPath, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		io.WriteString(w, `{"size":1,"limit":100,"results":[{"title":"KRaft design",`+
+			`"space":{"key":"KAFKA","name":"Kafka"},`+
+			`"history":{"createdBy":{"username":"showuon","displayName":"Luke Chen"}},`+
+			`"version":{"by":{"username":"showuon","displayName":"Luke Chen"}}}]}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := NewServer(srv.URL, "")
+	pages, err := c.Pages(context.Background(), "type=page", 10)
+	if err != nil {
+		t.Fatalf("Pages: %v", err)
+	}
+	if strings.HasPrefix(gotPath, "/wiki/") {
+		t.Errorf("Server hit the Cloud /wiki path %q", gotPath)
+	}
+	if !strings.HasPrefix(gotPath, apiBaseServer) {
+		t.Errorf("path = %q, want the Server API base %q", gotPath, apiBaseServer)
+	}
+	if gotAuth != "" {
+		t.Errorf("anonymous client sent an Authorization header: %q", gotAuth)
+	}
+	if len(pages) != 1 {
+		t.Fatalf("pages = %d, want 1", len(pages))
+	}
+	if got := pages[0].History.CreatedBy.Identity(); got != "showuon" {
+		t.Errorf("creator identity = %q, want the username showuon", got)
+	}
+}
+
+// TestNewServerBearerToken verifies a Confluence PAT is sent as a bearer.
+func TestNewServerBearerToken(t *testing.T) {
+	t.Parallel()
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		io.WriteString(w, `{"size":0,"limit":100,"results":[]}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	if _, err := NewServer(srv.URL, "PAT9").Pages(context.Background(), "", 10); err != nil {
+		t.Fatalf("Pages: %v", err)
+	}
+	if gotAuth != "Bearer PAT9" {
+		t.Errorf("Authorization = %q, want Bearer PAT9", gotAuth)
+	}
 }

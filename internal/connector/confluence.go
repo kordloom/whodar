@@ -19,6 +19,10 @@ type ConfluenceOptions struct {
 	CQL string
 	// MaxPages caps pages read; zero uses a default.
 	MaxPages int
+	// Server selects a self-hosted Server or Data Center deployment, which
+	// serves the REST API at the site root and authenticates with a bearer
+	// token or not at all, rather than Cloud's /wiki path and email-plus-token.
+	Server bool
 	// Log receives progress lines; nil discards them.
 	Log io.Writer
 }
@@ -51,8 +55,14 @@ const confluenceProgressEvery = 100
 // an email and API token.
 func NewConfluence(siteURL, email, token string, opts ConfluenceOptions) *Confluence {
 	o := opts.withDefaults()
-	client := confluence.New(siteURL, email, token,
-		confluence.WithProgress(util.ProgressWriter(o.Log, "confluence: fetched", confluenceProgressEvery)))
+	progress := confluence.WithProgress(
+		util.ProgressWriter(o.Log, "confluence: fetched", confluenceProgressEvery))
+	var client *confluence.Client
+	if o.Server {
+		client = confluence.NewServer(siteURL, token, progress)
+	} else {
+		client = confluence.New(siteURL, email, token, progress)
+	}
 	return &Confluence{client: client, opts: o}
 }
 
@@ -165,8 +175,8 @@ func confluenceUserKey(u confluence.User) string {
 	if u.Email != "" {
 		return strings.ToLower(u.Email)
 	}
-	if u.AccountID != "" {
-		return "confluence:" + u.AccountID
+	if id := u.Identity(); id != "" {
+		return "confluence:" + id
 	}
 	return ""
 }
@@ -177,8 +187,8 @@ func confluencePersonRecord(u confluence.User, topics []string) Record {
 	rec := Record{Kind: KindPerson, Source: "confluence", Weight: 1, Topics: topics, Name: u.DisplayName}
 	if u.Email != "" {
 		rec.Email = util.NormalizeEmail(u.Email)
-	} else {
-		rec.PersonID = "confluence:" + u.AccountID
+	} else if id := u.Identity(); id != "" {
+		rec.PersonID = "confluence:" + id
 	}
 	if rec.Name == "" {
 		if rec.Email != "" {

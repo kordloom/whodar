@@ -433,7 +433,7 @@ func runFirstIndex(cmd *cobra.Command, opts *options, ui *prompt.IO, spec source
 		if serr != nil {
 			return serr
 		}
-		recs, err = fetchConfluence(cmd, confluenceArgs{spaces, "", 2000})
+		recs, err = fetchConfluence(cmd, confluenceArgs{spaces: spaces, maxPages: 2000})
 	case "pagerduty":
 		recs, eps, err = fetchPagerDuty(cmd, true)
 	case "org-csv":

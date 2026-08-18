@@ -81,6 +81,7 @@ func newIndexCmd(opts *options) *cobra.Command {
 		gitSinceDays     int
 		maxCommits       int
 		confluenceSpaces []string
+		confluenceServer bool
 		confluenceCQL    string
 		maxPages         int
 	)
@@ -100,6 +101,7 @@ Sources and their credentials:
   jira        --jira-project KEY | --jira-jql JQL        WHODAR_JIRA_URL/EMAIL/TOKEN
               (--jira-server for self-hosted Server/DC)   WHODAR_JIRA_URL[/TOKEN]
   confluence  --confluence-space KEY | --confluence-cql  WHODAR_CONFLUENCE_* (or Jira's)
+              (--confluence-server for self-hosted)       WHODAR_CONFLUENCE_URL[/TOKEN]
   pagerduty   (no scope flags)                           WHODAR_PAGERDUTY_TOKEN
 
 Start with the org chart, then merge everything else onto it:
@@ -143,7 +145,7 @@ Start with the org chart, then merge everything else onto it:
 				recs, eps, err = fetchJira(cmd,
 					jiraArgs{jiraURL, jiraProjects, jiraJQL, maxIssues, episodes || archive, jiraServer})
 			case "confluence":
-				recs, err = fetchConfluence(cmd, confluenceArgs{confluenceSpaces, confluenceCQL, maxPages})
+				recs, err = fetchConfluence(cmd, confluenceArgs{confluenceSpaces, confluenceCQL, maxPages, confluenceServer})
 			case "pagerduty":
 				recs, eps, err = fetchPagerDuty(cmd, episodes || archive)
 			case "git":
@@ -208,6 +210,8 @@ Start with the org chart, then merge everything else onto it:
 		"Jira is self-hosted Server or Data Center (v2 API, bearer or anonymous auth), not Cloud.")
 	f.StringArrayVar(&confluenceSpaces, "confluence-space", nil, "Confluence space key (repeatable).")
 	f.StringVar(&confluenceCQL, "confluence-cql", "", "Confluence CQL query (overrides --confluence-space).")
+	f.BoolVar(&confluenceServer, "confluence-server", false,
+		"Confluence is self-hosted Server or Data Center (REST at site root, bearer/anonymous auth), not Cloud.")
 	f.IntVar(&maxPages, "max-pages", 2000, "Cap Confluence pages read.")
 	return cmd
 }
@@ -598,6 +602,8 @@ type confluenceArgs struct {
 	cql string
 	// maxPages caps pages read.
 	maxPages int
+	// server selects a self-hosted Server or Data Center deployment.
+	server bool
 }
 
 // fetchConfluence builds Confluence records. The URL and credentials fall back
@@ -606,11 +612,19 @@ func fetchConfluence(cmd *cobra.Command, a confluenceArgs) ([]connector.Record, 
 	site := cmp.Or(os.Getenv(confluenceURLEnv), os.Getenv(jiraURLEnv))
 	email := cmp.Or(os.Getenv(confluenceEmailEnv), os.Getenv(jiraEmailEnv))
 	token := cmp.Or(os.Getenv(confluenceTokenEnv), os.Getenv(jiraTokenEnv))
-	if site == "" || email == "" || token == "" {
-		return nil, fmt.Errorf("%w: set WHODAR_CONFLUENCE_URL, EMAIL, and TOKEN (or the Jira ones)", ErrBadArgs)
+	// Cloud needs the site, an email, and a token; Server and Data Center need
+	// only the site, the token being an optional bearer for a public wiki.
+	if a.server {
+		if site == "" {
+			return nil, fmt.Errorf("%w: set WHODAR_CONFLUENCE_URL (or WHODAR_JIRA_URL) for the Server site", ErrBadArgs)
+		}
+	} else if site == "" || email == "" || token == "" {
+		return nil, fmt.Errorf(
+			"%w: set WHODAR_CONFLUENCE_URL, EMAIL, and TOKEN (or the Jira ones, "+
+				"or pass --confluence-server for a self-hosted site)", ErrBadArgs)
 	}
 	src := connector.NewConfluence(site, email, token, connector.ConfluenceOptions{
-		Spaces: a.spaces, CQL: a.cql, MaxPages: a.maxPages, Log: cmd.ErrOrStderr(),
+		Spaces: a.spaces, CQL: a.cql, MaxPages: a.maxPages, Server: a.server, Log: cmd.ErrOrStderr(),
 	})
 	recs, err := src.Fetch(cmd.Context())
 	if err != nil {

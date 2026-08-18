@@ -277,3 +277,40 @@ func TestJiraReportsProgressWhilePaging(t *testing.T) {
 		t.Errorf("saw %d progress lines in:\n%s", got, log.String())
 	}
 }
+
+// TestConfluenceServerAgainstFaithfulSite verifies whodar reads a self-hosted
+// Server or Data Center wiki: the REST API at the site root, and username-based
+// creators with no account id or email. This is the shape Apache's public
+// Confluence returns, where identity must key on the username.
+func TestConfluenceServerAgainstFaithfulSite(t *testing.T) {
+	t.Parallel()
+	site := &fakeapi.Confluence{ServerMode: true, Pages: []fakeapi.ConfluencePage{{
+		Title: "KRaft controller design", SpaceKey: "KAFKA", SpaceName: "Kafka",
+		Labels:         []string{"kraft", "controller"},
+		CreatedByEmail: "showuon@apache.invalid", CreatedAt: "2026-06-01T09:30:00.000Z",
+		EditedByEmail:  "bbejeck@apache.invalid", EditedAt: "2026-06-20T09:30:00.000Z",
+	}}}
+	srv := site.Server()
+	t.Cleanup(srv.Close)
+
+	c := NewConfluence(srv.URL, "", "", ConfluenceOptions{Spaces: []string{"KAFKA"}, Server: true})
+	recs, err := c.Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if len(recs) == 0 {
+		t.Fatal("no people from a Server wiki; the creator and editor expand from history and version")
+	}
+	var sawCreator, sawEditor bool
+	for _, r := range recs {
+		if r.PersonID == "confluence:showuon" {
+			sawCreator = true
+		}
+		if r.PersonID == "confluence:bbejeck" {
+			sawEditor = true
+		}
+	}
+	if !sawCreator || !sawEditor {
+		t.Errorf("records = %+v, want the creator and editor keyed by username", recs)
+	}
+}
