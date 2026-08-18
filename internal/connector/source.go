@@ -34,8 +34,15 @@ type Record struct {
 	Topics []string
 	// Members lists person references active in a KindChannel record.
 	Members []string
-	// Text is free-form text attributed to the person or channel, mined for topics.
+	// Text is free-form text attributed to the person or channel, mined for
+	// topics. It is readable message content and is never written to disk: the
+	// index persists only the stemmed Terms derived from it, so a stored index
+	// holds a search index rather than the messages themselves.
 	Text string
+	// Terms are the stemmed search terms derived from Text. The index fills and
+	// stores them in place of Text so a saved index can be rebuilt on a later
+	// merge without keeping any readable message text on disk.
+	Terms []string
 	// Source names the origin connector, e.g. "org-csv".
 	Source string
 	// Weight scales this record's affinity contribution; zero means one.

@@ -20,6 +20,7 @@ import (
 	"github.com/kordloom/whodar/internal/connector"
 	"github.com/kordloom/whodar/internal/identity"
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/text"
 	"github.com/kordloom/whodar/internal/util"
 	"github.com/kordloom/whodar/internal/vault"
 )
@@ -66,8 +67,10 @@ type personText struct {
 	Teams []string `json:"teams"`
 	// Topics are the lowercased explicit topic names.
 	Topics []string `json:"topics"`
-	// Text is the accumulated lowercased free text.
-	Text string `json:"text"`
+	// Text is the accumulated lowercased free text. It is readable message
+	// content used only in memory, to build embeddings and to merge two people
+	// on a join, so it is never written to disk.
+	Text string `json:"-"`
 }
 
 // channelText holds the normalized field text for a channel, used to explain
@@ -219,6 +222,34 @@ func (ix *Index) take(records []connector.Record) {
 	}
 }
 
+// redactedSources returns a copy of the stored records with readable Text
+// replaced by its stemmed Terms, so a saved index holds a search index rather
+// than the messages themselves. A record already carrying Terms and no Text,
+// which is one read back from a saved index, is passed through untouched.
+func redactedSources(sources map[string][]connector.Record) map[string][]connector.Record {
+	if sources == nil {
+		return nil
+	}
+	out := make(map[string][]connector.Record, len(sources))
+	for name, recs := range sources {
+		clean := make([]connector.Record, len(recs))
+		for i, rec := range recs {
+			if rec.Text != "" {
+				// Sort the stemmed terms so word order is destroyed: the stored
+				// set reveals no more than the inverted index already does, and
+				// cannot be read back as a sentence.
+				terms := text.Terms(rec.Text)
+				sort.Strings(terms)
+				rec.Terms = terms
+				rec.Text = ""
+			}
+			clean[i] = rec
+		}
+		out[name] = clean
+	}
+	return out
+}
+
 // rebuild derives the graph, postings, and texts from every retained record.
 // Sources are replayed in name order so the same set of records always
 // produces the same index, whatever order the runs happened in.
@@ -309,13 +340,15 @@ func (ix *Index) buildPerson(rec connector.Record) {
 		pt = &personText{}
 		texts[pid] = pt
 	}
+	addKey := func(key string, fieldWeight float64) {
+		if postings[key] == nil {
+			postings[key] = make(map[model.ID]float64)
+		}
+		postings[key][pid] += fieldWeight * w
+	}
 	add := func(text string, fieldWeight float64) {
 		for _, tok := range tokenize(text) {
-			key := stem(tok)
-			if postings[key] == nil {
-				postings[key] = make(map[model.ID]float64)
-			}
-			postings[key][pid] += fieldWeight * w
+			addKey(stem(tok), fieldWeight)
 		}
 	}
 	if rec.Title != "" {
@@ -335,9 +368,17 @@ func (ix *Index) buildPerson(rec connector.Record) {
 		pt.Topics = append(pt.Topics, strings.ToLower(top))
 		add(top, weightTopic)
 	}
+	// Fresh ingest carries readable Text, kept in memory for embedding and
+	// merge and tokenized into postings. A record rebuilt from a saved index
+	// carries only the stemmed Terms, which reproduce the same postings without
+	// any readable text having touched disk.
 	if rec.Text != "" {
 		pt.Text = strings.TrimSpace(pt.Text + " " + strings.ToLower(rec.Text))
 		add(rec.Text, weightText)
+	} else {
+		for _, term := range rec.Terms {
+			addKey(term, weightText)
+		}
 	}
 }
 
@@ -372,13 +413,15 @@ func (ix *Index) buildChannel(rec connector.Record) {
 	if rec.Title != "" {
 		ct.Topic = strings.ToLower(rec.Title)
 	}
+	addKey := func(key string, fieldWeight float64) {
+		if postings[key] == nil {
+			postings[key] = make(map[model.ID]float64)
+		}
+		postings[key][cid] += fieldWeight * d
+	}
 	add := func(text string, fieldWeight float64) {
 		for _, tok := range tokenize(text) {
-			key := stem(tok)
-			if postings[key] == nil {
-				postings[key] = make(map[model.ID]float64)
-			}
-			postings[key][cid] += fieldWeight * d
+			addKey(stem(tok), fieldWeight)
 		}
 	}
 	add(rec.Name, weightChannelName)
@@ -394,8 +437,14 @@ func (ix *Index) buildChannel(rec connector.Record) {
 		ct.Topics = append(ct.Topics, strings.ToLower(top))
 		add(top, weightTopic)
 	}
+	// Fresh ingest tokenizes readable Text; a rebuilt record replays its
+	// stored stemmed Terms, so a channel's sampled chatter never reaches disk.
 	if rec.Text != "" {
 		add(rec.Text, weightText)
+	} else {
+		for _, term := range rec.Terms {
+			addKey(term, weightText)
+		}
 	}
 }
 
@@ -860,7 +909,7 @@ func (ix *Index) Save(path string, opts ...Option) error {
 		PersonVecs:      ix.personVecs,
 		ChannelVecs:     ix.channelVecs,
 		Aliases:         ix.identityResolver().Pairs(),
-		Sources:         ix.sources,
+		Sources:         redactedSources(ix.sources),
 	}
 	raw, err := json.Marshal(snap)
 	if err != nil {
