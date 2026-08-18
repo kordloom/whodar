@@ -80,6 +80,7 @@ func newIndexCmd(opts *options) *cobra.Command {
 		repoPaths        []string
 		gitSinceDays     int
 		maxCommits       int
+		confluenceURL    string
 		confluenceSpaces []string
 		confluenceServer bool
 		confluenceCQL    string
@@ -145,7 +146,7 @@ Start with the org chart, then merge everything else onto it:
 				recs, eps, err = fetchJira(cmd,
 					jiraArgs{jiraURL, jiraProjects, jiraJQL, maxIssues, episodes || archive, jiraServer})
 			case "confluence":
-				recs, err = fetchConfluence(cmd, confluenceArgs{confluenceSpaces, confluenceCQL, maxPages, confluenceServer})
+				recs, err = fetchConfluence(cmd, confluenceArgs{confluenceURL, confluenceSpaces, confluenceCQL, maxPages, confluenceServer})
 			case "pagerduty":
 				recs, eps, err = fetchPagerDuty(cmd, episodes || archive)
 			case "git":
@@ -209,6 +210,7 @@ Start with the org chart, then merge everything else onto it:
 	f.BoolVar(&jiraServer, "jira-server", false,
 		"Jira is self-hosted Server or Data Center (v2 API, bearer or anonymous auth), not Cloud.")
 	f.StringArrayVar(&confluenceSpaces, "confluence-space", nil, "Confluence space key (repeatable).")
+	f.StringVar(&confluenceURL, "confluence-url", "", "Confluence site URL; or WHODAR_CONFLUENCE_URL (falls back to the Jira URL).")
 	f.StringVar(&confluenceCQL, "confluence-cql", "", "Confluence CQL query (overrides --confluence-space).")
 	f.BoolVar(&confluenceServer, "confluence-server", false,
 		"Confluence is self-hosted Server or Data Center (REST at site root, bearer/anonymous auth), not Cloud.")
@@ -596,6 +598,8 @@ func fetchJira(cmd *cobra.Command, a jiraArgs) ([]connector.Record, []episode.Ep
 
 // confluenceArgs holds the Confluence-specific index flags.
 type confluenceArgs struct {
+	// url is the Confluence site URL; empty falls back to the environment.
+	url string
 	// spaces scopes the search to these space keys.
 	spaces []string
 	// cql overrides the query.
@@ -609,7 +613,7 @@ type confluenceArgs struct {
 // fetchConfluence builds Confluence records. The URL and credentials fall back
 // to the Jira environment variables, since both use the same Atlassian site.
 func fetchConfluence(cmd *cobra.Command, a confluenceArgs) ([]connector.Record, error) {
-	site := cmp.Or(os.Getenv(confluenceURLEnv), os.Getenv(jiraURLEnv))
+	site := cmp.Or(a.url, os.Getenv(confluenceURLEnv), os.Getenv(jiraURLEnv))
 	email := cmp.Or(os.Getenv(confluenceEmailEnv), os.Getenv(jiraEmailEnv))
 	token := cmp.Or(os.Getenv(confluenceTokenEnv), os.Getenv(jiraTokenEnv))
 	// Cloud needs the site, an email, and a token; Server and Data Center need

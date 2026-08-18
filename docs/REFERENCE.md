@@ -73,6 +73,7 @@ Builds or extends the index from one source per run.
 | `--max-issues`      | `1000`    | jira       | Cap issues read.                                 |
 | `--jira-server`     | `false`   | jira       | Self-hosted Server/DC (v2 API, bearer/anonymous).|
 | `--confluence-space`|           | confluence | Space key, repeatable.                           |
+| `--confluence-url`  |           | confluence | Site URL; or `WHODAR_CONFLUENCE_URL` (falls back to the Jira URL). |
 | `--confluence-cql`  |           | confluence | CQL query; overrides `--confluence-space`.       |
 | `--max-pages`       | `2000`    | confluence | Cap pages read.                                  |
 | `--confluence-server`| `false`  | confluence | Self-hosted Server/DC (REST at root, bearer/anonymous).|
