@@ -97,3 +97,25 @@ func fillTemp(f *os.File, data []byte, perm fs.FileMode) error {
 	}
 	return nil
 }
+
+// GitHubNoreplyLogin returns the GitHub login encoded in a GitHub noreply commit
+// email, and whether email was one. GitHub issues commit emails of the form
+// "ID+login@users.noreply.github.com", and older ones as
+// "login@users.noreply.github.com", so a commit made under a private email can
+// still be joined to that person's GitHub activity without exposing a real
+// address.
+func GitHubNoreplyLogin(email string) (string, bool) {
+	const suffix = "@users.noreply.github.com"
+	e := strings.ToLower(strings.TrimSpace(email))
+	if !strings.HasSuffix(e, suffix) {
+		return "", false
+	}
+	local := strings.TrimSuffix(e, suffix)
+	if i := strings.IndexByte(local, '+'); i >= 0 {
+		local = local[i+1:]
+	}
+	if local == "" {
+		return "", false
+	}
+	return local, true
+}

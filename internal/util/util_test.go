@@ -139,3 +139,30 @@ func TestWriteFileAtomicUnwritableDir(t *testing.T) {
 		t.Errorf("error does not name the unwritable directory: %v", err)
 	}
 }
+
+// TestGitHubNoreplyLogin verifies the login is recovered from both the modern
+// numeric-prefixed noreply email and the older bare form, and that ordinary
+// emails are left alone.
+func TestGitHubNoreplyLogin(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		In     string
+		Want   string
+		WantOK bool
+	}{
+		{"34209028+veeceey@users.noreply.github.com", "veeceey", true},          // Test 0: modern form.
+		{"veeceey@users.noreply.github.com", "veeceey", true},                   // Test 1: older bare form.
+		{"1+dependabot[bot]@users.noreply.github.com", "dependabot[bot]", true}, // Test 2: prefixed bot.
+		{"Jane@Users.NoReply.GitHub.Com", "jane", true},                         // Test 3: case-insensitive.
+		{"jane@corp.com", "", false},                                            // Test 4: ordinary email.
+		{"", "", false},                                                         // Test 5: empty.
+		{"+@users.noreply.github.com", "", false},                               // Test 6: no login.
+	}
+	for testNum, test := range tests {
+		got, ok := GitHubNoreplyLogin(test.In)
+		if got != test.Want || ok != test.WantOK {
+			t.Errorf("test %d: GitHubNoreplyLogin(%q) = (%q, %v), want (%q, %v)",
+				testNum, test.In, got, ok, test.Want, test.WantOK)
+		}
+	}
+}

@@ -194,3 +194,48 @@ func TestGitHistorySkipsBadRepo(t *testing.T) {
 		t.Errorf("log = %q, want a skip warning for the bad path", log.String())
 	}
 }
+
+// TestGitJoinsGitHubByNoreplyLogin verifies a commit made under a GitHub
+// noreply email keys the author by their GitHub login, so their commits join
+// their pull requests and reviews instead of appearing as a second person.
+func TestGitJoinsGitHubByNoreplyLogin(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	repo, err := git.PlainInit(dir, false)
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "billing.go"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := wt.Add("billing.go"); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	sig := &object.Signature{
+		Name: "Octo Dev", Email: "99+octodev@users.noreply.github.com", When: time.Now(),
+	}
+	if _, err := wt.Commit("billing", &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	recs, err := NewGitHistory(GitOptions{Paths: []string{dir}}).Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	var octo *Record
+	for i := range recs {
+		if recs[i].Email == "99+octodev@users.noreply.github.com" {
+			octo = &recs[i]
+		}
+	}
+	if octo == nil {
+		t.Fatal("no record for the noreply author")
+	}
+	if octo.PersonID != "github:octodev" {
+		t.Errorf("git author keyed as %q, want github:octodev so it joins GitHub", octo.PersonID)
+	}
+}

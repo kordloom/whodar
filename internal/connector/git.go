@@ -11,6 +11,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/storer"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // Git history ingest bounds. A year of history captures current ownership;
@@ -92,7 +93,7 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 
 	records := make([]Record, 0, len(counts))
 	for email, c := range counts {
-		records = append(records, Record{
+		rec := Record{
 			Kind:   KindPerson,
 			Source: "git",
 			Weight: 1,
@@ -100,7 +101,15 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 			Name:   names[email],
 			Topics: expandTopics(c),
 			Time:   latest[email],
-		})
+		}
+		// A GitHub noreply commit email encodes the author's login, so key the
+		// person by that login to join their commits to their GitHub reviews
+		// and pull requests. Without this the same engineer appears once from
+		// git and again from github, since the two share no other identifier.
+		if login, ok := util.GitHubNoreplyLogin(email); ok {
+			rec.PersonID = "github:" + strings.ToLower(login)
+		}
+		records = append(records, rec)
 	}
 	return records, nil
 }
