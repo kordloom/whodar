@@ -10,8 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"sync"
+
 	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/github"
+
 	"github.com/kordloom/whodar/internal/util"
 )
 
@@ -259,16 +262,46 @@ func (g *GitHub) repoList(ctx context.Context) ([]string, error) {
 }
 
 // resolveAccounts looks up each login's profile when email resolution is on.
+// accountWorkers bounds how many profile lookups run at once. Email resolution
+// is one request per contributor, so a large org means hundreds of them;
+// running a bounded batch concurrently turns minutes of serial waiting into
+// seconds without tripping GitHub's secondary rate limits.
+const accountWorkers = 8
+
 func (g *GitHub) resolveAccounts(ctx context.Context, logins map[string]map[string]int) map[string]github.Account {
 	accounts := make(map[string]github.Account)
 	if !g.opts.ResolveEmails {
 		return accounts
 	}
+	progress := util.ProgressWriter(g.opts.Log, "github: resolved emails for", 100)
+	var (
+		mu   sync.Mutex
+		wg   sync.WaitGroup
+		done int
+	)
+	sem := make(chan struct{}, accountWorkers)
 	for login := range logins {
-		if a, err := g.client.Account(ctx, login); err == nil {
-			accounts[login] = a
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			wg.Wait()
+			return accounts
 		}
+		wg.Add(1)
+		go func(login string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			a, err := g.client.Account(ctx, login)
+			mu.Lock()
+			defer mu.Unlock()
+			if err == nil {
+				accounts[login] = a
+			}
+			done++
+			progress.Report(done)
+		}(login)
 	}
+	wg.Wait()
 	return accounts
 }
 

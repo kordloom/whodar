@@ -3,11 +3,13 @@ package connector
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -134,5 +136,58 @@ func TestGitHubFetchSkipsBadRepo(t *testing.T) {
 	}
 	if !strings.Contains(logBuf.String(), "skipping o/bad") {
 		t.Errorf("expected a skip warning for o/bad, log = %q", logBuf.String())
+	}
+}
+
+// TestGitHubResolvesEmailsConcurrently verifies email resolution fetches many
+// contributor profiles concurrently and correctly, without dropping or racing
+// on any of them. Against a real active org this is hundreds of profile
+// requests, and doing them serially once made an org index time out.
+func TestGitHubResolvesEmailsConcurrently(t *testing.T) {
+	t.Parallel()
+	const contributors = 200
+	var accountHits int64
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/acme/billing", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"name":"billing","full_name":"acme/billing"}`)
+	})
+	mux.HandleFunc("/repos/acme/billing/contributors", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("["))
+		for i := range contributors {
+			if i > 0 {
+				w.Write([]byte(","))
+			}
+			fmt.Fprintf(w, `{"login":"dev%d","contributions":%d}`, i, i+1)
+		}
+		w.Write([]byte("]"))
+	})
+	mux.HandleFunc("/repos/acme/billing/pulls", func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "[]") })
+	mux.HandleFunc("/repos/acme/billing/issues", func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "[]") })
+	// One profile endpoint per contributor, each returning that dev's email.
+	mux.HandleFunc("/users/", func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&accountHits, 1)
+		login := strings.TrimPrefix(r.URL.Path, "/users/")
+		fmt.Fprintf(w, `{"login":%q,"email":%q}`, login, login+"@x.com")
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	client := github.New("token", github.WithBaseURL(srv.URL))
+	recs, err := NewGitHubWithClient(client,
+		GitHubOptions{Repos: []string{"acme/billing"}, ResolveEmails: true}).Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if got := atomic.LoadInt64(&accountHits); got != contributors {
+		t.Errorf("resolved %d profiles, want one per contributor (%d)", got, contributors)
+	}
+	withEmail := 0
+	for _, r := range recs {
+		if strings.HasSuffix(r.Email, "@x.com") {
+			withEmail++
+		}
+	}
+	if withEmail != contributors {
+		t.Errorf("%d records got an email, want all %d resolved", withEmail, contributors)
 	}
 }
