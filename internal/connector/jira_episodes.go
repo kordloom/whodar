@@ -34,7 +34,13 @@ func issueEpisode(baseURL string, is jira.Issue) (episode.Episode, bool) {
 	}
 	var participants []model.ID
 	seen := make(map[model.ID]bool)
-	for _, u := range []*jira.User{is.Fields.Assignee, is.Fields.Reporter} {
+	candidates := []*jira.User{is.Fields.Assignee, is.Fields.Reporter}
+	// Comment authors helped work the issue even when they were never assigned,
+	// so recall should find them too.
+	for _, u := range is.CommentAuthors() {
+		candidates = append(candidates, &u)
+	}
+	for _, u := range candidates {
 		if u == nil {
 			continue
 		}

@@ -60,6 +60,16 @@ func WithAnthropicBaseURL(u string) AnthropicOption {
 	}
 }
 
+// WithAnthropicTransport wraps the client's HTTP transport, used to enforce the
+// egress policy on the actual outbound host.
+func WithAnthropicTransport(rt http.RoundTripper) AnthropicOption {
+	return func(a *Anthropic) {
+		if rt != nil {
+			a.http.Transport = rt
+		}
+	}
+}
+
 // NewAnthropic returns a Claude client. It panics on an empty key: the caller
 // must have read it from the environment before constructing the client.
 func NewAnthropic(apiKey string, opts ...AnthropicOption) *Anthropic {

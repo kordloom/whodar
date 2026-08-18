@@ -28,6 +28,10 @@ type Spec struct {
 	// ChatterPerChannel is how many loose off-topic messages surround them,
 	// which is the noise ranking has to see past.
 	ChatterPerChannel int
+	// NoArchive builds the free tier: thread replies still fold into the
+	// searchable body, but nothing is retained verbatim. It measures the recall
+	// a first-time user gets, which the archived build does not.
+	NoArchive bool
 	// Seed fixes the randomness so a run is reproducible.
 	Seed int64
 }

@@ -258,36 +258,70 @@ func JiraServer() *httptest.Server {
 			[]string{"embeddings"}, "Data Platform", 8),
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/rest/api/3/search", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, map[string]any{"total": len(issues), "startAt": 0, "issues": issues})
+	// Jira Cloud pages issues through the token-based enhanced-search endpoint.
+	// One page holds every generated issue, so the response marks itself last.
+	mux.HandleFunc("/rest/api/3/search/jql", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{"issues": issues, "isLast": true})
 	})
 	return httptest.NewServer(mux)
 }
 
-// ConfluenceServer serves page search in Confluence Cloud's wire format.
+// ConfluenceServer serves pages in Confluence Cloud's v2 wire format: pages name
+// people by account id, and the space name, labels, and identities are read from
+// separate endpoints rather than expanded inline.
 func ConfluenceServer() *httptest.Server {
-	page := func(title, space string, by map[string]any, labels []string, ago int) map[string]any {
-		labelList := make([]map[string]any, 0, len(labels))
-		for _, l := range labels {
-			labelList = append(labelList, map[string]any{"name": l})
-		}
-		return map[string]any{
-			"title":    title,
-			"space":    map[string]any{"key": "ENG", "name": space},
-			"metadata": map[string]any{"labels": map[string]any{"results": labelList}},
-			"history":  map[string]any{"createdBy": by},
-			"version":  map[string]any{"by": by, "when": isoDaysAgo(ago)},
-		}
+	type cfPage struct {
+		ID, Title, SpaceID, AuthorID string
+		Labels                       []string
+		Ago                          int
 	}
-	dan := map[string]any{"accountId": "c-dan", "displayName": "Dan Park", "email": "dan@corp.com"}
-	frank := map[string]any{"accountId": "c-frank", "displayName": "Frank Ito", "email": "frank@corp.com"}
-	pages := []map[string]any{
-		page("SSO login runbook", "Security", dan, []string{"sso", "oauth"}, 6),
-		page("Embeddings model serving guide", "ML Platform", frank, []string{"embeddings"}, 9),
+	pages := []cfPage{
+		{"0", "SSO login runbook", "sp-sec", "c-dan", []string{"sso", "oauth"}, 6},
+		{"1", "Embeddings model serving guide", "sp-ml", "c-frank", []string{"embeddings"}, 9},
 	}
+	spaceName := map[string]string{"sp-sec": "Security", "sp-ml": "ML Platform"}
+	users := map[string]map[string]any{
+		"c-dan":   {"accountId": "c-dan", "displayName": "Dan Park", "email": "dan@corp.com"},
+		"c-frank": {"accountId": "c-frank", "displayName": "Frank Ito", "email": "frank@corp.com"},
+	}
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("/wiki/rest/api/content/search", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, map[string]any{"size": len(pages), "limit": 100, "results": pages})
+	mux.HandleFunc("/wiki/rest/api/user/current", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{"accountId": "c-me", "email": "demo@corp.com"})
+	})
+	mux.HandleFunc("/wiki/rest/api/user", func(w http.ResponseWriter, r *http.Request) {
+		if u, ok := users[r.URL.Query().Get("accountId")]; ok {
+			writeJSON(w, u)
+			return
+		}
+		writeJSON(w, map[string]any{"accountId": r.URL.Query().Get("accountId")})
+	})
+	mux.HandleFunc("/wiki/api/v2/spaces/", func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimPrefix(r.URL.Path, "/wiki/api/v2/spaces/")
+		writeJSON(w, map[string]any{"id": id, "key": id, "name": spaceName[id]})
+	})
+	mux.HandleFunc("/wiki/api/v2/pages", func(w http.ResponseWriter, _ *http.Request) {
+		results := make([]any, 0, len(pages))
+		for _, p := range pages {
+			results = append(results, map[string]any{
+				"id": p.ID, "title": p.Title, "spaceId": p.SpaceID, "authorId": p.AuthorID,
+				"createdAt": isoDaysAgo(p.Ago),
+				"version":   map[string]any{"authorId": p.AuthorID, "createdAt": isoDaysAgo(p.Ago)},
+			})
+		}
+		writeJSON(w, map[string]any{"results": results, "_links": map[string]any{}})
+	})
+	mux.HandleFunc("/wiki/api/v2/pages/", func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/wiki/api/v2/pages/"), "/labels")
+		labels := make([]any, 0)
+		for _, p := range pages {
+			if p.ID == id {
+				for _, l := range p.Labels {
+					labels = append(labels, map[string]any{"name": l})
+				}
+			}
+		}
+		writeJSON(w, map[string]any{"results": labels})
 	})
 	return httptest.NewServer(mux)
 }

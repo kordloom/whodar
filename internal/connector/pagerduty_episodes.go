@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kordloom/whodar/internal/episode"
@@ -44,12 +45,43 @@ func (p *PagerDuty) collectIncidents(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("pagerduty incidents: %w", err)
 	}
+	// Offset paging cannot reach past the ceiling, so a run that hits it read
+	// only the most recent incidents. Say so rather than let the count read as
+	// complete, unless the caller's own cap is what stopped it.
+	if (p.opts.MaxIncidents <= 0 || p.opts.MaxIncidents > pagerduty.IncidentCeiling) &&
+		len(incidents) >= pagerduty.IncidentCeiling {
+		fmt.Fprintf(p.opts.Log,
+			"pagerduty: reached the %d incident ceiling; older incidents in the window were not read\n",
+			pagerduty.IncidentCeiling)
+	}
 	for _, in := range incidents {
-		if ep, ok := incidentEpisode(in); ok {
-			p.episodes = append(p.episodes, ep)
+		ep, ok := incidentEpisode(in)
+		if !ok {
+			continue
 		}
+		// Fold the triage and resolution notes into the body so recall can match
+		// how the incident was settled, not only its title and service. A note
+		// fetch failure costs detail, not the episode, so it is logged.
+		if notes, err := p.client.IncidentNotes(ctx, in.ID); err != nil {
+			fmt.Fprintf(p.opts.Log, "pagerduty: notes for %s: %v\n", in.ID, err)
+		} else if t := pagerDutyNotesText(notes); t != "" {
+			ep.Body = strings.TrimSpace(ep.Body + " " + t)
+		}
+		p.episodes = append(p.episodes, ep)
 	}
 	return nil
+}
+
+// pagerDutyNotesText joins an incident's note contents into one searchable
+// string.
+func pagerDutyNotesText(notes []pagerduty.Note) string {
+	parts := make([]string, 0, len(notes))
+	for _, n := range notes {
+		if s := strings.TrimSpace(n.Content); s != "" {
+			parts = append(parts, s)
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // incidentEpisode builds an episode from a resolved incident.
@@ -84,7 +116,7 @@ func incidentEpisode(in pagerduty.Incident) (episode.Episode, bool) {
 		Participants: participants,
 		Occurred:     when,
 		Permalink:    in.HTMLURL,
-		Body:         in.Title + " " + in.Service.Summary,
+		Body:         strings.TrimSpace(in.Title + " " + in.Description + " " + in.Service.Summary),
 	}, true
 }
 

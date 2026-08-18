@@ -109,39 +109,62 @@ func TestNotesFromFiles(t *testing.T) {
 	}
 }
 
-// TestFillArchiveReadsThreads verifies the archive fetches thread replies and
-// attaches them, and that a thread it cannot read stays a link rather than
-// failing the run.
-func TestFillArchiveReadsThreads(t *testing.T) {
+// TestEnrichThreadsFoldsReplies verifies reading a thread folds the replies into
+// the searchable body on any tier and retains them verbatim only under an
+// archive; a thread it cannot read keeps its parent body, and a windowed
+// conversation is never fetched because its messages are already in hand.
+func TestEnrichThreadsFoldsReplies(t *testing.T) {
 	t.Parallel()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		if strings.Contains(string(body), "ts=9999") {
-			io.WriteString(w, `{"ok":false,"error":"thread_not_found"}`)
-			return
+	server := func() *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			if strings.Contains(string(body), "ts=9999") {
+				io.WriteString(w, `{"ok":false,"error":"thread_not_found"}`)
+				return
+			}
+			io.WriteString(w, `{"ok":true,"messages":[
+				{"user":"U1","text":"the cert expired","ts":"1000.000100"},
+				{"user":"U2","text":"renew it with certbot","ts":"1100.000100"}]}`)
+		}))
+	}
+	newEps := func() []episode.Episode {
+		return []episode.Episode{
+			{ID: "slack:C1:1000.000100", Kind: episode.KindThread, PlaceID: "C1", Place: "infra", Body: "cert broken"},
+			{ID: "slack:C1:9999", Kind: episode.KindThread, PlaceID: "C1", Place: "broken", Body: "still down"},
+			{ID: "slack:C1:w2000.000100", Kind: episode.KindWindow, PlaceID: "C1", Place: "loose", Body: "loose"},
 		}
-		io.WriteString(w, `{"ok":true,"messages":[
-			{"user":"U1","text":"the cert expired","ts":"1000.000100"},
-			{"user":"U2","text":"renew it with certbot","ts":"1100.000100"}]}`)
-	}))
+	}
+
+	// Under an archive the replies fold into the body and are retained verbatim.
+	srv := server()
 	t.Cleanup(srv.Close)
-
-	src := NewSlackWithClient(slack.New("t", slack.WithBaseURL(srv.URL)), SlackOptions{})
-	eps := []episode.Episode{
-		{ID: "slack:C1:1000.000100", Kind: episode.KindThread, PlaceID: "C1", Place: "infra"},
-		{ID: "slack:C1:9999", Kind: episode.KindThread, PlaceID: "C1", Place: "broken"},
-		{ID: "slack:C1:w2000.000100", Kind: episode.KindWindow, PlaceID: "C1", Place: "loose"},
+	arch := NewSlackWithClient(slack.New("t", slack.WithBaseURL(srv.URL)), SlackOptions{Archive: true})
+	eps := newEps()
+	arch.enrichThreads(context.Background(), eps, testUsers)
+	if !strings.Contains(eps[0].Body, "certbot") {
+		t.Errorf("body = %q, want the reply folded in", eps[0].Body)
 	}
-	src.fillArchive(context.Background(), eps, testUsers)
-
 	if len(eps[0].Archive) != 2 {
-		t.Errorf("archive = %+v, want the two replies", eps[0].Archive)
+		t.Errorf("archive = %+v, want the two replies retained under an archive", eps[0].Archive)
 	}
-	if eps[1].Archived() {
-		t.Error("an unreadable thread was archived anyway")
+	if eps[1].Archived() || !strings.Contains(eps[1].Body, "still down") {
+		t.Error("an unreadable thread should keep its parent body and no archive")
 	}
-	if eps[2].Archived() {
-		t.Error("a windowed conversation was fetched, but its messages were already in hand")
+	if eps[2].Archived() || eps[2].Body != "loose" {
+		t.Error("a windowed conversation should not be fetched")
+	}
+
+	// On the free tier the replies still fold into the body, but nothing is kept.
+	srv2 := server()
+	t.Cleanup(srv2.Close)
+	free := NewSlackWithClient(slack.New("t", slack.WithBaseURL(srv2.URL)), SlackOptions{})
+	eps2 := newEps()
+	free.enrichThreads(context.Background(), eps2, testUsers)
+	if !strings.Contains(eps2[0].Body, "certbot") {
+		t.Errorf("free-tier body = %q, want the reply folded in for search", eps2[0].Body)
+	}
+	if eps2[0].Archived() {
+		t.Error("the free tier retained verbatim text; that is the paid archive")
 	}
 }
 

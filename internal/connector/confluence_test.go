@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,25 +14,47 @@ import (
 )
 
 // TestConfluenceFetch verifies authors get topics from labels, title words, and
-// space name, with email and account-id identity.
+// space name, with email and account-id identity, reading through the Cloud v2
+// endpoints that serve the space, labels, and identities apart from the page.
 func TestConfluenceFetch(t *testing.T) {
 	t.Parallel()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		io.WriteString(w, `{"size":2,"limit":100,"results":[`+
-			`{"title":"Wiz scanning runbook","space":{"key":"SEC","name":"Security"},`+
-			`"metadata":{"labels":{"results":[{"name":"wiz"}]}},`+
-			`"history":{"createdBy":{"accountId":"a1","displayName":"Jane","email":"jane@x.com"}},`+
-			`"version":{"by":{"accountId":"a1","displayName":"Jane","email":"jane@x.com"},`+
-			`"when":"2026-06-25T14:00:00.000Z"}},`+
-			`{"title":"Dashboard outage","space":{"key":"OPS","name":"Operations"},`+
-			`"metadata":{"labels":{"results":[{"name":"dashboard"}]}},`+
-			`"history":{"createdBy":{"accountId":"b1","displayName":"Bob"}},`+
-			`"version":{"by":{"accountId":"b1","displayName":"Bob"}}}]}`)
-	}))
+	mux := http.NewServeMux()
+	mux.HandleFunc("/wiki/api/v2/pages", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"results":[`+
+			`{"id":"1","title":"Wiz scanning runbook","spaceId":"100","authorId":"a1",`+
+			`"createdAt":"2026-06-24T09:00:00.000Z",`+
+			`"version":{"authorId":"a1","createdAt":"2026-06-25T14:00:00.000Z"}},`+
+			`{"id":"2","title":"Dashboard outage","spaceId":"200","authorId":"b1",`+
+			`"createdAt":"2026-06-10T09:00:00.000Z",`+
+			`"version":{"authorId":"b1","createdAt":"2026-06-10T09:00:00.000Z"}}`+
+			`],"_links":{}}`)
+	})
+	mux.HandleFunc("/wiki/api/v2/spaces/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/100") {
+			io.WriteString(w, `{"id":"100","key":"SEC","name":"Security"}`)
+			return
+		}
+		io.WriteString(w, `{"id":"200","key":"OPS","name":"Operations"}`)
+	})
+	mux.HandleFunc("/wiki/api/v2/pages/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/wiki/api/v2/pages/1/") {
+			io.WriteString(w, `{"results":[{"name":"wiz"}]}`)
+			return
+		}
+		io.WriteString(w, `{"results":[{"name":"dashboard"}]}`)
+	})
+	mux.HandleFunc("/wiki/rest/api/user", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("accountId") == "a1" {
+			io.WriteString(w, `{"accountId":"a1","displayName":"Jane","email":"jane@x.com"}`)
+			return
+		}
+		io.WriteString(w, `{"accountId":"b1","displayName":"Bob"}`)
+	})
+	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
 	client := confluence.New(srv.URL, "me@x.com", "token")
-	recs, err := NewConfluenceWithClient(client, ConfluenceOptions{Spaces: []string{"SEC"}}).Fetch(context.Background())
+	recs, err := NewConfluenceWithClient(client, ConfluenceOptions{}).Fetch(context.Background())
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}

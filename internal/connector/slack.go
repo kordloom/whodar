@@ -115,11 +115,26 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 	}
 
 	var records []Record
+	noEmail := 0
 	for _, u := range users {
 		if u.Profile.RealName == "" && u.Profile.Email == "" {
 			continue
 		}
+		if u.Profile.Email == "" {
+			noEmail++
+		}
 		records = append(records, personRecord(u))
+	}
+	if noEmail > 0 {
+		// A user with no email keys on the opaque slack:UID and joins nothing,
+		// so their Slack activity splits from the same person's git, GitHub, and
+		// Jira work, and recall --me finds none of their Slack episodes. Surface
+		// the count so the missing scope is visible rather than silently halving
+		// the graph.
+		fmt.Fprintf(s.opts.Log,
+			"slack: %d of %d members have no email; the token lacks users:read.email, so their "+
+				"Slack activity will not merge with the same people from other sources. Add the "+
+				"users:read.email scope and reinstall to link them\n", noEmail, len(records))
 	}
 
 	types := "public_channel"
@@ -149,6 +164,11 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 	oldest := slackOldest(s.opts.SinceDays)
 	skipped, read, notInChannel := 0, 0, 0
 	joined := 0
+	// maxConsecThrottle stops a run only when the whole workspace is hard rate
+	// limited, not on a single slow channel.
+	const maxConsecThrottle = 5
+	consecThrottle := 0
+	var unfinished []string
 	for i, ch := range channels {
 		if s.opts.MaxChannels > 0 && i >= s.opts.MaxChannels {
 			fmt.Fprintf(s.opts.Log, "slack: stopping at %d channels (cap)\n", s.opts.MaxChannels)
@@ -166,13 +186,24 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 		}
 		msgs, err := s.client.History(ctx, ch.ID, oldest, s.opts.MaxMessages)
 		if errors.Is(err, slack.ErrRateLimited) {
-			// Retries are already exhausted, so every remaining channel would
-			// meet the same throttle. Stop and keep what was read rather than
-			// discarding an entire long run.
-			fmt.Fprintf(s.opts.Log,
-				"slack: rate limited at #%s; keeping the %d channels read so far\n", ch.Name, i)
-			break
+			// The history retry budget is large, so reaching here means this
+			// channel stayed throttled for many minutes. Skip it and keep going
+			// rather than abandoning every later channel, and record it so a
+			// re-run can finish it. Only when many channels in a row throttle is
+			// the whole workspace hard limited, and then stopping and keeping
+			// what was read beats spinning.
+			unfinished = append(unfinished, ch.Name)
+			consecThrottle++
+			fmt.Fprintf(s.opts.Log, "slack: still rate limited at #%s after retries; skipping it\n", ch.Name)
+			if consecThrottle >= maxConsecThrottle {
+				fmt.Fprintf(s.opts.Log,
+					"slack: %d channels in a row are rate limited; stopping with %d read and %d left "+
+						"to finish on a re-run\n", consecThrottle, read, len(unfinished))
+				break
+			}
+			continue
 		}
+		consecThrottle = 0
 		if errors.Is(err, slack.ErrAPI) {
 			// Any per-channel API error, such as not_in_channel on a public
 			// channel the bot was never invited to, is skipped so one
@@ -208,9 +239,10 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 				archive:      s.opts.Archive,
 				maxArchive:   s.opts.MaxArchiveMessages,
 			})
-			if s.opts.Archive {
-				s.fillArchive(ctx, eps, byID)
-			}
+			// Read each thread's replies and fold them into the searchable body
+			// so recall matches the solution, not just the question. Verbatim
+			// retention for quoting stays gated to a licensed archive inside.
+			s.enrichThreads(ctx, eps, byID)
 			s.episodes = append(s.episodes, eps...)
 		}
 		read++
@@ -240,6 +272,11 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 			fmt.Fprintf(s.opts.Log,
 				"slack: skipped %d channels the bot is not in; invite it to the ones that matter\n", skipped)
 		}
+	}
+	if len(unfinished) > 0 {
+		fmt.Fprintf(s.opts.Log,
+			"slack: %d channels were left unfinished by rate limiting; re-run to index them\n",
+			len(unfinished))
 	}
 	return records, nil
 }

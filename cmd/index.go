@@ -21,6 +21,7 @@ import (
 	"github.com/kordloom/whodar/internal/license"
 	"github.com/kordloom/whodar/internal/llm"
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/slack"
 	"github.com/kordloom/whodar/internal/util"
 )
 
@@ -325,6 +326,11 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 		"indexed %d people, %d channels, %d teams, %d topics into %s\n",
 		len(ix.Graph.People), len(ix.Graph.Channels), len(ix.Graph.Teams),
 		len(ix.Graph.Topics), opts.indexPath())
+	if c, _ := opts.codec(); c == nil && len(ix.Graph.People) > 0 {
+		fmt.Fprintln(out,
+			"note: this index holds names, emails, and titles in plaintext, protected only by file "+
+				"permissions. Set WHODAR_INDEX_KEY or WHODAR_INDEX_PASSPHRASE to encrypt it at rest.")
+	}
 	reportChanges(out, changes)
 	if p.changesFile != "" {
 		if err := writeChangesFile(p.changesFile, changes); err != nil {
@@ -348,6 +354,19 @@ func guardArchive(cmd *cobra.Command, opts *options) error {
 			"%w: keeping the words of a conversation needs a Memory license "+
 				"($5,000 a year, flat per organization). %s Ask at hello@whodar.dev",
 			ErrLicense, state.Reason())
+	}
+	// An archive is the only store that holds readable conversation text, so it
+	// must be encrypted at rest. Refuse to write it in plaintext rather than
+	// leave full conversations on disk behind a file mode alone.
+	codec, err := opts.codec()
+	if err != nil {
+		return err
+	}
+	if codec == nil {
+		return fmt.Errorf(
+			"%w: an archive retains the full text of conversations, so it must be encrypted at rest. "+
+				"Set WHODAR_INDEX_KEY (base64 of 32 random bytes) or WHODAR_INDEX_PASSPHRASE and retry, "+
+				"or drop --archive to keep only links", ErrBadArgs)
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "archive: %s\n", state.Reason())
 	return nil
@@ -418,7 +437,11 @@ func saveEpisodes(cmd *cobra.Command, opts *options, ix *index.Index, p indexPar
 	before := store.Len()
 	embedFailed := false
 	for _, ep := range eps {
-		body := strings.TrimSpace(ep.Body + " " + ep.Text())
+		// Include any retained archive text so semantic recall can match the
+		// solution's meaning, not just the problem statement in the body. Keyword
+		// postings already index the archive; the vector must too or a paid
+		// archive is searchable by meaning only for the title and opener.
+		body := strings.TrimSpace(ep.Body + " " + ep.Text() + " " + ep.ArchiveText())
 		store.Add(ep)
 		if embedder == nil || body == "" || embedFailed {
 			continue
@@ -514,9 +537,37 @@ func fetchSlack(
 	})
 	recs, err := src.Fetch(cmd.Context())
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, explainSlackError(err)
 	}
 	return recs, src.Episodes(), nil
+}
+
+// explainSlackError turns a Slack auth or scope failure into an actionable
+// message. Slack signals these as an ok=false code such as invalid_auth rather
+// than an HTTP status, so explainSourceError, which reads status codes, never
+// catches them; without this a descoped token surfaces as a bare code next to an
+// internal method name.
+func explainSlackError(err error) error {
+	if err == nil || !errors.Is(err, slack.ErrAPI) {
+		return err
+	}
+	code := "error"
+	if _, c, ok := strings.Cut(err.Error(), "api error: "); ok {
+		code = strings.TrimSpace(c)
+	}
+	switch {
+	case strings.Contains(code, "invalid_auth"), strings.Contains(code, "not_authed"),
+		strings.Contains(code, "token_revoked"), strings.Contains(code, "account_inactive"):
+		return fmt.Errorf(
+			"%w: Slack rejected the token in %s (%s). It is missing, expired, or revoked. Recreate "+
+				"the bot token and set %s, then try again", ErrAuth, slackTokenEnv, code, slackTokenEnv)
+	case strings.Contains(code, "missing_scope"), strings.Contains(code, "not_allowed_token_type"):
+		return fmt.Errorf(
+			"%w: the Slack token in %s is missing a required scope (%s). Add users:read, "+
+				"users:read.email, channels:read, and channels:history in your Slack app and reinstall",
+			ErrAuth, slackTokenEnv, code)
+	}
+	return err
 }
 
 // githubArgs holds the GitHub-specific index flags.

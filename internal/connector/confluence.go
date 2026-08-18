@@ -83,12 +83,12 @@ func (c *Confluence) Ping(ctx context.Context) error {
 
 // Fetch searches pages and returns one record per person, weighted by topic.
 func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
-	query := c.cql()
-	pages, err := c.client.Pages(ctx, query, c.opts.MaxPages)
+	q := confluence.Query{Spaces: c.opts.Spaces, CQL: c.opts.CQL, Max: c.opts.MaxPages}
+	pages, err := c.client.Pages(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("confluence search: %w", err)
 	}
-	fmt.Fprintf(c.opts.Log, "confluence: %d pages for %q\n", len(pages), query)
+	fmt.Fprintf(c.opts.Log, "confluence: %d pages for %q\n", len(pages), confluenceQueryLabel(q))
 
 	counts := make(map[string]map[string]int)
 	users := make(map[string]confluence.User)
@@ -146,27 +146,36 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 	return records, nil
 }
 
-// cql returns the query: an explicit CQL, or a space scope, or all pages.
-func (c *Confluence) cql() string {
-	if strings.TrimSpace(c.opts.CQL) != "" {
-		return c.opts.CQL
+// confluenceQueryLabel describes a query for a progress line: the raw CQL, the
+// scoped spaces, or all spaces.
+func confluenceQueryLabel(q confluence.Query) string {
+	switch {
+	case strings.TrimSpace(q.CQL) != "":
+		return q.CQL
+	case len(q.Spaces) > 0:
+		return "spaces " + strings.Join(q.Spaces, ", ")
+	default:
+		return "all spaces"
 	}
-	if len(c.opts.Spaces) > 0 {
-		quoted := make([]string, len(c.opts.Spaces))
-		for i, s := range c.opts.Spaces {
-			quoted[i] = `"` + s + `"`
-		}
-		return "type = page and space in (" + strings.Join(quoted, ",") + ")"
-	}
-	return "type = page"
 }
 
-// pageTopics derives topic tokens from a page's labels, title, and space name.
+// maxPageBodyText caps how much of a page body is mined for topics, so one long
+// page cannot dominate an author's profile.
+const maxPageBodyText = 8000
+
+// pageTopics derives topic tokens from a page's labels, title, space name, and
+// body. The body is where a runbook's substance lives; without it "who knows
+// idempotency keys" misses the author of a page titled "Checkout notes" whose
+// body is entirely about idempotency. Body text is redacted to stemmed terms on
+// save like any other text.
 func pageTopics(p confluence.Page) []string {
 	var out []string
 	out = append(out, p.LabelNames()...)
 	out = append(out, titleTokens(p.Title)...)
 	out = append(out, titleTokens(p.Space.Name)...)
+	if body := p.BodyText(); body != "" {
+		out = append(out, titleTokens(util.Truncate(body, maxPageBodyText))...)
+	}
 	return out
 }
 

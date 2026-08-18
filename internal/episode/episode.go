@@ -79,6 +79,12 @@ type Note struct {
 // Archived reports whether the episode carries retained content.
 func (e *Episode) Archived() bool { return len(e.Archive) > 0 }
 
+// ArchiveText returns the retained conversation text as one string, empty when
+// nothing was retained. Semantic indexing embeds it so a paid archive is
+// searchable by meaning and not only by keyword, which is the mode a reader is
+// most likely to use months later when the exact words are forgotten.
+func (e *Episode) ArchiveText() string { return archiveText(e.Archive) }
+
 // Involves reports whether person took part in the episode.
 func (e *Episode) Involves(person model.ID) bool {
 	return slices.Contains(e.Participants, person)

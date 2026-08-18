@@ -60,6 +60,16 @@ func WithOpenAIBaseURL(u string) OpenAIOption {
 	}
 }
 
+// WithOpenAITransport wraps the client's HTTP transport, used to enforce the
+// egress policy on the actual outbound host.
+func WithOpenAITransport(rt http.RoundTripper) OpenAIOption {
+	return func(o *OpenAI) {
+		if rt != nil {
+			o.http.Transport = rt
+		}
+	}
+}
+
 // NewOpenAI returns an OpenAI-compatible client. The key may be empty when the
 // server does not require one, as local servers usually do not.
 func NewOpenAI(apiKey string, opts ...OpenAIOption) *OpenAI {

@@ -25,15 +25,26 @@ const (
 	maxNoteBytes = 2000
 )
 
-// fillArchive retains the content of each threaded conversation, which is what
-// turns a pointer into an answer. It is the only path that reads replies, so
-// it runs only when an archive is licensed, permitted, and asked for. A
-// conversation that cannot be read is left as a pointer rather than failing
-// the run.
-func (s *Slack) fillArchive(ctx context.Context, eps []episode.Episode, byID map[string]slack.User) {
-	limit := s.opts.MaxArchiveMessages
-	if limit <= 0 {
-		limit = defaultMaxArchiveMessages
+// maxIndexReplies caps how many replies are fetched to fold into a thread's
+// searchable body when no archive is kept. It is smaller than the archive cap
+// because this text is tokenized and discarded, not retained for reading.
+const maxIndexReplies = 20
+
+// enrichThreads reads each thread's replies and folds them into the episode: the
+// words into the searchable body, so recall can match how a problem was solved
+// and not only how it was asked, and the authors into the participant list past
+// the five names Slack puts on the parent. When an archive is licensed and asked
+// for it also retains the verbatim messages for quoting. This is the flagship
+// recall value, so it runs whenever episodes are collected, not only under an
+// archive. A thread that cannot be read is left with its parent-only body rather
+// than failing the run.
+func (s *Slack) enrichThreads(ctx context.Context, eps []episode.Episode, byID map[string]slack.User) {
+	limit := maxIndexReplies
+	if s.opts.Archive {
+		limit = s.opts.MaxArchiveMessages
+		if limit <= 0 {
+			limit = defaultMaxArchiveMessages
+		}
 	}
 	for i := range eps {
 		ep := &eps[i]
@@ -48,31 +59,41 @@ func (s *Slack) fillArchive(ctx context.Context, eps []episode.Episode, byID map
 		if err != nil {
 			if errors.Is(err, slack.ErrRateLimited) {
 				fmt.Fprintf(s.opts.Log,
-					"slack: rate limited reading #%s; keeping the rest as links only\n", ep.Place)
+					"slack: rate limited reading threads in #%s; keeping the rest as links only\n", ep.Place)
 				return
 			}
 			fmt.Fprintf(s.opts.Log, "slack: could not read a thread in #%s: %v\n", ep.Place, err)
 			continue
 		}
-		ep.Archive = notesFrom(msgs, byID)
-		addAuthors(ep)
+		if body := episodeText(msgs); body != "" {
+			ep.Body = body
+		}
+		addParticipants(ep, msgs, byID)
+		if s.opts.Archive {
+			ep.Archive = notesFrom(msgs, byID)
+		}
 	}
 }
 
-// addAuthors folds the people who spoke into the participant list. Slack names
-// only the first few repliers on a thread parent, so without this someone
-// quoted in a conversation could not find it again.
-func addAuthors(ep *episode.Episode) {
+// addParticipants folds the people who spoke into the participant list. Slack
+// names only the first five repliers on a thread parent, so without this the
+// sixth person to help, or anyone quoted, could not find the thread again with
+// recall --me.
+func addParticipants(ep *episode.Episode, msgs []slack.Message, byID map[string]slack.User) {
 	seen := make(map[model.ID]bool, len(ep.Participants))
 	for _, p := range ep.Participants {
 		seen[p] = true
 	}
-	for _, n := range ep.Archive {
-		if n.Author == "" || seen[n.Author] {
+	for _, m := range msgs {
+		if !m.FromPerson() {
 			continue
 		}
-		seen[n.Author] = true
-		ep.Participants = append(ep.Participants, n.Author)
+		pid := model.ID(slackUserRef(m.User, byID))
+		if pid == "" || seen[pid] {
+			continue
+		}
+		seen[pid] = true
+		ep.Participants = append(ep.Participants, pid)
 	}
 }
 

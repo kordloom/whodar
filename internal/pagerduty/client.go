@@ -133,6 +133,9 @@ type Incident struct {
 	Number int `json:"incident_number"`
 	// Title is the incident title.
 	Title string `json:"title"`
+	// Description is the incident description, which for an alert-created
+	// incident carries the triggering detail beyond the title.
+	Description string `json:"description"`
 	// Status is the incident status, such as resolved.
 	Status string `json:"status"`
 	// HTMLURL links to the incident in PagerDuty.
@@ -167,6 +170,33 @@ type Incident struct {
 
 // Resolved reports whether the incident was settled.
 func (i Incident) Resolved() bool { return i.Status == "resolved" || !i.ResolvedAt.IsZero() }
+
+// Note is one note on an incident: a triage or resolution comment that records
+// how the incident was worked through.
+type Note struct {
+	// Content is the note text.
+	Content string `json:"content"`
+}
+
+// notesResponse decodes the incident notes endpoint.
+type notesResponse struct {
+	// Notes is the incident's notes.
+	Notes []Note `json:"notes"`
+}
+
+// IncidentNotes returns an incident's notes, the triage and resolution comments
+// that say how it was actually settled. It returns nil when the incident has
+// none. The id is the incident id, not its number.
+func (c *Client) IncidentNotes(ctx context.Context, incidentID string) ([]Note, error) {
+	if incidentID == "" {
+		return nil, nil
+	}
+	var resp notesResponse
+	if err := c.get(ctx, "/incidents/"+incidentID+"/notes", url.Values{}, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Notes, nil
+}
 
 // isUserRef reports whether a reference is a real user rather than a service or
 // integration. PagerDuty leaves the type empty on the assignee and
@@ -221,6 +251,11 @@ type oncallsResponse struct {
 // maxPages caps how many pages one listing walks so a server that always
 // reports more, or returns non-empty pages without end, cannot loop forever.
 const maxPages = 100
+
+// IncidentCeiling is the most incidents one listing can return, since offset
+// paging cannot page past offset plus limit. A run that reaches it has read only
+// the most recent incidents in the window, not all of them.
+const IncidentCeiling = maxPages * 100
 
 // Services returns all services with their escalation policy.
 func (c *Client) Services(ctx context.Context) ([]Service, error) {

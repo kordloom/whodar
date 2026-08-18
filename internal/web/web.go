@@ -265,7 +265,10 @@ func askHandler(ask AskFunc, logw io.Writer) http.HandlerFunc {
 						"`ollama pull llama3.1`, and ask again. Keyword mode always works.")
 				return
 			}
-			fmt.Fprintf(logw, "web: ask %q: %v\n", query, err)
+			// Log the failure but not the query itself: a question can carry
+			// sensitive terms, and an operator who wired a log file should not
+			// have every asked question land in it.
+			fmt.Fprintf(logw, "web: ask failed: %v\n", err)
 			writeError(w, http.StatusBadGateway, "the answer service is unavailable")
 			return
 		}

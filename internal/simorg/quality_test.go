@@ -25,7 +25,31 @@ const (
 	// and the rest paraphrased that keyword mode must still answer first.
 	// Measured at 0.58; semantic fusion is what lifts this case further.
 	minAnchoredTop1 = 0.50
+	// minFreeTierRecallTop3 is the share of recall questions a first-time user
+	// with no archive must still get in the first three. Thread replies fold
+	// into the searchable body even without retention, so the free tier is
+	// measured here rather than left to regress unseen while the archived floors
+	// hold.
+	minFreeTierRecallTop3 = 0.90
 )
+
+// TestFreeTierRecallQuality measures recall for a first-time user with no
+// archive, which is the experience most people run first. Without this floor a
+// change that guts free-tier recall passes CI, since every other quality test
+// builds with the archive on.
+func TestFreeTierRecallQuality(t *testing.T) {
+	t.Parallel()
+	built, err := Build(Spec{Seed: 7, NoArchive: true}, t.TempDir())
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	rec := built.ScoreRecall(5)
+	t.Logf("free-tier recall: %s", rec)
+	if rec.Precision3() < minFreeTierRecallTop3 {
+		t.Errorf("free-tier recall p@3 = %.2f, want at least %.2f. Missed: %s",
+			rec.Precision3(), minFreeTierRecallTop3, strings.Join(rec.Missed, "; "))
+	}
+}
 
 // TestRankingQuality scores whodar against a company built with known answers.
 // Without this, a ranking change can only be judged by eye on one query; with

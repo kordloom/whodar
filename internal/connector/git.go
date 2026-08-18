@@ -179,12 +179,29 @@ func (g *GitHistory) readRepo(
 				m[tok]++
 			}
 		}
+		// The commit subject carries the domain vocabulary the filenames often
+		// hide: "fix rate-limiter backoff" against a generically named limiter.go.
+		// Mine it once per commit, so it weighs less than the per-file paths but
+		// still lets ask match what the work was about, not just which files moved.
+		for _, tok := range titleTokens(commitSubject(c.Message)) {
+			m[tok]++
+		}
 		return nil
 	})
 	if err != nil {
 		return read, fmt.Errorf("git: walk %s: %w", path, err)
 	}
 	return read, nil
+}
+
+// commitSubject returns the first line of a commit message, the summary that
+// carries the domain vocabulary, without the body or trailers such as
+// Signed-off-by that would only add name and email noise.
+func commitSubject(msg string) string {
+	if i := strings.IndexByte(msg, '\n'); i >= 0 {
+		return msg[:i]
+	}
+	return msg
 }
 
 // isBotAuthor reports whether a commit author is an automation account, such

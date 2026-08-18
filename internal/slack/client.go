@@ -27,8 +27,14 @@ type Client struct {
 	baseURL string
 	// http performs requests.
 	http httputil.Doer
-	// maxRetries bounds retries on HTTP 429.
+	// maxRetries bounds retries on HTTP 429 for the quick list and auth calls.
 	maxRetries int
+	// historyRetries bounds retries on HTTP 429 for conversations.history and
+	// conversations.replies. Slack throttles these two methods far harder than
+	// the rest, to roughly one call per minute for apps on the post-2025 tier,
+	// so they need a much larger budget than the list calls to make progress
+	// through a busy channel rather than giving up after a few throttles.
+	historyRetries int
 }
 
 // Option configures a Client.
@@ -61,7 +67,10 @@ func New(token string, opts ...Option) *Client {
 	if token == "" {
 		panic("slack: New requires a non-empty token")
 	}
-	c := &Client{token: token, baseURL: defaultBaseURL, http: &http.Client{Timeout: apiTimeout}, maxRetries: 3}
+	c := &Client{
+		token: token, baseURL: defaultBaseURL, http: &http.Client{Timeout: apiTimeout},
+		maxRetries: 3, historyRetries: 10,
+	}
 	for _, o := range opts {
 		o(c)
 	}
@@ -424,7 +433,11 @@ func (c *Client) Replies(ctx context.Context, channelID, threadTS string, limit 
 // out. It retries on HTTP 429 up to maxRetries, honoring Retry-After.
 func (c *Client) do(ctx context.Context, method string, params url.Values, out response) error {
 	endpoint := c.baseURL + "/" + method
-	resp, body, err := httputil.Do(ctx, c.http, c.maxRetries, nil, func() (*http.Request, error) {
+	retries := c.maxRetries
+	if method == "conversations.history" || method == "conversations.replies" {
+		retries = c.historyRetries
+	}
+	resp, body, err := httputil.Do(ctx, c.http, retries, nil, func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(
 			ctx, http.MethodPost, endpoint, strings.NewReader(params.Encode()))
 		if err != nil {

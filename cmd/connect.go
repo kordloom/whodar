@@ -367,9 +367,18 @@ func persistCreds(ui *prompt.IO, spec sourceSpec, creds map[string]string) {
 	ui.Detail("They hold your credentials, so treat that file as a secret.")
 	ui.Blank()
 	for _, cf := range spec.creds {
-		if v := creds[cf.env]; v != "" {
-			ui.Command("export %s=%s", cf.env, v)
+		v := creds[cf.env]
+		if v == "" {
+			continue
 		}
+		if cf.secret {
+			// Do not echo the secret to the terminal, where it would land in
+			// scrollback and shell history. The user just entered it, so name the
+			// variable and let them paste the value in themselves.
+			ui.Command("export %s='...'   # paste the value you just entered", cf.env)
+			continue
+		}
+		ui.Command("export %s=%s", cf.env, v)
 	}
 }
 

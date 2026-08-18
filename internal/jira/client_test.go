@@ -41,27 +41,55 @@ func TestSearch(t *testing.T) {
 	}
 }
 
-// TestSearchPagination verifies issues accumulate across pages.
+// TestSearchPagination verifies Cloud issues accumulate across pages by
+// following the nextPageToken until a page reports it is the last, which is how
+// the enhanced-search endpoint pages.
 func TestSearchPagination(t *testing.T) {
 	t.Parallel()
 	var mu sync.Mutex
-	var calls int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	var gotToken string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := r.URL.Query().Get("nextPageToken")
 		mu.Lock()
-		i := calls
-		calls++
+		gotToken = token
 		mu.Unlock()
-		if i == 0 {
-			io.WriteString(w, `{"total":2,"startAt":0,"issues":[{"key":"A-1","fields":{}}]}`)
+		if token == "" {
+			io.WriteString(w, `{"issues":[{"key":"A-1","fields":{}}],"nextPageToken":"tok2","isLast":false}`)
 			return
 		}
-		io.WriteString(w, `{"total":2,"startAt":1,"issues":[{"key":"A-2","fields":{}}]}`)
+		io.WriteString(w, `{"issues":[{"key":"A-2","fields":{}}],"isLast":true}`)
 	}))
 	t.Cleanup(srv.Close)
 
 	issues, err := New(srv.URL, "me@x.com", "token").Search(context.Background(), "order by updated", 0)
 	if err != nil || len(issues) != 2 {
 		t.Fatalf("issues = %d, err %v; want 2", len(issues), err)
+	}
+	mu.Lock()
+	got := gotToken
+	mu.Unlock()
+	if got != "tok2" {
+		t.Errorf("second page token = %q, want the client to send back tok2", got)
+	}
+}
+
+// TestNewCloudUsesEnhancedSearch verifies the Cloud client calls the token-paged
+// /search/jql endpoint, not the offset /search that Atlassian removed from
+// Cloud and that now returns 410 Gone there.
+func TestNewCloudUsesEnhancedSearch(t *testing.T) {
+	t.Parallel()
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		io.WriteString(w, `{"issues":[],"isLast":true}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	if _, err := New(srv.URL, "me@x.com", "token").Search(context.Background(), "", 0); err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if want := apiBaseCloud + "/search/jql"; gotPath != want {
+		t.Errorf("path = %q, want the enhanced-search endpoint %q", gotPath, want)
 	}
 }
 

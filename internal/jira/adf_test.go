@@ -20,7 +20,7 @@ func TestADFText(t *testing.T) {
 	}, { // Test 1: Null description, which Jira sends for an empty field.
 		In: `null`, WantText: "",
 	}, { // Test 2: A plain string, which older sites and API v2 send.
-		In: `"retries exhausted on the billing queue"`,
+		In:       `"retries exhausted on the billing queue"`,
 		WantText: "retries exhausted on the billing queue",
 	}, { // Test 3: A v3 document tree.
 		In: `{"type":"doc","version":1,"content":[

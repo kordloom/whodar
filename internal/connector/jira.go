@@ -189,6 +189,12 @@ func issueTopics(is jira.Issue) []string {
 	out = append(out, f.Labels...)
 	out = append(out, titleTokens(f.Summary)...)
 	out = append(out, titleTokens(f.Project.Name)...)
+	// The description is where the substance of a ticket lives, so mine it into
+	// the assignee's and reporter's topics too. Without this, ask can only match
+	// the summary words: "who knows idempotency keys" misses the engineer whose
+	// ticket summaries said "payment retries" but whose descriptions are all
+	// about idempotency. It is redacted to stemmed terms on save like any text.
+	out = append(out, titleTokens(is.Description())...)
 	return out
 }
 
