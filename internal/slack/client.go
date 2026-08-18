@@ -106,6 +106,9 @@ type Channel struct {
 	Name string `json:"name"`
 	// IsPrivate reports whether the channel is private.
 	IsPrivate bool `json:"is_private"`
+	// IsMember reports whether the bot is already in the channel, so a join
+	// can be skipped and no needless join notice is posted.
+	IsMember bool `json:"is_member"`
 	// IsArchived reports whether the channel is archived.
 	IsArchived bool `json:"is_archived"`
 	// NumMembers is the member count.
@@ -344,6 +347,15 @@ func (c *Client) Channels(ctx context.Context, types string) ([]Channel, error) 
 // History returns up to limit messages from channelID newer than oldest, a
 // Slack timestamp string ("" means no lower bound). It stops at limit messages
 // or when Slack reports no more pages.
+// JoinChannel adds the bot to a public channel so its history can be read
+// without a manual invite. It needs the channels:join scope. Joining a channel
+// the bot is already in is a no-op. It cannot join a private channel; Slack
+// only lets a member invite the bot there.
+func (c *Client) JoinChannel(ctx context.Context, channelID string) error {
+	var resp okResp
+	return c.do(ctx, "conversations.join", url.Values{"channel": {channelID}}, &resp)
+}
+
 func (c *Client) History(ctx context.Context, channelID, oldest string, limit int) ([]Message, error) {
 	var all []Message
 	cursor := ""

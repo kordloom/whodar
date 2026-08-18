@@ -231,3 +231,73 @@ func TestSlackNotInAnyChannelSaysInvite(t *testing.T) {
 		t.Errorf("message wrongly blamed a missing scope for a not-in-channel failure:\n%s", got)
 	}
 }
+
+// TestSlackJoinPublicChannels verifies the bot self-joins public channels it is
+// not in when asked, but never a private channel (Slack forbids it) nor one it
+// already belongs to (which would post a needless join notice).
+func TestSlackJoinPublicChannels(t *testing.T) {
+	t.Parallel()
+	var joined []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/users.list", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"ok":true,"members":[{"id":"U1","profile":{"real_name":"Dad","email":"d@x.com"}}]}`)
+	})
+	mux.HandleFunc("/conversations.list", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"ok":true,"channels":[
+			{"id":"C1","name":"open-unjoined","is_private":false,"is_member":false},
+			{"id":"C2","name":"open-joined","is_private":false,"is_member":true},
+			{"id":"C3","name":"secret","is_private":true,"is_member":false}]}`)
+	})
+	mux.HandleFunc("/conversations.join", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		joined = append(joined, r.PostFormValue("channel"))
+		io.WriteString(w, `{"ok":true}`)
+	})
+	mux.HandleFunc("/conversations.history", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"ok":true,"has_more":false,"messages":[
+			{"type":"message","user":"U1","text":"hello there","ts":"1.0"}]}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	client := slack.New("xoxb-test", slack.WithBaseURL(srv.URL))
+	if _, err := NewSlackWithClient(client,
+		SlackOptions{JoinPublic: true, IncludePrivate: true}).Fetch(context.Background()); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	// Only the public, not-yet-joined channel is joined.
+	if len(joined) != 1 || joined[0] != "C1" {
+		t.Errorf("joined = %v, want only C1 (the public unjoined channel)", joined)
+	}
+}
+
+// TestSlackNoJoinWhenDisabled verifies the bot never joins when the option is
+// off, so the default behavior is unchanged.
+func TestSlackNoJoinWhenDisabled(t *testing.T) {
+	t.Parallel()
+	joinCalled := false
+	mux := http.NewServeMux()
+	mux.HandleFunc("/users.list", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"ok":true,"members":[]}`)
+	})
+	mux.HandleFunc("/conversations.list", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"ok":true,"channels":[{"id":"C1","name":"open","is_private":false,"is_member":false}]}`)
+	})
+	mux.HandleFunc("/conversations.join", func(w http.ResponseWriter, _ *http.Request) {
+		joinCalled = true
+		io.WriteString(w, `{"ok":true}`)
+	})
+	mux.HandleFunc("/conversations.history", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"ok":false,"error":"not_in_channel"}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	client := slack.New("xoxb-test", slack.WithBaseURL(srv.URL))
+	if _, err := NewSlackWithClient(client, SlackOptions{}).Fetch(context.Background()); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if joinCalled {
+		t.Error("the bot joined a channel with the join option off")
+	}
+}

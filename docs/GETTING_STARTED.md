@@ -105,7 +105,8 @@ are about, and who is active on each topic.
 1. Go to https://api.slack.com/apps and choose Create New App, then From
    scratch. Pick your workspace.
 2. Open OAuth and Permissions. Under Bot Token Scopes add: `channels:read`,
-   `channels:history`, `users:read`, and `users:read.email`. To index private
+   `channels:history`, `users:read`, and `users:read.email` (add `channels:join`
+   to let `--slack-join` self-join public channels). To index private
    channels as well, also add `groups:read` and `groups:history`.
 3. Install the app to the workspace and copy the Bot User OAuth Token. It starts
    with `xoxb-`.
@@ -118,9 +119,13 @@ are about, and who is active on each topic.
     whodar index --source slack
 
 By default this reads public channels and the last 180 days of history, capped
-at 5000 messages per channel. A bot can only read the history of channels it
-has joined, so invite it (`/invite @whodar`) to the channels that matter;
-unreadable channels are skipped with a warning, not fatal. Tune the depth:
+at 5000 messages per channel. A bot can only read the history of channels it has
+joined. Invite it by hand (`/invite @whodar`) to the channels that matter, or
+add the `channels:join` scope and pass `--slack-join` to have it join every
+public channel itself, so a whole workspace indexes without manual invites; it
+posts a join notice in each channel it enters, and private channels still need
+an invite. Unreadable channels are skipped with a warning, not fatal. Tune the
+depth:
 
     whodar index --source slack --since-days 90 --max-messages 2000
 

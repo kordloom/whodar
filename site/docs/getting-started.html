@@ -209,7 +209,8 @@ scratch. Pick your workspace.</p>
 </li>
 <li>
 <p>Open OAuth and Permissions. Under Bot Token Scopes add: <code>channels:read</code>,
-<code>channels:history</code>, <code>users:read</code>, and <code>users:read.email</code>. To index private
+<code>channels:history</code>, <code>users:read</code>, and <code>users:read.email</code> (add <code>channels:join</code>
+to let <code>--slack-join</code> self-join public channels). To index private
 channels as well, also add <code>groups:read</code> and <code>groups:history</code>.</p>
 </li>
 <li>
@@ -226,9 +227,13 @@ with <code>xoxb-</code>.</p>
 <pre><code>whodar index --source slack
 </code></pre>
 <p>By default this reads public channels and the last 180 days of history, capped
-at 5000 messages per channel. A bot can only read the history of channels it
-has joined, so invite it (<code>/invite @whodar</code>) to the channels that matter;
-unreadable channels are skipped with a warning, not fatal. Tune the depth:</p>
+at 5000 messages per channel. A bot can only read the history of channels it has
+joined. Invite it by hand (<code>/invite @whodar</code>) to the channels that matter, or
+add the <code>channels:join</code> scope and pass <code>--slack-join</code> to have it join every
+public channel itself, so a whole workspace indexes without manual invites; it
+posts a join notice in each channel it enters, and private channels still need
+an invite. Unreadable channels are skipped with a warning, not fatal. Tune the
+depth:</p>
 <pre><code>whodar index --source slack --since-days 90 --max-messages 2000
 </code></pre>
 <p>To include private channels the token can read:</p>

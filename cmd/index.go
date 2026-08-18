@@ -54,6 +54,7 @@ func newIndexCmd(opts *options) *cobra.Command {
 		source           string
 		file             string
 		includePrivate   bool
+		slackJoin        bool
 		sinceDays        int
 		maxMessages      int
 		episodes         bool
@@ -97,7 +98,7 @@ Sources and their credentials:
   org-csv     --file people.csv                          none
   codeowners  --file CODEOWNERS|repo-root                none
   git         --repo-path DIR (repeatable)               none
-  slack       [--include-private]                        WHODAR_SLACK_TOKEN
+  slack       [--include-private] [--slack-join]         WHODAR_SLACK_TOKEN
   github      --repo o/r | --github-org ORG              WHODAR_GITHUB_TOKEN
   jira        --jira-project KEY | --jira-jql JQL        WHODAR_JIRA_URL/EMAIL/TOKEN
               (--jira-server for self-hosted Server/DC)   WHODAR_JIRA_URL[/TOKEN]
@@ -130,7 +131,7 @@ Start with the org chart, then merge everything else onto it:
 				recs, err = oc.Fetch(cmd.Context())
 			case "slack":
 				recs, eps, err = fetchSlack(cmd, opts, slackArgs{
-					includePrivate: includePrivate, sinceDays: sinceDays, maxMessages: maxMessages,
+					includePrivate: includePrivate, joinPublic: slackJoin, sinceDays: sinceDays, maxMessages: maxMessages,
 					episodes: episodes || archive, maxEpisodes: maxEpisodes,
 					archive: archive, maxArchive: maxArchive,
 				})
@@ -177,6 +178,8 @@ Start with the org chart, then merge everything else onto it:
 	f.StringVar(&source, "source", "org-csv", "Source type: org-csv, slack, codeowners, github, jira, confluence, pagerduty, or git.")
 	f.StringVar(&file, "file", "", "Path to the source file: the CSV for org-csv, the CODEOWNERS file or repo root for codeowners.")
 	f.BoolVar(&includePrivate, "include-private", false, "Ingest private Slack channels if policy allows.")
+	f.BoolVar(&slackJoin, "slack-join", false,
+		"Have the bot self-join public channels it is not in, so a workspace indexes without manual invites (needs channels:join; posts a join notice per channel).")
 	f.IntVar(&sinceDays, "since-days", 180, "Slack history window in days.")
 	f.IntVar(&maxMessages, "max-messages", 5000, "Slack message cap per channel.")
 	f.BoolVar(&episodes, "episodes", false,
@@ -448,6 +451,8 @@ func saveEpisodes(cmd *cobra.Command, opts *options, ix *index.Index, p indexPar
 type slackArgs struct {
 	// includePrivate requests private-channel ingest.
 	includePrivate bool
+	// joinPublic self-joins public channels before reading them.
+	joinPublic bool
 	// sinceDays is the history window in days.
 	sinceDays int
 	// maxMessages caps messages per channel.
@@ -498,6 +503,7 @@ func fetchSlack(
 	}
 	src := connector.NewSlack(token, connector.SlackOptions{
 		IncludePrivate:        a.includePrivate,
+		JoinPublic:            a.joinPublic,
 		SinceDays:             a.sinceDays,
 		MaxMessages:           a.maxMessages,
 		Episodes:              a.episodes,

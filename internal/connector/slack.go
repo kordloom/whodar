@@ -30,6 +30,11 @@ const (
 type SlackOptions struct {
 	// IncludePrivate also ingests private channels the token can read.
 	IncludePrivate bool
+	// JoinPublic makes the bot join each public channel it is not already in
+	// before reading it, so a whole workspace can be indexed without inviting
+	// the bot by hand. It needs the channels:join scope and posts a join notice
+	// in each channel it enters. Private channels still require an invite.
+	JoinPublic bool
 	// SinceDays bounds history age; zero uses the default.
 	SinceDays int
 	// MaxMessages caps messages per channel; zero uses the default.
@@ -143,10 +148,21 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 
 	oldest := slackOldest(s.opts.SinceDays)
 	skipped, read, notInChannel := 0, 0, 0
+	joined := 0
 	for i, ch := range channels {
 		if s.opts.MaxChannels > 0 && i >= s.opts.MaxChannels {
 			fmt.Fprintf(s.opts.Log, "slack: stopping at %d channels (cap)\n", s.opts.MaxChannels)
 			break
+		}
+		// Self-join a public channel the bot is not in yet, so the whole
+		// workspace indexes without hand invites. A private channel cannot be
+		// self-joined; only a member can add the bot there.
+		if s.opts.JoinPublic && !ch.IsPrivate && !ch.IsMember {
+			if err := s.client.JoinChannel(ctx, ch.ID); err != nil {
+				fmt.Fprintf(s.opts.Log, "slack: could not join #%s: %v\n", ch.Name, err)
+			} else {
+				joined++
+			}
 		}
 		msgs, err := s.client.History(ctx, ch.ID, oldest, s.opts.MaxMessages)
 		if errors.Is(err, slack.ErrRateLimited) {
@@ -199,6 +215,9 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 		}
 		read++
 		fmt.Fprintf(s.opts.Log, "slack: indexed #%s (%d messages)\n", ch.Name, len(msgs))
+	}
+	if joined > 0 {
+		fmt.Fprintf(s.opts.Log, "slack: joined %d public channels to read them\n", joined)
 	}
 	if skipped > 0 {
 		switch {
