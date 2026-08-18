@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -286,5 +289,57 @@ func TestSessionEndsWhenPingsGoUnanswered(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("session waited on a dead connection instead of giving up")
+	}
+}
+
+// TestSocketHandlesBurstUnderLoad fires a burst of mentions through one session
+// and verifies every one is answered and acked, the concurrent-answer cap is
+// respected, and nothing races. The socket path spawns a goroutine per answer
+// behind a slot pool, so a burst is where a concurrency bug would surface.
+func TestSocketHandlesBurstUnderLoad(t *testing.T) {
+	t.Parallel()
+	const events = 200
+	var inflight, maxInflight int64
+	eng := New(func(context.Context, string, string, int) (resolve.Answer, error) {
+		n := atomic.AddInt64(&inflight, 1)
+		for {
+			m := atomic.LoadInt64(&maxInflight)
+			if n <= m || atomic.CompareAndSwapInt64(&maxInflight, m, n) {
+				break
+			}
+		}
+		runtime.Gosched()
+		atomic.AddInt64(&inflight, -1)
+		return sampleAnswer(), nil
+	}, "keyword", "UBOT", 5)
+
+	rec := &safeRecorder{}
+	s := NewSocketRunner(stubApp(t), eng, rec, "UBOT")
+	frames := [][]byte{[]byte(`{"type":"hello"}`)}
+	for i := range events {
+		frames = append(frames, []byte(fmt.Sprintf(
+			`{"type":"events_api","envelope_id":"e%d","payload":{"event":{`+
+				`"type":"app_mention","text":"<@UBOT> billing retries",`+
+				`"channel":"C1","user":"U%d","ts":"%d.5"}}}`, i, i, i)))
+	}
+	conn := &fakeConn{reads: frames}
+
+	_ = s.session(context.Background(), conn)
+
+	if rec.calls != events {
+		t.Errorf("answered %d of %d events", rec.calls, events)
+	}
+	if maxInflight > maxConcurrentAnswers {
+		t.Errorf("peak concurrent answers = %d, want the cap of %d", maxInflight, maxConcurrentAnswers)
+	}
+	acked := 0
+	for _, w := range conn.writes {
+		var m map[string]string
+		if json.Unmarshal(w, &m) == nil && strings.HasPrefix(m["envelope_id"], "e") {
+			acked++
+		}
+	}
+	if acked != events {
+		t.Errorf("acked %d of %d envelopes", acked, events)
 	}
 }
