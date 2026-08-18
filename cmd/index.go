@@ -70,6 +70,7 @@ func newIndexCmd(opts *options) *cobra.Command {
 		githubEmails     bool
 		jiraURL          string
 		jiraProjects     []string
+		jiraServer       bool
 		jiraJQL          string
 		maxIssues        int
 		merge            bool
@@ -97,6 +98,7 @@ Sources and their credentials:
   slack       [--include-private]                        WHODAR_SLACK_TOKEN
   github      --repo o/r | --github-org ORG              WHODAR_GITHUB_TOKEN
   jira        --jira-project KEY | --jira-jql JQL        WHODAR_JIRA_URL/EMAIL/TOKEN
+              (--jira-server for self-hosted Server/DC)   WHODAR_JIRA_URL[/TOKEN]
   confluence  --confluence-space KEY | --confluence-cql  WHODAR_CONFLUENCE_* (or Jira's)
   pagerduty   (no scope flags)                           WHODAR_PAGERDUTY_TOKEN
 
@@ -139,7 +141,7 @@ Start with the org chart, then merge everything else onto it:
 					githubArgs{repos, githubOrg, maxRepos, githubEmails, episodes || archive})
 			case "jira":
 				recs, eps, err = fetchJira(cmd,
-					jiraArgs{jiraURL, jiraProjects, jiraJQL, maxIssues, episodes || archive})
+					jiraArgs{jiraURL, jiraProjects, jiraJQL, maxIssues, episodes || archive, jiraServer})
 			case "confluence":
 				recs, err = fetchConfluence(cmd, confluenceArgs{confluenceSpaces, confluenceCQL, maxPages})
 			case "pagerduty":
@@ -202,6 +204,8 @@ Start with the org chart, then merge everything else onto it:
 	f.StringArrayVar(&jiraProjects, "jira-project", nil, "Jira project key (repeatable).")
 	f.StringVar(&jiraJQL, "jira-jql", "", "Jira JQL query (overrides --jira-project).")
 	f.IntVar(&maxIssues, "max-issues", 1000, "Cap Jira issues read.")
+	f.BoolVar(&jiraServer, "jira-server", false,
+		"Jira is self-hosted Server or Data Center (v2 API, bearer or anonymous auth), not Cloud.")
 	f.StringArrayVar(&confluenceSpaces, "confluence-space", nil, "Confluence space key (repeatable).")
 	f.StringVar(&confluenceCQL, "confluence-cql", "", "Confluence CQL query (overrides --confluence-space).")
 	f.IntVar(&maxPages, "max-pages", 2000, "Cap Confluence pages read.")
@@ -549,6 +553,8 @@ type jiraArgs struct {
 	maxIssues int
 	// episodes records resolved issues.
 	episodes bool
+	// server selects a self-hosted Server or Data Center deployment.
+	server bool
 }
 
 // fetchJira builds Jira records, reading the URL and credentials from flags and
@@ -560,13 +566,22 @@ func fetchJira(cmd *cobra.Command, a jiraArgs) ([]connector.Record, []episode.Ep
 	}
 	email := os.Getenv(jiraEmailEnv)
 	token := os.Getenv(jiraTokenEnv)
-	if site == "" || email == "" || token == "" {
-		return nil, nil, fmt.Errorf("%w: set --jira-url (or %s), %s, and %s",
+	// Cloud needs a site, an email, and a token. Server and Data Center need
+	// only the site: the token is a bearer, optional for a public tracker that
+	// allows anonymous read.
+	if a.server {
+		if site == "" {
+			return nil, nil, fmt.Errorf("%w: set --jira-url (or %s) for the Server site",
+				ErrBadArgs, jiraURLEnv)
+		}
+	} else if site == "" || email == "" || token == "" {
+		return nil, nil, fmt.Errorf(
+			"%w: set --jira-url (or %s), %s, and %s (or pass --jira-server for a self-hosted site)",
 			ErrBadArgs, jiraURLEnv, jiraEmailEnv, jiraTokenEnv)
 	}
 	src := connector.NewJira(site, email, token, connector.JiraOptions{
 		Projects: a.projects, JQL: a.jql, MaxIssues: a.maxIssues,
-		Episodes: a.episodes, Log: cmd.ErrOrStderr(),
+		Episodes: a.episodes, Server: a.server, Log: cmd.ErrOrStderr(),
 	})
 	recs, err := src.Fetch(cmd.Context())
 	if err != nil {

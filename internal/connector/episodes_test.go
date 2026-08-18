@@ -215,3 +215,44 @@ func TestPagerDutyEpisodes(t *testing.T) {
 		t.Errorf("occurred %v permalink %q", ep.Occurred, ep.Permalink)
 	}
 }
+
+// TestJiraServerEpisodes verifies whodar reads a self-hosted Server or Data
+// Center Jira: v2 shape, username identity, and no email. This is the shape a
+// public tracker such as Apache's Jira returns, where an assignee has a name
+// but no account id and no visible email, and it once produced zero episodes
+// because identity keyed only on the account id.
+func TestJiraServerEpisodes(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/rest/api/2/") {
+			t.Errorf("Server mode hit %q, want the v2 API", r.URL.Path)
+		}
+		io.WriteString(w, `{"total":1,"startAt":0,"issues":[{"key":"KAFKA-9","fields":{`+
+			`"summary":"consumer rebalance loop","description":"raised the session timeout",`+
+			`"assignee":{"name":"jdoe","displayName":"Jane Doe"},`+
+			`"reporter":{"name":"bsmith","displayName":"Bob Smith"},`+
+			`"resolutiondate":"2026-06-20T09:30:00.000+0000",`+
+			`"status":{"statusCategory":{"key":"done"}},`+
+			`"project":{"key":"KAFKA","name":"Kafka"}}}]}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	j := NewJira(srv.URL, "", "", JiraOptions{
+		Projects: []string{"KAFKA"}, Episodes: true, Server: true})
+	if _, err := j.Fetch(context.Background()); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	eps := j.Episodes()
+	if len(eps) != 1 {
+		t.Fatalf("episodes = %d, want one from the resolved Server issue: %+v", len(eps), eps)
+	}
+	ep := eps[0]
+	// Identity keys on the username since there is no email or account id.
+	if !hasParticipant(ep, "jira:jdoe") || !hasParticipant(ep, "jira:bsmith") {
+		t.Errorf("participants = %v, want the assignee and reporter by username", ep.Participants)
+	}
+	// The v2 string description is indexed, not dropped as an unreadable tree.
+	if !strings.Contains(ep.Body, "session timeout") {
+		t.Errorf("body = %q, want the string description indexed", ep.Body)
+	}
+}

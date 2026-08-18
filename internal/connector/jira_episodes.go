@@ -19,10 +19,10 @@ func jiraPersonID(u jira.User) string {
 	if u.EmailAddress != "" {
 		return util.NormalizeEmail(u.EmailAddress)
 	}
-	if u.AccountID == "" {
-		return ""
+	if id := u.Identity(); id != "" {
+		return "jira:" + id
 	}
-	return "jira:" + u.AccountID
+	return ""
 }
 
 // issueEpisode records a resolved issue: what was wrong, who settled it, and

@@ -23,6 +23,10 @@ type JiraOptions struct {
 	// Episodes records resolved issues, so recall can point back at the
 	// ticket that settled something.
 	Episodes bool
+	// Server selects a self-hosted Jira Server or Data Center deployment, which
+	// speaks the v2 API and authenticates with a bearer token or not at all,
+	// rather than Cloud's v3 API and email-plus-token.
+	Server bool
 	// Log receives progress lines; nil discards them.
 	Log io.Writer
 }
@@ -57,8 +61,15 @@ type Jira struct {
 // and API token.
 func NewJira(baseURL, email, token string, opts JiraOptions) *Jira {
 	o := opts.withDefaults()
-	client := jira.New(baseURL, email, token,
-		jira.WithProgress(util.ProgressWriter(o.Log, "jira: fetched", jiraProgressEvery)))
+	progress := jira.WithProgress(util.ProgressWriter(o.Log, "jira: fetched", jiraProgressEvery))
+	var client *jira.Client
+	if o.Server {
+		// Server and Data Center: v2 API, bearer token, or anonymous for a
+		// public tracker where email and token are both empty.
+		client = jira.NewServer(baseURL, token, progress)
+	} else {
+		client = jira.New(baseURL, email, token, progress)
+	}
 	return &Jira{client: client, opts: o}
 }
 
@@ -181,13 +192,15 @@ func issueTopics(is jira.Issue) []string {
 	return out
 }
 
-// jiraUserKey returns a stable key for a user, preferring email.
+// jiraUserKey returns a stable key for a user, preferring email and falling back
+// to the site identity, which is the account id on Cloud or the username on
+// Server and Data Center.
 func jiraUserKey(u jira.User) string {
 	if u.EmailAddress != "" {
 		return strings.ToLower(u.EmailAddress)
 	}
-	if u.AccountID != "" {
-		return "jira:" + u.AccountID
+	if id := u.Identity(); id != "" {
+		return "jira:" + id
 	}
 	return ""
 }
@@ -197,8 +210,8 @@ func jiraUserKey(u jira.User) string {
 // recorded under a Jira account is findable by the person who did it.
 func jiraPersonRecord(u jira.User, topics []string) Record {
 	rec := Record{Kind: KindPerson, Source: "jira", Weight: 1, Topics: topics, Name: u.DisplayName}
-	if u.AccountID != "" {
-		rec.PersonID = "jira:" + u.AccountID
+	if id := u.Identity(); id != "" {
+		rec.PersonID = "jira:" + id
 	}
 	if u.EmailAddress != "" {
 		rec.Email = util.NormalizeEmail(u.EmailAddress)

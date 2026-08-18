@@ -160,3 +160,83 @@ func TestSearchResolvedFieldsRoundTrip(t *testing.T) {
 		t.Error("in-progress issue reported resolved")
 	}
 }
+
+// TestUserIdentity verifies the identity fallback across deployments: Cloud
+// keys on the account id, Server and Data Center on the username or key.
+func TestUserIdentity(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		In   User
+		Want string
+	}{
+		{User{AccountID: "acc-1", Name: "jdoe", Key: "jdoe-key"}, "acc-1"}, // Test 0: Cloud prefers account id.
+		{User{Name: "jdoe", Key: "jdoe-key"}, "jdoe"},                      // Test 1: Server uses username.
+		{User{Key: "jdoe-key"}, "jdoe-key"},                                // Test 2: older Server uses key.
+		{User{}, ""},                                                       // Test 3: nothing to key on.
+	}
+	for testNum, test := range tests {
+		if got := test.In.Identity(); got != test.Want {
+			t.Errorf("test %d: Identity() = %q, want %q", testNum, got, test.Want)
+		}
+	}
+}
+
+// TestNewServerSpeaksV2Anonymously verifies the Server client hits the v2 API,
+// sends no auth header when the token is empty, and still reads issues. This is
+// the shape of a public tracker such as an open-source project's Jira.
+func TestNewServerSpeaksV2Anonymously(t *testing.T) {
+	t.Parallel()
+	var gotPath, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		// Server/DC shape: a username, no account id, no email, string description.
+		io.WriteString(w, `{"total":1,"startAt":0,"issues":[{"key":"KAFKA-1","fields":{`+
+			`"summary":"rebalance storm","description":"fixed the coordinator",`+
+			`"assignee":{"name":"jdoe","displayName":"Jane Doe"},`+
+			`"resolutiondate":"2026-06-20T09:30:00.000+0000",`+
+			`"status":{"statusCategory":{"key":"done"}},`+
+			`"project":{"key":"KAFKA","name":"Kafka"}}}]}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := NewServer(srv.URL, "")
+	issues, err := c.Search(context.Background(), "project=KAFKA", 10)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if !strings.HasPrefix(gotPath, apiBaseServer) {
+		t.Errorf("path = %q, want the v2 API base %q", gotPath, apiBaseServer)
+	}
+	if gotAuth != "" {
+		t.Errorf("anonymous client sent an Authorization header: %q", gotAuth)
+	}
+	if len(issues) != 1 || !issues[0].Resolved() {
+		t.Fatalf("issues = %+v, want one resolved", issues)
+	}
+	if got := issues[0].Fields.Assignee.Identity(); got != "jdoe" {
+		t.Errorf("assignee identity = %q, want the username jdoe", got)
+	}
+	if got := issues[0].Description(); got != "fixed the coordinator" {
+		t.Errorf("description = %q, want the string form read", got)
+	}
+}
+
+// TestNewServerBearerToken verifies a token is sent as a bearer, which is how
+// Server and Data Center personal access tokens authenticate.
+func TestNewServerBearerToken(t *testing.T) {
+	t.Parallel()
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		io.WriteString(w, `{"total":0,"startAt":0,"issues":[]}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	if _, err := NewServer(srv.URL, "PAT123").Search(context.Background(), "", 10); err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if gotAuth != "Bearer PAT123" {
+		t.Errorf("Authorization = %q, want Bearer PAT123", gotAuth)
+	}
+}

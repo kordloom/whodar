@@ -16,8 +16,8 @@ import (
 func TestPing(t *testing.T) {
 	t.Parallel()
 	ok := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != myselfPath {
-			t.Errorf("path = %q, want %q", r.URL.Path, myselfPath)
+		if r.URL.Path != apiBaseCloud+"/myself" {
+			t.Errorf("path = %q, want %q", r.URL.Path, apiBaseCloud+"/myself")
 		}
 		io.WriteString(w, `{"accountId":"1","displayName":"Me"}`)
 	}))

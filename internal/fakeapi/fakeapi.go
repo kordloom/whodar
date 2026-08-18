@@ -100,6 +100,44 @@ func (i JiraIssue) fields() map[string]any {
 	return out
 }
 
+// serverFields returns the issue as a Server or Data Center site does: users
+// keyed by username with no account id or email, and a plain string
+// description rather than a node tree.
+func (i JiraIssue) serverFields() map[string]any {
+	user := func(email string) any {
+		if email == "" {
+			return nil
+		}
+		name, _, _ := strings.Cut(email, "@")
+		return map[string]any{"name": name, "displayName": name}
+	}
+	components := make([]any, 0, len(i.Components))
+	for _, c := range i.Components {
+		components = append(components, map[string]any{"name": c})
+	}
+	out := map[string]any{
+		"summary":    i.Summary,
+		"assignee":   user(i.AssigneeEmail),
+		"reporter":   user(i.ReporterEmail),
+		"components": components,
+		"labels":     i.Labels,
+		"project":    map[string]any{"key": i.ProjectKey, "name": i.ProjectName},
+		"issuetype":  map[string]any{"name": "Task"},
+		"updated":    i.Updated,
+		"status": map[string]any{
+			"name":           i.StatusName,
+			"statusCategory": map[string]any{"key": i.StatusCategory},
+		},
+	}
+	if i.ResolutionDate != "" {
+		out["resolutiondate"] = i.ResolutionDate
+	}
+	if i.Description != "" {
+		out["description"] = i.Description
+	}
+	return out
+}
+
 // adfDoc wraps text in the Atlassian Document Format tree Jira Cloud returns
 // for a rich-text field, so a client that expects a plain string fails here
 // the way it would in production.
@@ -114,11 +152,16 @@ func adfDoc(text string) map[string]any {
 	}
 }
 
-// Jira is a fake Jira Cloud site. It honors the field selection and the
-// paging window the client sends, which is what a stub does not.
+// Jira is a fake Jira site. It honors the field selection and the paging window
+// the client sends, which is what a stub does not. With ServerMode set it
+// behaves as a self-hosted Server or Data Center site: the v2 API path,
+// username-based users with no account id, and a string description instead of
+// a node tree.
 type Jira struct {
 	// Issues are the issues the site holds.
 	Issues []JiraIssue
+	// ServerMode serves the v2 API and Server-shaped users and descriptions.
+	ServerMode bool
 	// Queries records the raw query string of every search request, so a test
 	// can assert what the client actually asked for.
 	Queries []string
@@ -126,11 +169,18 @@ type Jira struct {
 
 // Server starts the fake site. The caller closes it.
 func (j *Jira) Server() *httptest.Server {
+	base := "/rest/api/3"
+	if j.ServerMode {
+		base = "/rest/api/2"
+	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/rest/api/3/myself", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(base+"/myself", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{"accountId": "acct-me", "emailAddress": "me@x.com"})
 	})
-	mux.HandleFunc("/rest/api/3/search", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(base+"/serverInfo", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{"version": "9.4.0", "deploymentType": "Server"})
+	})
+	mux.HandleFunc(base+"/search", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		j.Queries = append(j.Queries, r.URL.RawQuery)
 
@@ -150,8 +200,12 @@ func (j *Jira) Server() *httptest.Server {
 		}
 		issues := make([]any, 0, maxResults)
 		for i := startAt; i < len(j.Issues) && len(issues) < maxResults; i++ {
+			all := j.Issues[i].fields()
+			if j.ServerMode {
+				all = j.Issues[i].serverFields()
+			}
 			selected := make(map[string]any)
-			for name, value := range j.Issues[i].fields() {
+			for name, value := range all {
 				if wanted[name] {
 					selected[name] = value
 				}
