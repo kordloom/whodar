@@ -180,7 +180,8 @@ func cloudChatter(pol policy.Policy, provider, model, openaiURL string) (resolve
 		if key == "" {
 			return nil, fmt.Errorf("%w: set %s", ErrBadArgs, anthropicKeyEnv)
 		}
-		return llm.NewAnthropic(key, llm.WithAnthropicModel(model)), nil
+		return llm.NewAnthropic(key,
+			llm.WithAnthropicModel(model), llm.WithAnthropicTransport(policy.Transport(nil, pol))), nil
 	case "gemini":
 		if err := pol.AllowEgress(geminiHost); err != nil {
 			return nil, cloudDenied(provider, err)
@@ -192,11 +193,12 @@ func cloudChatter(pol policy.Policy, provider, model, openaiURL string) (resolve
 		if model == "" {
 			model = defaultGeminiModel
 		}
-		return llm.NewOpenAI(key, llm.WithOpenAIModel(model), llm.WithOpenAIBaseURL(geminiBaseURL)), nil
+		return llm.NewOpenAI(key, llm.WithOpenAIModel(model),
+			llm.WithOpenAIBaseURL(geminiBaseURL), llm.WithOpenAITransport(policy.Transport(nil, pol))), nil
 	}
 
 	key := os.Getenv(openaiKeyEnv)
-	var clientOpts []llm.OpenAIOption
+	clientOpts := []llm.OpenAIOption{llm.WithOpenAITransport(policy.Transport(nil, pol))}
 	if model != "" {
 		clientOpts = append(clientOpts, llm.WithOpenAIModel(model))
 	}

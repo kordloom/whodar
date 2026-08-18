@@ -547,9 +547,19 @@ turns decay off entirely.
 - `whodar index --source git --repo-path DIR [--git-since-days N] [--max-commits N]`
   indexes local git history.
 - `whodar demo` explores a simulated company in the web UI, no credentials.
+- `whodar connect [source]` walks through setting up a source's credentials, and
+  `whodar connect --status` reports what is configured.
 - `whodar index ... --merge` adds the source to the existing index instead of replacing it.
+- `whodar index --source slack ... --episodes [--archive]` records the
+  conversations behind the messages; `--archive` retains their text and needs a
+  Memory license and an encryption key.
 - `whodar ask [--mode keyword|semantic|llm] [--limit N] [--pretty] QUESTION`
-  answers a question.
+  answers who to talk to.
+- `whodar recall [--me EMAIL] [--meaning] QUESTION` finds the past conversation
+  where something was worked out, and who was in it.
+- `whodar directory [people|channels|teams|topics]` lists what is indexed.
+- `whodar status` shows the counts, per-source sizes, build time, whether
+  embeddings and encryption are set, and the license tier.
 - `whodar index ... --embed` adds embeddings for semantic and llm retrieval.
 - `whodar feedback record QUESTION (--person ID | --channel NAME) (--helpful | --not-helpful) [--comment TEXT]`
   records a vote; `whodar feedback list` and `whodar feedback clear` review and
@@ -557,7 +567,20 @@ turns decay off entirely.
 - `whodar serve [--addr HOST:PORT] [--mode keyword|llm]` runs the web UI.
 - `whodar bot [--transport socket|events] [--mode keyword|llm] [--addr HOST:PORT]`
   runs the Slack bot.
+- `whodar mcp` serves the index to an MCP client such as an editor assistant.
+- `whodar vault` and `whodar archive` manage the encrypted store; `whodar license`
+  shows which features this install is licensed for.
 - `whodar version` prints the version.
 
 Shared flags: `--data-dir` sets the index location, `--policy` sets the egress
-mode, `--pretty` indents JSON.
+mode, `--pretty` indents JSON. Set `WHODAR_INDEX_KEY` (base64 of 32 random bytes)
+or `WHODAR_INDEX_PASSPHRASE` to encrypt the index and episodes at rest.
+
+## Scale
+
+The index and its embeddings load fully into memory to answer a question, so
+size scales with people and, when `--embed` is set, with the vector dimension.
+A few thousand people is comfortable on a laptop; embeddings roughly multiply the
+file size, so a large org that wants semantic search should expect an index in
+the hundreds of megabytes and size the serving host accordingly. `whodar status`
+reports the current people and source counts.

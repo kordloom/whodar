@@ -125,6 +125,9 @@ type Episode struct {
 	People []Person `json:"people"`
 	// Place is where it happened, such as a channel name.
 	Place string `json:"place,omitempty"`
+	// ID is the conversation's stable identifier, so a caller can dedup or refer
+	// back to the exact conversation rather than only its link.
+	ID string `json:"id,omitempty"`
 	// Source names the tool it happened in.
 	Source string `json:"source"`
 	// Kind is the conversation shape: a thread, a stretch of channel talk, or
@@ -193,7 +196,11 @@ func (r *Resolver) Resolve(ctx context.Context, q Query) Answer {
 			hits = r.store.SearchSemantic(vec, sq)
 		}
 	}
-	if hits == nil {
+	// Fall back to keyword when semantic found nothing, not only when it was
+	// never run. A query embedded by a different model than the index scores
+	// every episode at or below zero and returns an empty, non-nil slice, which
+	// is exactly the case where a confident empty answer is most misleading.
+	if len(hits) == 0 {
 		hits = r.store.Search(sq)
 	}
 	ans := Answer{
@@ -222,6 +229,7 @@ func (r *Resolver) view(hit episode.Result, asker model.ID) Episode {
 	}
 	out := Episode{
 		People:     people,
+		ID:         ep.ID,
 		Place:      ep.Place,
 		Source:     ep.Source,
 		Kind:       string(ep.Kind),

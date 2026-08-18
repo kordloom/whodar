@@ -208,6 +208,61 @@ func (c *Client) PullRequests(ctx context.Context, owner, repo string) ([]PullRe
 	return getAll[PullRequest](ctx, c, repoPath(owner, repo, "pulls"), q)
 }
 
+// review is one submitted review on a pull request.
+type review struct {
+	// User is the reviewer.
+	User account `json:"user"`
+}
+
+// issueComment is one comment on a pull request or issue.
+type issueComment struct {
+	// User is the comment author.
+	User account `json:"user"`
+}
+
+// PullReviewers returns the distinct logins of people who actually submitted a
+// review on a pull request. This differs from the requested_reviewers on the
+// list object, which GitHub clears once a person reviews, so it is the reviewer
+// who acted, often the strongest signal of who knows a change.
+func (c *Client) PullReviewers(ctx context.Context, owner, repo string, number int) ([]string, error) {
+	revs, err := getAll[review](ctx, c,
+		repoPath(owner, repo, "pulls", strconv.Itoa(number), "reviews"), url.Values{"per_page": {"100"}})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(revs))
+	seen := make(map[string]bool)
+	for _, r := range revs {
+		if r.User.Login == "" || seen[r.User.Login] {
+			continue
+		}
+		seen[r.User.Login] = true
+		out = append(out, r.User.Login)
+	}
+	return out, nil
+}
+
+// PullCommenters returns the distinct logins of people who commented on a pull
+// request. Pull comments live on the issue comments endpoint. It captures the
+// person who diagnosed a fix in discussion without ever being a reviewer.
+func (c *Client) PullCommenters(ctx context.Context, owner, repo string, number int) ([]string, error) {
+	comments, err := getAll[issueComment](ctx, c,
+		repoPath(owner, repo, "issues", strconv.Itoa(number), "comments"), url.Values{"per_page": {"100"}})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(comments))
+	seen := make(map[string]bool)
+	for _, cm := range comments {
+		if cm.User.Login == "" || seen[cm.User.Login] {
+			continue
+		}
+		seen[cm.User.Login] = true
+		out = append(out, cm.User.Login)
+	}
+	return out, nil
+}
+
 // OrgRepos returns an org's repositories, most recently updated first,
 // following pagination up to maxPages pages of 100.
 func (c *Client) OrgRepos(ctx context.Context, org string) ([]Repo, error) {
@@ -377,8 +432,19 @@ func githubRetryable(resp *http.Response) bool {
 	if resp.StatusCode != http.StatusForbidden && resp.StatusCode != http.StatusTooManyRequests {
 		return false
 	}
-	_, ok := httputil.RetryAfter(resp)
-	return ok
+	// A 429 is always a rate limit. A 403 is one when it carries a Retry-After
+	// or when the primary quota is exhausted (remaining zero). Either way the
+	// request should be retried after a wait rather than dropping the whole
+	// repository, which is what returning false here does. httputil applies a
+	// default backoff when no Retry-After is given, which is GitHub's guidance
+	// for a rate limit that omits the header.
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return true
+	}
+	if _, ok := httputil.RetryAfter(resp); ok {
+		return true
+	}
+	return resp.Header.Get("X-RateLimit-Remaining") == "0"
 }
 
 // nextLink extracts the rel="next" URL from a Link header, or empty.

@@ -10,20 +10,34 @@ import (
 	"testing"
 )
 
-// TestPages verifies page fields, labels, and authors decode.
+// TestPages verifies the Cloud v2 read reassembles a page from the separate
+// pages, spaces, labels, and user endpoints, since v2 returns account ids only
+// and serves the space name and labels apart from the page.
 func TestPages(t *testing.T) {
 	t.Parallel()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		io.WriteString(w, `{"size":1,"limit":100,"results":[{`+
-			`"title":"Wiz scanning runbook",`+
-			`"space":{"key":"SEC","name":"Security"},`+
-			`"metadata":{"labels":{"results":[{"name":"wiz"}]}},`+
-			`"history":{"createdBy":{"accountId":"a1","displayName":"Jane","email":"jane@x.com"}},`+
-			`"version":{"by":{"accountId":"a2","displayName":"Bob","email":"bob@x.com"}}}]}`)
-	}))
+	mux := http.NewServeMux()
+	mux.HandleFunc("/wiki/api/v2/spaces", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"results":[{"id":"100","key":"SEC","name":"Security"}]}`)
+	})
+	mux.HandleFunc("/wiki/api/v2/pages", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"results":[{"id":"7","title":"Wiz scanning runbook","spaceId":"100",`+
+			`"authorId":"a1","createdAt":"2026-06-20T09:30:00.000Z",`+
+			`"version":{"authorId":"a2","createdAt":"2026-06-21T09:30:00.000Z"}}],"_links":{}}`)
+	})
+	mux.HandleFunc("/wiki/api/v2/pages/7/labels", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"results":[{"name":"wiz"}]}`)
+	})
+	mux.HandleFunc("/wiki/rest/api/user", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("accountId") == "a1" {
+			io.WriteString(w, `{"accountId":"a1","displayName":"Jane","email":"jane@x.com"}`)
+			return
+		}
+		io.WriteString(w, `{"accountId":"a2","displayName":"Bob","email":"bob@x.com"}`)
+	})
+	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	pages, err := New(srv.URL, "me@x.com", "token").Pages(context.Background(), "type = page", 0)
+	pages, err := New(srv.URL, "me@x.com", "token").Pages(context.Background(), Query{Spaces: []string{"SEC"}})
 	if err != nil {
 		t.Fatalf("Pages: %v", err)
 	}
@@ -31,7 +45,7 @@ func TestPages(t *testing.T) {
 		t.Fatalf("pages = %d, want 1", len(pages))
 	}
 	p := pages[0]
-	if p.Title != "Wiz scanning runbook" || p.Space.Key != "SEC" {
+	if p.Title != "Wiz scanning runbook" || p.Space.Key != "SEC" || p.Space.Name != "Security" {
 		t.Errorf("page = %+v", p)
 	}
 	if !slices.Contains(p.LabelNames(), "wiz") {
@@ -39,7 +53,7 @@ func TestPages(t *testing.T) {
 	}
 	authors := p.Authors()
 	if len(authors) != 2 || authors[0].Email != "jane@x.com" || authors[1].Email != "bob@x.com" {
-		t.Errorf("authors = %+v, want jane and bob", authors)
+		t.Errorf("authors = %+v, want jane the creator then bob the editor", authors)
 	}
 }
 
@@ -92,7 +106,7 @@ func TestNewServerAnonymousAtRoot(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := NewServer(srv.URL, "")
-	pages, err := c.Pages(context.Background(), "type=page", 10)
+	pages, err := c.Pages(context.Background(), Query{CQL: "type=page", Max: 10})
 	if err != nil {
 		t.Fatalf("Pages: %v", err)
 	}
@@ -123,7 +137,7 @@ func TestNewServerBearerToken(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	if _, err := NewServer(srv.URL, "PAT9").Pages(context.Background(), "", 10); err != nil {
+	if _, err := NewServer(srv.URL, "PAT9").Pages(context.Background(), Query{Max: 10}); err != nil {
 		t.Fatalf("Pages: %v", err)
 	}
 	if gotAuth != "Bearer PAT9" {

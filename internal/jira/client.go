@@ -21,6 +21,8 @@ import (
 
 // API bases for the two Jira deployments. Cloud speaks v3 and returns rich text
 // as a node tree; Server and Data Center speak v2 and return it as a string.
+// Cloud also retired the offset /search endpoint in favor of the token-paged
+// /search/jql, so the two deployments differ in the search path and its paging.
 const (
 	apiBaseCloud  = "/rest/api/3"
 	apiBaseServer = "/rest/api/2"
@@ -37,6 +39,10 @@ type Client struct {
 	auth string
 	// searchPath is the version-appropriate issue search endpoint.
 	searchPath string
+	// tokenPaging selects the pagination style. Cloud's enhanced search pages by
+	// an opaque nextPageToken and flags the final page; Server and Data Center
+	// page by an offset against a total.
+	tokenPaging bool
 	// pingPath is the endpoint used to verify reachability and credentials.
 	pingPath string
 	// http performs requests.
@@ -75,12 +81,13 @@ func New(baseURL, email, token string, opts ...Option) *Client {
 		panic("jira: New requires baseURL, email, and token")
 	}
 	c := &Client{
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		auth:       "Basic " + base64.StdEncoding.EncodeToString([]byte(email+":"+token)),
-		searchPath: apiBaseCloud + "/search",
-		pingPath:   apiBaseCloud + "/myself",
-		http:       &http.Client{Timeout: apiTimeout},
-		maxRetries: 3,
+		baseURL:     strings.TrimRight(baseURL, "/"),
+		auth:        "Basic " + base64.StdEncoding.EncodeToString([]byte(email+":"+token)),
+		searchPath:  apiBaseCloud + "/search/jql",
+		tokenPaging: true,
+		pingPath:    apiBaseCloud + "/myself",
+		http:        &http.Client{Timeout: apiTimeout},
+		maxRetries:  3,
 	}
 	for _, o := range opts {
 		o(c)
@@ -199,7 +206,33 @@ type Issue struct {
 				Key string `json:"key"`
 			} `json:"statusCategory"`
 		} `json:"status"`
+		// Comment holds the issue comments, whose authors took part in working
+		// the issue even when they were never the assignee or reporter.
+		Comment struct {
+			// Comments is the list of comments.
+			Comments []struct {
+				// Author is who wrote the comment.
+				Author User `json:"author"`
+			} `json:"comments"`
+		} `json:"comment"`
 	} `json:"fields"`
+}
+
+// CommentAuthors returns the distinct users who commented on the issue. They
+// helped settle it even when they were never assigned, which is exactly whom
+// recall should surface and the assignee-and-reporter view misses.
+func (i Issue) CommentAuthors() []User {
+	var out []User
+	seen := make(map[string]bool)
+	for _, c := range i.Fields.Comment.Comments {
+		id := c.Author.Identity()
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, c.Author)
+	}
+	return out
 }
 
 // Resolved reports whether the issue reached a finished state, which is what
@@ -216,8 +249,9 @@ func (i Issue) Description() string { return adfText(i.Fields.Description) }
 // BaseURL returns the site root, so a caller can build a link to an issue.
 func (c *Client) BaseURL() string { return c.baseURL }
 
-// searchResponse decodes the issue search endpoint.
-type searchResponse struct {
+// offsetSearchResponse decodes the Server and Data Center search endpoint, which
+// windows results by an offset against a total.
+type offsetSearchResponse struct {
 	// Issues is the page of issues.
 	Issues []Issue `json:"issues"`
 	// StartAt is the offset of this page.
@@ -226,16 +260,75 @@ type searchResponse struct {
 	Total int `json:"total"`
 }
 
+// tokenSearchResponse decodes the Cloud enhanced-search endpoint, which pages by
+// an opaque token and flags the final page rather than reporting a total.
+type tokenSearchResponse struct {
+	// Issues is the page of issues.
+	Issues []Issue `json:"issues"`
+	// NextPageToken is the cursor for the next page, empty on the last page.
+	NextPageToken string `json:"nextPageToken"`
+	// IsLast reports whether this is the final page.
+	IsLast bool `json:"isLast"`
+}
+
 // searchFields are the issue fields Search asks for. Jira returns only the
 // fields named here, so every field any caller reads must appear: omitting
 // resolutiondate or status silently makes Resolved report false for every
 // issue, and no issue ever becomes an episode.
 const searchFields = "summary,assignee,reporter,components,labels,project," +
-	"issuetype,updated,resolutiondate,status,description"
+	"issuetype,updated,resolutiondate,status,description,comment"
 
-// Search returns up to max issues matching jql, paginating in pages of 100. A
-// non-positive max returns all matches.
+// Search returns up to max issues matching jql, in pages of 100. A non-positive
+// max returns all matches. Cloud and Server paginate differently, so it
+// dispatches on the deployment fixed at construction.
 func (c *Client) Search(ctx context.Context, jql string, max int) ([]Issue, error) {
+	if c.tokenPaging {
+		return c.searchToken(ctx, jql, max)
+	}
+	return c.searchOffset(ctx, jql, max)
+}
+
+// searchToken pages the Cloud enhanced-search endpoint, which returns an opaque
+// nextPageToken and an isLast flag instead of an offset and total. Atlassian
+// retired the offset endpoint from Cloud, so this is the only search there.
+func (c *Client) searchToken(ctx context.Context, jql string, max int) ([]Issue, error) {
+	var all []Issue
+	for token := ""; ; {
+		page := 100
+		if max > 0 && max-len(all) < page {
+			page = max - len(all)
+		}
+		if page <= 0 {
+			break
+		}
+		params := url.Values{
+			"jql":        {jql},
+			"maxResults": {strconv.Itoa(page)},
+			"fields":     {searchFields},
+		}
+		if token != "" {
+			params.Set("nextPageToken", token)
+		}
+		var resp tokenSearchResponse
+		if err := c.get(ctx, c.searchPath, params, &resp); err != nil {
+			return nil, err
+		}
+		all = append(all, resp.Issues...)
+		c.progress.Report(len(all))
+		if resp.IsLast || resp.NextPageToken == "" || len(resp.Issues) == 0 {
+			break
+		}
+		token = resp.NextPageToken
+		if max > 0 && len(all) >= max {
+			break
+		}
+	}
+	return all, nil
+}
+
+// searchOffset pages the Server and Data Center search endpoint, which windows
+// results by an offset against a total.
+func (c *Client) searchOffset(ctx context.Context, jql string, max int) ([]Issue, error) {
 	var all []Issue
 	for startAt := 0; ; {
 		page := 100
@@ -251,7 +344,7 @@ func (c *Client) Search(ctx context.Context, jql string, max int) ([]Issue, erro
 			"maxResults": {strconv.Itoa(page)},
 			"fields":     {searchFields},
 		}
-		var resp searchResponse
+		var resp offsetSearchResponse
 		if err := c.get(ctx, c.searchPath, params, &resp); err != nil {
 			return nil, err
 		}

@@ -122,6 +122,8 @@ type Index struct {
 	// from them, so re-reading a source replaces its contribution instead of
 	// piling a second copy on top of the first.
 	sources map[string][]connector.Record
+	// builtAt is when a loaded index was last written, empty for a fresh one.
+	builtAt time.Time
 	// personLens and channelLens cache BM25 document lengths, refreshed when
 	// postings change so a query never rescans every posting.
 	personLens  entityLens
@@ -270,6 +272,21 @@ func (ix *Index) rebuild() {
 		}
 	}
 	ix.refreshStats()
+}
+
+// BuiltAt reports when a loaded index was last written, so a caller can show how
+// stale it is. It is the zero time for an index that has never been saved.
+func (ix *Index) BuiltAt() time.Time { return ix.builtAt }
+
+// SourceNames returns the names of the sources that contributed to the index,
+// sorted, so a status view can list each one with its size.
+func (ix *Index) SourceNames() []string {
+	names := make([]string, 0, len(ix.sources))
+	for name := range ix.sources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // SourceSize reports how many records the named source contributed to this
@@ -582,10 +599,13 @@ const (
 // Fuzzy matching bounds. Terms shorter than fuzzyMinLen never fuzz, one edit
 // is allowed from fuzzyMinLen, two from fuzzyTwoEditLen, and each edit
 // multiplies the term's contribution by fuzzyPenalty so an exact match always
-// outranks a corrected one.
+// outranks a corrected one. Two edits are held to longer words: two edits in a
+// short word is a large distortion that turns a real miss such as "postgis"
+// into a confident wrong match on "postgres", so the second edit is allowed
+// only once a word is long enough that two edits stay a small share of it.
 const (
 	fuzzyMinLen     = 4
-	fuzzyTwoEditLen = 7
+	fuzzyTwoEditLen = 9
 	fuzzyPenalty    = 0.7
 )
 
@@ -860,6 +880,9 @@ type snapshot struct {
 	// Sources holds the records each source contributed, so a later merge can
 	// replace one source without re-reading the others.
 	Sources map[string][]connector.Record `json:"sources,omitempty"`
+	// BuiltAt is when the index was last written, so a reader can tell how stale
+	// it is without re-running an index.
+	BuiltAt time.Time `json:"built_at,omitempty"`
 }
 
 // Option configures Load and Save. With no option the index is read and written
@@ -910,6 +933,7 @@ func (ix *Index) Save(path string, opts ...Option) error {
 		ChannelVecs:     ix.channelVecs,
 		Aliases:         ix.identityResolver().Pairs(),
 		Sources:         redactedSources(ix.sources),
+		BuiltAt:         ix.now(),
 	}
 	raw, err := json.Marshal(snap)
 	if err != nil {
@@ -951,6 +975,7 @@ func Load(path string, opts ...Option) (*Index, error) {
 		personVecs:      snap.PersonVecs,
 		channelVecs:     snap.ChannelVecs,
 		sources:         snap.Sources,
+		builtAt:         snap.BuiltAt,
 		resolver:        identity.NewResolver(),
 		halfLife:        DefaultHalfLife,
 		now:             time.Now,

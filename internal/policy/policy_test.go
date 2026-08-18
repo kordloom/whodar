@@ -3,10 +3,43 @@ package policy
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 )
+
+// roundTripFunc adapts a function to an http.RoundTripper.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+// RoundTrip calls f.
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// TestTransportEnforcesEgress verifies the policy transport blocks a request to
+// a forbidden host before it reaches the network, and allows it when the policy
+// permits, so egress cannot physically happen without a check.
+func TestTransportEnforcesEgress(t *testing.T) {
+	t.Parallel()
+	reached := false
+	base := roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		reached = true
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+	req, _ := http.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages", http.NoBody)
+
+	if _, err := Transport(base, New(Strict, false)).RoundTrip(req); err == nil {
+		t.Error("strict transport allowed egress")
+	}
+	if reached {
+		t.Error("strict transport reached the network before the policy check")
+	}
+	if _, err := Transport(base, New(Open, false)).RoundTrip(req); err != nil {
+		t.Errorf("open transport blocked egress: %v", err)
+	}
+	if !reached {
+		t.Error("open transport did not reach the network")
+	}
+}
 
 // TestParseMode covers valid names, the empty default, and unknown input.
 func TestParseMode(t *testing.T) {

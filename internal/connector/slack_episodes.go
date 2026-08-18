@@ -155,8 +155,9 @@ func threadEpisode(
 		Occurred:     occurred,
 		Permalink:    slack.Permalink(workspaceURL, ch.ID, m.TS, ""),
 		Messages:     m.ReplyCount + 1,
-		// Only the parent is on hand, and it is where the problem gets stated,
-		// which is what someone searches for later.
+		// The parent states the problem. enrichThreads folds the replies in
+		// afterward, so the stored body also carries how it was solved rather
+		// than only how it was asked.
 		Body: util.Truncate(m.SearchText(), maxMessageText),
 	}
 }

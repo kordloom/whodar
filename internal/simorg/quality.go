@@ -95,7 +95,7 @@ func Build(spec Spec, dir string) (*Built, error) {
 
 	src := connector.NewSlackWithClient(
 		slack.New("xoxb-generated", slack.WithBaseURL(org.Slack.URL)),
-		connector.SlackOptions{Episodes: true, Archive: true, MaxMessages: 100000})
+		connector.SlackOptions{Episodes: true, Archive: !spec.NoArchive, MaxMessages: 100000})
 	slackRecs, err := src.Fetch(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("simorg: slack: %w", err)
@@ -224,10 +224,15 @@ func (b *Built) ScoreRecall(limit int) Score {
 	return score
 }
 
-// episodeMatches reports whether a returned conversation is the one the
-// question was planted from, identified by the person who helped and the place
-// it happened, which is what the answer actually shows a reader.
+// episodeMatches reports whether a returned conversation is the exact one the
+// question was planted from, by its stable id. Matching the id rather than just
+// the helper who took part is a stricter, less gameable bar: with several
+// conversations sharing a helper, the looser check passed without surfacing the
+// right one. It falls back to the helper only when no planted id is recorded.
 func episodeMatches(ep recall.Episode, q Question) bool {
+	if q.WantEpisode != "" {
+		return ep.ID == q.WantEpisode
+	}
 	for _, p := range ep.People {
 		if model.ID(p.Email) == q.WantPerson {
 			return true

@@ -9,10 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kordloom/whodar/internal/httputil"
@@ -20,11 +22,18 @@ import (
 )
 
 // API bases for the two Confluence deployments. Cloud serves the REST API under
-// a /wiki context path; Server and Data Center serve it at the site root.
+// a /wiki context path; Server and Data Center serve it at the site root. Cloud
+// reads pages through the v2 API, which enumerates content directly instead of
+// through the search index the deprecated v1 content search depended on.
 const (
 	apiBaseCloud  = "/wiki/rest/api"
 	apiBaseServer = "/rest/api"
+	apiV2Cloud    = "/wiki/api/v2"
 )
+
+// labelWorkers bounds the concurrent per-page label lookups the v2 path makes,
+// since v2 does not return labels inline the way the v1 search did.
+const labelWorkers = 8
 
 // Client calls the Confluence REST API for either a Cloud or a Server/Data
 // Center deployment, which differ in the API context path, authentication, and
@@ -35,7 +44,11 @@ type Client struct {
 	// auth is the Authorization header value, or empty for an anonymous
 	// connection to a public Server/Data Center site.
 	auth string
-	// searchPath is the deployment-appropriate content search endpoint.
+	// cloud reads pages through the Cloud v2 API; when false the client is a
+	// Server or Data Center connection that reads through the v1 content search.
+	cloud bool
+	// searchPath is the v1 content search endpoint, used by Server and Data
+	// Center and by Cloud only when the caller supplies a raw CQL query.
 	searchPath string
 	// pingPath verifies reachability and, when authenticated, credentials.
 	pingPath string
@@ -77,6 +90,7 @@ func New(siteURL, email, token string, opts ...Option) *Client {
 	c := &Client{
 		baseURL:    strings.TrimRight(siteURL, "/"),
 		auth:       "Basic " + base64.StdEncoding.EncodeToString([]byte(email+":"+token)),
+		cloud:      true,
 		searchPath: apiBaseCloud + "/content/search",
 		pingPath:   apiBaseCloud + "/user/current",
 		http:       &http.Client{Timeout: apiTimeout},
@@ -185,6 +199,47 @@ type Page struct {
 		// When is the last edit time.
 		When time.Time `json:"when"`
 	} `json:"version"`
+	// Body holds the page content in Confluence's storage format, present when
+	// the read asked for it. It is where the substance of a page lives.
+	Body struct {
+		// Storage is the storage-format representation.
+		Storage struct {
+			// Value is the XHTML storage markup.
+			Value string `json:"value"`
+		} `json:"storage"`
+	} `json:"body"`
+}
+
+// BodyText returns the page body as plain words, with the storage-format markup
+// stripped, empty when the read did not fetch the body. It is the substance a
+// page carries beyond its title, the text worth mining for who knows what.
+func (p Page) BodyText() string { return stripHTML(p.Body.Storage.Value) }
+
+// stripHTML removes tags from Confluence storage markup and unescapes entities,
+// leaving the words. Tag and macro names must not survive into topics, so a
+// scan that drops everything between angle brackets is enough for indexing.
+func stripHTML(s string) string {
+	if s == "" {
+		return ""
+	}
+	var b strings.Builder
+	depth := 0
+	for _, r := range s {
+		switch r {
+		case '<':
+			depth++
+		case '>':
+			if depth > 0 {
+				depth--
+			}
+			b.WriteByte(' ')
+		default:
+			if depth == 0 {
+				b.WriteRune(r)
+			}
+		}
+	}
+	return html.UnescapeString(b.String())
 }
 
 // LabelNames returns the page's label names.
@@ -209,7 +264,46 @@ func (p Page) Authors() []*User {
 	return out
 }
 
-// searchResponse decodes the content search endpoint.
+// Query describes which pages to read. It lets the client choose the transport:
+// a raw CQL string keeps the legacy search path, while a space scope drives the
+// Cloud v2 enumeration that has no search-index dependency.
+type Query struct {
+	// Spaces scopes the read to these space keys; empty means every space.
+	Spaces []string
+	// CQL, when set, overrides Spaces with a raw Confluence Query Language
+	// string. Cloud honors it through the legacy content search.
+	CQL string
+	// Max caps the number of pages returned; non-positive returns all.
+	Max int
+}
+
+// Pages returns the pages the query selects. Server and Data Center always read
+// through the v1 content search; Cloud reads through the v2 API unless the
+// caller supplied a raw CQL string, which only the search endpoint understands.
+func (c *Client) Pages(ctx context.Context, q Query) ([]Page, error) {
+	if c.cloud && strings.TrimSpace(q.CQL) == "" {
+		return c.enumerateV2(ctx, q.Spaces, q.Max)
+	}
+	return c.searchCQL(ctx, buildCQL(q), q.Max)
+}
+
+// buildCQL renders a query as a CQL string: an explicit override, or a space
+// scope, or every page.
+func buildCQL(q Query) string {
+	if s := strings.TrimSpace(q.CQL); s != "" {
+		return s
+	}
+	if len(q.Spaces) > 0 {
+		quoted := make([]string, len(q.Spaces))
+		for i, s := range q.Spaces {
+			quoted[i] = `"` + s + `"`
+		}
+		return "type = page and space in (" + strings.Join(quoted, ",") + ")"
+	}
+	return "type = page"
+}
+
+// searchResponse decodes the v1 content search endpoint.
 type searchResponse struct {
 	// Results is the page of content.
 	Results []Page `json:"results"`
@@ -219,9 +313,11 @@ type searchResponse struct {
 	Limit int `json:"limit"`
 }
 
-// Pages returns up to max pages matching cql, paginating in pages of 100. A
-// non-positive max returns all matches.
-func (c *Client) Pages(ctx context.Context, cql string, max int) ([]Page, error) {
+// searchCQL reads pages through the v1 content search, paginating in pages of
+// 100. A non-positive max returns all matches. It expands the space, labels,
+// creator, and last editor inline, which is what the v2 path reassembles by
+// hand from separate endpoints.
+func (c *Client) searchCQL(ctx context.Context, cql string, max int) ([]Page, error) {
 	var all []Page
 	for start := 0; ; {
 		limit := 100
@@ -235,7 +331,7 @@ func (c *Client) Pages(ctx context.Context, cql string, max int) ([]Page, error)
 			"cql":    {cql},
 			"start":  {strconv.Itoa(start)},
 			"limit":  {strconv.Itoa(limit)},
-			"expand": {"space,metadata.labels,history,version"},
+			"expand": {"space,metadata.labels,history,version,body.storage"},
 		}
 		var resp searchResponse
 		if err := c.get(ctx, c.searchPath, params, &resp); err != nil {
@@ -252,6 +348,250 @@ func (c *Client) Pages(ctx context.Context, cql string, max int) ([]Page, error)
 		}
 	}
 	return all, nil
+}
+
+// v2Page decodes one page from the Cloud v2 pages endpoint, which names people
+// by account id only and carries neither the space name nor the labels inline.
+type v2Page struct {
+	// ID is the page id, needed to look up its labels.
+	ID string `json:"id"`
+	// Title is the page title.
+	Title string `json:"title"`
+	// SpaceID is the numeric id of the page's space.
+	SpaceID string `json:"spaceId"`
+	// AuthorID is the account id of the page's creator.
+	AuthorID string `json:"authorId"`
+	// CreatedAt is when the page was created.
+	CreatedAt time.Time `json:"createdAt"`
+	// Version holds the last edit.
+	Version struct {
+		// AuthorID is the account id of the last editor.
+		AuthorID string `json:"authorId"`
+		// CreatedAt is when the last edit happened.
+		CreatedAt time.Time `json:"createdAt"`
+	} `json:"version"`
+	// Body holds the storage-format content when the read asked for it.
+	Body struct {
+		// Storage is the storage-format representation.
+		Storage struct {
+			// Value is the XHTML storage markup.
+			Value string `json:"value"`
+		} `json:"storage"`
+	} `json:"body"`
+}
+
+// v2Links carries the cursor to the next page of a v2 list as a relative URL.
+type v2Links struct {
+	// Next is the relative URL of the next page, empty on the last page.
+	Next string `json:"next"`
+}
+
+// v2PageList decodes a page of the v2 pages endpoint.
+type v2PageList struct {
+	// Results is the page of pages.
+	Results []v2Page `json:"results"`
+	// Links carries the cursor to the next page.
+	Links v2Links `json:"_links"`
+}
+
+// v2Space decodes a space from the v2 spaces endpoint.
+type v2Space struct {
+	// ID is the numeric space id.
+	ID string `json:"id"`
+	// Key is the space key.
+	Key string `json:"key"`
+	// Name is the space name.
+	Name string `json:"name"`
+}
+
+// v2SpaceList decodes a page of the v2 spaces endpoint.
+type v2SpaceList struct {
+	// Results is the page of spaces.
+	Results []v2Space `json:"results"`
+}
+
+// v2LabelList decodes the v2 per-page labels endpoint.
+type v2LabelList struct {
+	// Results is the page's labels.
+	Results []label `json:"results"`
+}
+
+// enumerateV2 reads pages through the Cloud v2 API. It resolves the requested
+// space keys to ids, pages through the content by cursor, then fills in the
+// space names, the creator and last-editor identities, and the labels that v2,
+// unlike the old search, does not return inline.
+func (c *Client) enumerateV2(ctx context.Context, spaceKeys []string, max int) ([]Page, error) {
+	spaces := make(map[string]v2Space) // keyed by space id
+	var spaceIDs []string
+	for _, key := range spaceKeys {
+		sp, err := c.spaceByKey(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		if sp.ID == "" {
+			continue // unknown space key: nothing to read
+		}
+		spaces[sp.ID] = sp
+		spaceIDs = append(spaceIDs, sp.ID)
+	}
+
+	raw, err := c.pageV2(ctx, spaceIDs, max)
+	if err != nil {
+		return nil, err
+	}
+
+	users := make(map[string]*User) // account id to resolved user
+	resolve := func(id string) (*User, error) {
+		if id == "" {
+			return nil, nil
+		}
+		if u, ok := users[id]; ok {
+			return u, nil
+		}
+		u, err := c.userByAccountID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		users[id] = u
+		return u, nil
+	}
+
+	labels, err := c.labelsFor(ctx, raw)
+	if err != nil {
+		return nil, err
+	}
+
+	pages := make([]Page, 0, len(raw))
+	for i, r := range raw {
+		sp, ok := spaces[r.SpaceID]
+		if !ok {
+			got, err := c.spaceByID(ctx, r.SpaceID)
+			if err != nil {
+				return nil, err
+			}
+			spaces[r.SpaceID] = got
+			sp = got
+		}
+		creator, err := resolve(r.AuthorID)
+		if err != nil {
+			return nil, err
+		}
+		editor, err := resolve(r.Version.AuthorID)
+		if err != nil {
+			return nil, err
+		}
+		var p Page
+		p.Title = r.Title
+		p.Space.Key = sp.Key
+		p.Space.Name = sp.Name
+		p.Metadata.Labels.Results = labels[i]
+		p.History.CreatedBy = creator
+		p.History.CreatedAt = r.CreatedAt
+		p.Version.By = editor
+		p.Version.When = r.Version.CreatedAt
+		p.Body.Storage.Value = r.Body.Storage.Value
+		pages = append(pages, p)
+	}
+	return pages, nil
+}
+
+// pageV2 pages through the v2 pages endpoint, following the cursor until the max
+// is reached or the pages run out. An empty spaceIDs reads every space.
+func (c *Client) pageV2(ctx context.Context, spaceIDs []string, max int) ([]v2Page, error) {
+	params := url.Values{"limit": {"100"}, "body-format": {"storage"}}
+	for _, id := range spaceIDs {
+		params.Add("space-id", id)
+	}
+	next := apiV2Cloud + "/pages?" + params.Encode()
+	var all []v2Page
+	for next != "" {
+		var list v2PageList
+		if err := c.getRaw(ctx, next, &list); err != nil {
+			return nil, err
+		}
+		all = append(all, list.Results...)
+		c.progress.Report(len(all))
+		if max > 0 && len(all) >= max {
+			all = all[:max]
+			break
+		}
+		next = list.Links.Next
+	}
+	return all, nil
+}
+
+// labelsFor fetches each page's labels concurrently, since v2 serves them from a
+// per-page endpoint rather than inline. The result is aligned with pages by
+// index. Bounded workers keep a large space from opening a request per page all
+// at once.
+func (c *Client) labelsFor(ctx context.Context, pages []v2Page) ([][]label, error) {
+	out := make([][]label, len(pages))
+	errs := make([]error, len(pages))
+	sem := make(chan struct{}, labelWorkers)
+	var wg sync.WaitGroup
+	for i := range pages {
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			wg.Wait()
+			return nil, ctx.Err()
+		}
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			var list v2LabelList
+			if err := c.getRaw(ctx, apiV2Cloud+"/pages/"+pages[i].ID+"/labels", &list); err != nil {
+				errs[i] = err
+				return
+			}
+			out[i] = list.Results
+		}(i)
+	}
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// spaceByKey resolves a space key to its id and name. An unknown key yields a
+// zero v2Space, which the caller skips.
+func (c *Client) spaceByKey(ctx context.Context, key string) (v2Space, error) {
+	var list v2SpaceList
+	if err := c.getRaw(ctx, apiV2Cloud+"/spaces?keys="+url.QueryEscape(key), &list); err != nil {
+		return v2Space{}, err
+	}
+	if len(list.Results) == 0 {
+		return v2Space{}, nil
+	}
+	return list.Results[0], nil
+}
+
+// spaceByID resolves a numeric space id to its key and name, for a page whose
+// space was not among the requested keys.
+func (c *Client) spaceByID(ctx context.Context, id string) (v2Space, error) {
+	var sp v2Space
+	if err := c.getRaw(ctx, apiV2Cloud+"/spaces/"+id, &sp); err != nil {
+		return v2Space{}, err
+	}
+	return sp, nil
+}
+
+// userByAccountID resolves an account id to a display name and, when the site
+// exposes it, an email. Cloud v2 content names people by account id only, so
+// the identity comes from the user endpoint the old search expanded inline.
+func (c *Client) userByAccountID(ctx context.Context, id string) (*User, error) {
+	var u User
+	if err := c.getRaw(ctx, apiBaseCloud+"/user?accountId="+url.QueryEscape(id), &u); err != nil {
+		return nil, err
+	}
+	if u.AccountID == "" {
+		u.AccountID = id
+	}
+	return &u, nil
 }
 
 // Ping verifies the site is reachable and, when authenticated, that the
@@ -284,10 +624,21 @@ func (c *Client) Ping(ctx context.Context) error {
 	return nil
 }
 
-// get performs a GET request and decodes the JSON body into out, retrying on
-// HTTP 429 up to maxRetries.
+// get performs a GET against path with the given query parameters and decodes
+// the JSON body into out.
 func (c *Client) get(ctx context.Context, path string, params url.Values, out any) error {
-	endpoint := c.baseURL + path + "?" + params.Encode()
+	return c.getRaw(ctx, path+"?"+params.Encode(), out)
+}
+
+// getRaw performs a GET against a path that already carries its query string,
+// such as a v2 cursor link, and decodes the JSON body into out, retrying on HTTP
+// 429 up to maxRetries.
+func (c *Client) getRaw(ctx context.Context, pathWithQuery string, out any) error {
+	label := pathWithQuery
+	if i := strings.IndexByte(label, '?'); i >= 0 {
+		label = label[:i]
+	}
+	endpoint := c.baseURL + pathWithQuery
 	resp, body, err := httputil.Do(ctx, c.http, c.maxRetries, nil, func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 		if err != nil {
@@ -300,16 +651,16 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 		return req, nil
 	})
 	if errors.Is(err, httputil.ErrRateLimited) {
-		return fmt.Errorf("confluence %s: %w", path, ErrRateLimited)
+		return fmt.Errorf("confluence %s: %w", label, ErrRateLimited)
 	}
 	if err != nil {
-		return fmt.Errorf("confluence %s: %w", path, err)
+		return fmt.Errorf("confluence %s: %w", label, err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("confluence %s: %w: %w", path, ErrStatus, &httputil.StatusError{Code: resp.StatusCode})
+		return fmt.Errorf("confluence %s: %w: %w", label, ErrStatus, &httputil.StatusError{Code: resp.StatusCode})
 	}
 	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("confluence %s: decode: %w", path, err)
+		return fmt.Errorf("confluence %s: decode: %w", label, err)
 	}
 	return nil
 }

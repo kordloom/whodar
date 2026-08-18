@@ -200,11 +200,6 @@ func (g *GitHub) indexRepo(
 		return nil, nil, fmt.Errorf("pulls: %w", e)
 	}
 	for _, pr := range pulls {
-		if g.opts.Episodes {
-			if ep, ok := changeEpisode(owner, name, pr); ok {
-				episodes = append(episodes, ep)
-			}
-		}
 		tokens := append(pr.LabelNames(), titleTokens(pr.Title)...)
 		bump(pr.Author(), tokens, pr.UpdatedAt)
 		for _, u := range pr.Reviewers() {
@@ -212,6 +207,22 @@ func (g *GitHub) indexRepo(
 		}
 		for _, u := range pr.AssigneeLogins() {
 			bump(u, tokens, pr.UpdatedAt)
+		}
+		// The list object carries only reviewers still pending; the people who
+		// actually reviewed or commented on a merged change, often its real
+		// experts, come from the reviews and comments endpoints. Fetch them only
+		// for merged pull requests, which are the ones worth the extra calls.
+		var helpers []string
+		if pr.Merged() {
+			helpers = g.pullHelpers(ctx, owner, name, pr.Number)
+			for _, u := range helpers {
+				bump(u, tokens, pr.UpdatedAt)
+			}
+		}
+		if g.opts.Episodes {
+			if ep, ok := changeEpisode(owner, name, pr, helpers); ok {
+				episodes = append(episodes, ep)
+			}
 		}
 	}
 
@@ -391,6 +402,33 @@ func remapCodeOwners(recs []Record) []Record {
 		recs[i].PersonID = "github:" + strings.ToLower(login)
 	}
 	return recs
+}
+
+// pullHelpers returns the people who actually reviewed or commented on a merged
+// pull request, beyond the author, requested reviewers, and assignees the list
+// object already carries. A fetch failure costs those names, not the pull
+// request, so it is logged and the rest proceeds.
+func (g *GitHub) pullHelpers(ctx context.Context, owner, repo string, number int) []string {
+	var out []string
+	seen := make(map[string]bool)
+	add := func(logins []string, err error, what string) {
+		if err != nil {
+			fmt.Fprintf(g.opts.Log, "github: %s for %s/%s#%d: %v\n", what, owner, repo, number, err)
+			return
+		}
+		for _, l := range logins {
+			if l == "" || seen[l] {
+				continue
+			}
+			seen[l] = true
+			out = append(out, l)
+		}
+	}
+	revs, err := g.client.PullReviewers(ctx, owner, repo, number)
+	add(revs, err, "reviews")
+	comments, err := g.client.PullCommenters(ctx, owner, repo, number)
+	add(comments, err, "comments")
+	return out
 }
 
 // repoTopicSet derives a repo's topic tags from its GitHub topics and the words

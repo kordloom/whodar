@@ -6,8 +6,38 @@ package policy
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 )
+
+// egressTransport enforces the egress policy on the actual outbound host of
+// every request, so a payload cannot physically leave for a host the policy
+// forbids even if a call path forgot the up-front check. It is defense in depth
+// behind the call-site AllowEgress checks, not a replacement for them.
+type egressTransport struct {
+	// base performs the request once the host is allowed.
+	base http.RoundTripper
+	// pol decides whether a host may be reached.
+	pol Policy
+}
+
+// Transport wraps base so every request is allowed by pol before it is sent. A
+// nil base uses http.DefaultTransport.
+func Transport(base http.RoundTripper, pol Policy) http.RoundTripper {
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return &egressTransport{base: base, pol: pol}
+}
+
+// RoundTrip checks the request's host against the policy, refusing to send when
+// it is not allowed.
+func (t *egressTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if err := t.pol.AllowEgress(req.URL.Hostname()); err != nil {
+		return nil, fmt.Errorf("policy: egress to %s: %w", req.URL.Hostname(), err)
+	}
+	return t.base.RoundTrip(req)
+}
 
 // Mode is a data egress posture.
 type Mode int

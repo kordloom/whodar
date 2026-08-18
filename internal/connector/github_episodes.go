@@ -24,17 +24,24 @@ func (g *GitHub) Episodes() []episode.Episode { return g.episodes }
 // who wrote and reviewed it, and a link to the discussion. Unmerged work is
 // skipped, since it is a proposal rather than a record of how something was
 // done.
-func changeEpisode(owner, repo string, pr github.PullRequest) (episode.Episode, bool) {
+func changeEpisode(owner, repo string, pr github.PullRequest, extra []string) (episode.Episode, bool) {
 	if !pr.Merged() {
 		return episode.Episode{}, false
 	}
-	people := pr.People()
-	participants := make([]model.ID, 0, len(people))
-	for _, login := range people {
+	// extra holds the people who actually reviewed or commented, past the list
+	// object's author, requested reviewers, and assignees. Dedup across both.
+	participants := make([]model.ID, 0, len(pr.People())+len(extra))
+	seen := make(map[model.ID]bool)
+	for _, login := range append(pr.People(), extra...) {
 		if login == "" {
 			continue
 		}
-		participants = append(participants, model.ID("github:"+strings.ToLower(login)))
+		id := model.ID("github:" + strings.ToLower(login))
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		participants = append(participants, id)
 	}
 	if len(participants) == 0 {
 		return episode.Episode{}, false
