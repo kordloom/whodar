@@ -142,7 +142,7 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 	}
 
 	oldest := slackOldest(s.opts.SinceDays)
-	skipped, read := 0, 0
+	skipped, read, notInChannel := 0, 0, 0
 	for i, ch := range channels {
 		if s.opts.MaxChannels > 0 && i >= s.opts.MaxChannels {
 			fmt.Fprintf(s.opts.Log, "slack: stopping at %d channels (cap)\n", s.opts.MaxChannels)
@@ -162,6 +162,9 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 			// channel the bot was never invited to, is skipped so one
 			// unreadable channel does not cost the whole run.
 			skipped++
+			if strings.Contains(err.Error(), "not_in_channel") {
+				notInChannel++
+			}
 			fmt.Fprintf(s.opts.Log, "slack: skipping #%s: %v\n", ch.Name, err)
 			continue
 		}
@@ -198,15 +201,23 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 		fmt.Fprintf(s.opts.Log, "slack: indexed #%s (%d messages)\n", ch.Name, len(msgs))
 	}
 	if skipped > 0 {
-		// Every channel unreadable points at a missing scope, not a hundred
-		// missing invites: the token cannot read history at all. Some readable
-		// and some not is the ordinary case of a bot not yet in those channels.
-		if read == 0 {
+		switch {
+		case read == 0 && notInChannel == skipped:
+			// The token works and lists channels, but the bot is in none of
+			// them, so history is refused everywhere. This is the first-run
+			// case: the app is installed but not yet invited anywhere.
+			fmt.Fprintf(s.opts.Log,
+				"slack: the bot is not a member of any channel, so no messages could be read. "+
+					"In Slack, invite it with `/invite @whodar` in the channels you want indexed, "+
+					"then run this again\n")
+		case read == 0:
+			// Not a membership problem, so the token cannot read history at
+			// all: the scope is missing.
 			fmt.Fprintf(s.opts.Log,
 				"slack: no channel could be read. The bot token is likely missing the "+
 					"channels:history scope (and groups:history for private channels). "+
 					"Add it in your Slack app config and reinstall\n")
-		} else {
+		default:
 			fmt.Fprintf(s.opts.Log,
 				"slack: skipped %d channels the bot is not in; invite it to the ones that matter\n", skipped)
 		}

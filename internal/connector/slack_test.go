@@ -195,3 +195,39 @@ func TestSlackAllUnreadableNamesTheScope(t *testing.T) {
 		t.Errorf("log wrongly told the user to invite the bot when the scope is missing:\n%s", got)
 	}
 }
+
+// TestSlackNotInAnyChannelSaysInvite verifies that when the token works and
+// lists channels but the bot is in none of them, the message tells the user to
+// invite the bot rather than blaming a missing scope. This is the real
+// first-run case, and an earlier message wrongly blamed the scope for it.
+func TestSlackNotInAnyChannelSaysInvite(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/auth.test", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"ok":true,"user_id":"UBOT","url":"https://x.slack.com/","team":"X"}`)
+	})
+	mux.HandleFunc("/users.list", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"ok":true,"members":[{"id":"U1","profile":{"real_name":"Dad","email":"d@x.com"}}]}`)
+	})
+	mux.HandleFunc("/conversations.list", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"ok":true,"channels":[{"id":"C1","name":"food"},{"id":"C2","name":"chores"}]}`)
+	})
+	mux.HandleFunc("/conversations.history", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"ok":false,"error":"not_in_channel"}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	var log strings.Builder
+	client := slack.New("xoxb-test", slack.WithBaseURL(srv.URL))
+	if _, err := NewSlackWithClient(client, SlackOptions{Log: &log}).Fetch(context.Background()); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	got := log.String()
+	if !strings.Contains(got, "not a member of any channel") || !strings.Contains(got, "/invite") {
+		t.Errorf("message does not tell the user to invite the bot:\n%s", got)
+	}
+	if strings.Contains(got, "missing the") && strings.Contains(got, "scope") {
+		t.Errorf("message wrongly blamed a missing scope for a not-in-channel failure:\n%s", got)
+	}
+}
