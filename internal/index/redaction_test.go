@@ -1,6 +1,7 @@
 package index
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,4 +104,77 @@ func TestRedactedIndexStillMergesIdempotently(t *testing.T) {
 		t.Errorf("re-merging a redacted source inflated the score: %.6f vs %.6f",
 			got[0].Score, want[0].Score)
 	}
+}
+
+// mockEmbedder returns a deterministic vector derived from the text length, and
+// records every text it was asked to embed, so a test can prove which entities
+// were re-embedded and which kept their vector.
+type mockEmbedder struct {
+	seen []string
+}
+
+// Embed records the text and returns a length-based vector.
+func (m *mockEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
+	m.seen = append(m.seen, text)
+	return []float32{float32(len(text)), 1}, nil
+}
+
+// TestReembedAfterMergeKeepsRichVectors verifies that re-embedding after a
+// merge does not weaken the vectors of people whose message text is no longer
+// in memory. Their message-built vector is kept rather than replaced by a
+// thinner name-and-topic one, while a freshly merged person is embedded.
+func TestReembedAfterMergeKeepsRichVectors(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "index.json")
+
+	// Index a person with message text and embed them, then save.
+	first := New()
+	first.Build([]connector.Record{
+		{Source: "slack", Kind: connector.KindPerson, Email: "jane@x.com", Name: "Jane",
+			Text: "billing retries kept failing on the payment worker at 2am"},
+	})
+	if err := first.Embed(context.Background(), &mockEmbedder{}); err != nil {
+		t.Fatalf("embed: %v", err)
+	}
+	janeVec := first.personVecs["jane@x.com"]
+	if err := first.Save(path); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	// Reload the redacted index (Jane now carries no message text), merge a new
+	// person, and re-embed.
+	reloaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	reloaded.Add([]connector.Record{
+		{Source: "jira", Kind: connector.KindPerson, Email: "bob@x.com", Name: "Bob",
+			Text: "kafka consumer lag on the ingest topic"},
+	})
+	em := &mockEmbedder{}
+	if err := reloaded.Embed(context.Background(), em); err != nil {
+		t.Fatalf("re-embed: %v", err)
+	}
+
+	// Jane's rich vector is unchanged; only Bob was embedded this pass.
+	if got := reloaded.personVecs["jane@x.com"]; !equalVec(got, janeVec) {
+		t.Errorf("Jane's vector changed on re-embed: %v vs %v", got, janeVec)
+	}
+	if len(em.seen) != 1 {
+		t.Errorf("re-embed called the model %d times, want 1 (only the new person)", len(em.seen))
+	}
+}
+
+// equalVec reports whether two float32 vectors match.
+func equalVec(a, b []float32) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

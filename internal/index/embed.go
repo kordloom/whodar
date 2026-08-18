@@ -29,6 +29,20 @@ func (ix *Index) Embed(ctx context.Context, e Embedder) error {
 	done := 0
 	pv := make(map[model.ID][]float32, len(ix.Graph.People))
 	for id, p := range ix.Graph.People {
+		// A person rebuilt from a saved index carries no message text, only the
+		// stemmed search terms, since readable text is never written to disk.
+		// Re-embedding them would produce a thinner vector than the one built
+		// when their messages were in hand, so keep the existing vector rather
+		// than weaken it. A full Build clears vectors first, so a fresh embed,
+		// including a switch of embedding model, is never pinned to a stale one.
+		if pt := ix.texts[id]; pt == nil || pt.Text == "" {
+			if existing, ok := ix.personVecs[id]; ok && len(existing) > 0 {
+				pv[id] = existing
+				done++
+				ix.embedProgress.Report(done)
+				continue
+			}
+		}
 		vec, err := e.Embed(ctx, personEmbedText(p, ix.texts[id]))
 		if err != nil {
 			return fmt.Errorf("index: embed person %s: %w", id, err)
