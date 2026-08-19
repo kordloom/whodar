@@ -1,16 +1,9 @@
-// Nav: solid once scrolled, plus a mobile menu toggle.
+// Nav: solid once scrolled.
 (function () {
 	var nav = document.getElementById("nav");
 	var onScroll = function () { nav.classList.toggle("scrolled", window.scrollY > 8); };
 	onScroll();
 	window.addEventListener("scroll", onScroll, { passive: true });
-	var toggle = document.getElementById("nav-toggle");
-	if (toggle) {
-		toggle.addEventListener("click", function () { nav.classList.toggle("open"); });
-		nav.querySelectorAll(".nav-links a").forEach(function (a) {
-			a.addEventListener("click", function () { nav.classList.remove("open"); });
-		});
-	}
 })();
 
 // Top-left menu drawer: contact and docs. Toggles on click, closes on an
@@ -21,6 +14,7 @@
 	if (!btn || !drawer) return;
 	function close() { drawer.hidden = true; btn.setAttribute("aria-expanded", "false"); }
 	function open() { drawer.hidden = false; btn.setAttribute("aria-expanded", "true"); }
+	drawer.querySelectorAll("a").forEach(function (a) { a.addEventListener("click", function () { close(); }); });
 	btn.addEventListener("click", function (e) {
 		e.stopPropagation();
 		if (drawer.hidden) { open(); } else { close(); }
