@@ -191,7 +191,7 @@ func (r *Resolver) Resolve(ctx context.Context, q Query) Answer {
 	}
 	sq := episode.Query{Text: q.Text, Person: q.Person, Limit: q.Limit}
 	var hits []episode.Result
-	if q.Meaning && r.Semantic() {
+	if q.Text != "" && q.Meaning && r.Semantic() {
 		if vec, err := r.embedder.Embed(ctx, q.Text); err == nil {
 			hits = r.store.SearchSemantic(vec, sq)
 		}

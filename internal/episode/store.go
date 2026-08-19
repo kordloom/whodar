@@ -226,17 +226,51 @@ type Result struct {
 	Matched []string
 }
 
+// recent returns a person's episodes, newest first, up to limit. It backs
+// topic-less recall: "show me the conversations I took part in."
+func (s *Store) recent(person model.ID, limit int) []Result {
+	ids := s.byParticipant[person]
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]Result, 0, len(ids))
+	for _, id := range ids {
+		ep := s.episodes[id]
+		if ep == nil {
+			continue
+		}
+		out = append(out, Result{Episode: ep, Score: s.decay(ep.Occurred)})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Episode.Occurred.Equal(out[j].Episode.Occurred) {
+			return out[i].Episode.ID < out[j].Episode.ID
+		}
+		return out[i].Episode.Occurred.After(out[j].Episode.Occurred)
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out
+}
+
 // Search ranks episodes for a query. Scoring is term overlap, saturated so
 // repetition cannot dominate, scaled by how much of the question an episode
 // covers and by how recently it happened.
 func (s *Store) Search(q Query) []Result {
 	terms := text.Terms(q.Text)
-	if len(terms) == 0 {
-		return nil
-	}
 	limit := q.Limit
 	if limit <= 0 {
 		limit = 5
+	}
+	if len(terms) == 0 {
+		// A truly empty topic falls back to the person's most recent
+		// conversations. A query that was all stopwords matched nothing
+		// meaningful, so it returns nothing rather than everything. Without a
+		// person there is no scope either.
+		if q.Person != "" && strings.TrimSpace(q.Text) == "" {
+			return s.recent(q.Person, limit)
+		}
+		return nil
 	}
 	var scope map[string]bool
 	if q.Person != "" {

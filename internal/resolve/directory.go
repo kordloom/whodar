@@ -38,6 +38,8 @@ type DirectoryPerson struct {
 	Org string `json:"org,omitempty"`
 	// Topics are the person's strongest expertise areas, strongest first.
 	Topics []string `json:"topics,omitempty"`
+	// ManagerID is the person's manager's canonical id, empty for a root.
+	ManagerID string `json:"managerId,omitempty"`
 }
 
 // DirectoryChannel is one row of the channel directory.
@@ -77,11 +79,12 @@ func BuildDirectory(ix *index.Index) Directory {
 	topicSize := make(map[model.ID]int)
 	for _, p := range g.People {
 		row := DirectoryPerson{
-			ID:     string(p.ID),
-			Name:   p.Name,
-			Email:  p.Email,
-			Title:  p.Title,
-			Topics: topTopics(p.Topics, 6),
+			ID:        string(p.ID),
+			Name:      p.Name,
+			Email:     p.Email,
+			Title:     p.Title,
+			Topics:    topTopics(p.Topics, 6),
+			ManagerID: string(p.ManagerID),
 		}
 		if row.Name == "" {
 			row.Name = row.ID
