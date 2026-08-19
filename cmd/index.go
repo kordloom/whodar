@@ -98,9 +98,10 @@ func newIndexCmd(opts *options) *cobra.Command {
 people join across sources by email, or by an alias file (--aliases) when a
 source only knows a handle. Dated activity decays per --half-life-days.
 
-Re-indexing Jira with --merge is incremental: it fetches only issues updated
-since the last run and folds them in, keeping everyone it did not re-read. Pass
---full to re-read every issue and recompact. Other sources always read in full.
+Re-indexing Jira or Confluence with --merge is incremental: it fetches only the
+issues or pages changed since the last run and folds them in, keeping everyone it
+did not re-read. Pass --full to re-read everything and recompact. Other sources
+always read in full.
 
 Sources and their credentials:
   org-csv     --file people.csv                          none
@@ -133,7 +134,7 @@ Start with the org chart, then merge everything else onto it:
 			// index of a source that supports it, with a saved watermark and no
 			// --full. When so, fetch only what changed since the watermark and
 			// fold it in rather than re-reading and replacing the whole source.
-			scope := indexScope(source, jiraJQL, jiraProjects)
+			scope := indexScope(source, jiraJQL, jiraProjects, confluenceCQL, confluenceSpaces)
 			var since time.Time
 			var incremental bool
 			if merge && !full && incrementalCapable(source) && indexExists(opts) {
@@ -171,7 +172,7 @@ Start with the org chart, then merge everything else onto it:
 				recs, eps, err = fetchJira(cmd,
 					jiraArgs{jiraURL, jiraProjects, jiraJQL, maxIssues, episodes || archive, jiraServer, since})
 			case "confluence":
-				recs, err = fetchConfluence(cmd, confluenceArgs{confluenceURL, confluenceSpaces, confluenceCQL, maxPages, confluenceServer})
+				recs, err = fetchConfluence(cmd, confluenceArgs{confluenceURL, confluenceSpaces, confluenceCQL, maxPages, confluenceServer, since})
 			case "pagerduty":
 				recs, eps, err = fetchPagerDuty(cmd, episodes || archive)
 			case "git":
@@ -433,28 +434,44 @@ func embedProgressEvery(total int) int {
 }
 
 // incrementalCapable reports whether a source supports incremental re-indexing,
-// fetching only what changed since a watermark. Jira is the first; other sources
-// read in full until they gain the same support.
+// fetching only what changed since a watermark. Other sources read in full until
+// they gain the same support.
 func incrementalCapable(source string) bool {
-	return source == "jira"
+	return source == "jira" || source == "confluence"
 }
 
 // indexScope returns the watermark key for a source's current query, so changing
-// the scope, such as the set of projects indexed, starts a fresh watermark
-// rather than reusing one taken over different items.
-func indexScope(source, jiraJQL string, jiraProjects []string) string {
-	if source != "jira" {
+// the scope, such as the set of projects or spaces indexed, starts a fresh
+// watermark rather than reusing one taken over different items.
+func indexScope(source, jiraJQL string, jiraProjects []string, confluenceCQL string, confluenceSpaces []string) string {
+	switch source {
+	case "jira":
+		if strings.TrimSpace(jiraJQL) != "" {
+			return "jql:" + jiraJQL
+		}
+		if len(jiraProjects) > 0 {
+			return "project:" + sortedJoin(jiraProjects)
+		}
+		return "all"
+	case "confluence":
+		if strings.TrimSpace(confluenceCQL) != "" {
+			return "cql:" + confluenceCQL
+		}
+		if len(confluenceSpaces) > 0 {
+			return "space:" + sortedJoin(confluenceSpaces)
+		}
+		return "all"
+	default:
 		return ""
 	}
-	if strings.TrimSpace(jiraJQL) != "" {
-		return "jql:" + jiraJQL
-	}
-	if len(jiraProjects) > 0 {
-		p := append([]string(nil), jiraProjects...)
-		sort.Strings(p)
-		return "project:" + strings.Join(p, ",")
-	}
-	return "all"
+}
+
+// sortedJoin returns the values sorted and comma-joined, so a scope key does not
+// depend on the order the flags were given.
+func sortedJoin(values []string) string {
+	v := append([]string(nil), values...)
+	sort.Strings(v)
+	return strings.Join(v, ",")
 }
 
 // updateWatermark advances a source's incremental watermark to the newest
@@ -773,6 +790,9 @@ type confluenceArgs struct {
 	maxPages int
 	// server selects a self-hosted Server or Data Center deployment.
 	server bool
+	// since limits an incremental read to pages modified at or after it; the
+	// zero value reads in full.
+	since time.Time
 }
 
 // fetchConfluence builds Confluence records. The URL and credentials fall back
@@ -793,7 +813,8 @@ func fetchConfluence(cmd *cobra.Command, a confluenceArgs) ([]connector.Record, 
 				"or pass --confluence-server for a self-hosted site)", ErrBadArgs)
 	}
 	src := connector.NewConfluence(site, email, token, connector.ConfluenceOptions{
-		Spaces: a.spaces, CQL: a.cql, MaxPages: a.maxPages, Server: a.server, Log: cmd.ErrOrStderr(),
+		Spaces: a.spaces, CQL: a.cql, MaxPages: a.maxPages, Server: a.server, Since: a.since,
+		Log: cmd.ErrOrStderr(),
 	})
 	recs, err := src.Fetch(cmd.Context())
 	if err != nil {
