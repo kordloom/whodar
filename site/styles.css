@@ -528,3 +528,16 @@ h1 .sig { color: var(--signal); text-shadow: 0 0 28px rgba(var(--signal-rgb), 0.
 .ai-stance p { margin-top: 18px; font-size: 18px; line-height: 1.7; color: var(--muted); }
 .ai-principles { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 30px; }
 .ai-principles span { font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em; color: var(--muted); border: 1px solid var(--line-2); border-radius: 999px; padding: 7px 14px; }
+
+/* Recall mockup cards on the landing (product screenshot, always dark). */
+.recall-shot { margin-bottom: 44px; }
+.am-rc { background: #171a22; border: 1px solid #262b36; border-left: 3px solid var(--rcc); border-radius: 10px; padding: 10px 13px; margin-bottom: 9px; }
+.am-rc.gh { --rcc: #a371f7; }
+.am-rc.pd { --rcc: #06ac38; }
+.am-rc.sl { --rcc: #e01e5a; }
+.am-rc-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+.am-rc-src { font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--rcc); }
+.am-rc-date { font-family: var(--mono); font-size: 9.5px; color: #7f8b9b; }
+.am-rc-place { font-size: 13px; font-weight: 600; color: #e7e9ee; }
+.am-rc-people { font-size: 11.5px; color: #98a0ad; margin: 2px 0 9px; }
+.am-rc-open { display: inline-block; font-size: 10.5px; font-weight: 600; color: var(--rcc); background: color-mix(in srgb, var(--rcc) 14%, transparent); border: 1px solid color-mix(in srgb, var(--rcc) 32%, transparent); border-radius: 7px; padding: 4px 10px; }

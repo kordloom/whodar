@@ -3,7 +3,7 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<script src="/theme.js?v=17"></script>
+	<script src="/theme.js?v=18"></script>
 	<title>whodar · know who knows</title>
 	<meta name="description" content="Someone at your company already knows the answer. whodar tells you who, and when you solved it before, it remembers how. Point it at the tools your team already uses, ask in plain words, and get the people to talk to and the channels to ask in, each with the reason and confidence behind it. Local by default, source-available.">
 	<meta property="og:title" content="whodar · know who knows">
@@ -30,7 +30,7 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="/styles.css?v=17">
+	<link rel="stylesheet" href="/styles.css?v=18">
 </head>
 <body>
 	<div class="bg" aria-hidden="true"></div>
@@ -155,10 +155,12 @@
 								<div class="am-brand"><svg class="mark" aria-hidden="true"><use href="#radar"/></svg> whodar</div>
 								<nav class="am-nav">
 									<a class="on">Ask</a>
+									<a>Recall</a>
 									<a>People <span class="ct">24</span></a>
 									<a>Channels <span class="ct">8</span></a>
 									<a>Teams <span class="ct">6</span></a>
 									<a>Topics <span class="ct">56</span></a>
+									<a>Org chart</a>
 								</nav>
 								<div class="am-foot"><span>Docs · GitHub</span><span>whodar</span></div>
 							</aside>
@@ -277,6 +279,48 @@
 				<span class="sec-eyebrow"><span class="n">03 //</span> Recall</span>
 				<h2>It also remembers how you solved it.</h2>
 				<p>You hit this exact problem four months ago. Someone walked you through it and it worked. You cannot remember who, or where, or what they said. whodar can: ask it, and it names the person, the channel, the day, and hands you the link back to the thread.</p>
+			</div>
+			<div class="recall-shot reveal">
+				<p class="shot-cap">Your recent conversations, each <b>colored by its source</b>, one click back to the thread.</p>
+				<figure class="shot ticks"><i class="tk1"></i><i class="tk2"></i>
+					<div class="shot-bar"><span class="tl"></span><span class="tl"></span><span class="tl"></span><em>whodar · recall</em></div>
+					<div class="appmock">
+						<aside class="am-side">
+							<div class="am-brand"><svg class="mark" aria-hidden="true"><use href="#radar"/></svg> whodar</div>
+							<nav class="am-nav">
+								<a>Ask</a>
+								<a class="on">Recall</a>
+								<a>People <span class="ct">24</span></a>
+								<a>Channels <span class="ct">8</span></a>
+								<a>Teams <span class="ct">6</span></a>
+								<a>Topics <span class="ct">56</span></a>
+								<a>Org chart</a>
+							</nav>
+							<div class="am-foot"><span>Docs · GitHub</span><span>whodar</span></div>
+						</aside>
+						<div class="am-main">
+							<div class="am-h">Your recall</div>
+							<div class="am-rc gh">
+								<div class="am-rc-top"><span class="am-rc-src">● GitHub</span><span class="am-rc-date">Aug 17</span></div>
+								<div class="am-rc-place">corp/billing-service</div>
+								<div class="am-rc-people">On your own</div>
+								<span class="am-rc-open">Open in GitHub →</span>
+							</div>
+							<div class="am-rc pd">
+								<div class="am-rc-top"><span class="am-rc-src">● PagerDuty</span><span class="am-rc-date">Jul 20</span></div>
+								<div class="am-rc-place">Billing API</div>
+								<div class="am-rc-people">With Grace Kim</div>
+								<span class="am-rc-open">Open in PagerDuty →</span>
+							</div>
+							<div class="am-rc sl">
+								<div class="am-rc-top"><span class="am-rc-src">● Slack</span><span class="am-rc-date">May 21</span></div>
+								<div class="am-rc-place">#infra</div>
+								<div class="am-rc-people">With Carol Lee and Grace Kim</div>
+								<span class="am-rc-open">Open in Slack →</span>
+							</div>
+						</div>
+					</div>
+				</figure>
 			</div>
 			<div class="cards">
 				<article class="card ticks reveal"><i class="tk1"></i><i class="tk2"></i>
@@ -522,6 +566,6 @@ claude mcp add whodar -- whodar mcp
 		</div>
 	</footer>
 
-	<script src="/app.js?v=17"></script>
+	<script src="/app.js?v=18"></script>
 </body>
 </html>
