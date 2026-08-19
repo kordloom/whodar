@@ -122,6 +122,19 @@ mkdir -p ~/bin &amp;&amp; mv whodar ~/bin/
 </code></pre>
 <p>The examples below use <code>whodar</code>. From a source checkout without installing, use
 <code>go run .</code> from the repository instead.</p>
+<h2 id="verify-a-download">Verify a download</h2>
+<p>Every release is signed. To check a prebuilt binary from the releases page before
+you run it, download <code>checksums.txt</code>, <code>checksums.txt.bundle</code>, and <code>cosign.pub</code>
+alongside your archive, then:</p>
+<pre><code>cosign verify-blob \
+  --key cosign.pub \
+  --bundle checksums.txt.bundle \
+  --new-bundle-format \
+  checksums.txt
+shasum -a 256 -c checksums.txt --ignore-missing
+</code></pre>
+<p>The first command proves the checksum file is the one we signed; the second
+proves your archive matches it. Homebrew and <code>go install</code> need no manual step.</p>
 <h2 id="try-it-in-sixty-seconds">Try it in sixty seconds</h2>
 <p>The fastest look is the demo: a simulated company indexed across all eight
 sources and served in the web UI, no credentials needed.</p>
@@ -532,6 +545,12 @@ whodar ask &quot;who knows the billing service&quot;
 <p>Each run prints what joined and left since the last index, for example
 &quot;+3 people, -1 people, +1 channels&quot;. Add <code>--changes-file changes.json</code> to write
 the full diff as JSON for a script or a report.</p>
+<p>Re-indexing Jira, Confluence, GitHub, or Slack with <code>--merge</code> is incremental: it
+fetches only what changed since the last run and folds it in, so a scheduled
+refresh stays fast on a large tracker or workspace. A per-source watermark is
+kept beside the index. Add <code>--full</code> to re-read everything and recompact, which
+also picks up the few things an incremental run skips, such as a Slack message
+edited after the window. Other sources always read in full.</p>
 <h2 id="joining-one-person-across-sources">Joining one person across sources</h2>
 <p>People merge by email. When a source only knows a handle or an account id, such
 as a GitHub login without a public email or a CODEOWNERS <code>@handle</code>, the same
@@ -619,9 +638,19 @@ builds the index from Slack.</li>
 <li><code>whodar index --source git --repo-path DIR [--git-since-days N] [--max-commits N]</code>
 indexes local git history.</li>
 <li><code>whodar demo</code> explores a simulated company in the web UI, no credentials.</li>
+<li><code>whodar connect [source]</code> walks through setting up a source's credentials, and
+<code>whodar connect --status</code> reports what is configured.</li>
 <li><code>whodar index ... --merge</code> adds the source to the existing index instead of replacing it.</li>
+<li><code>whodar index --source slack ... --episodes [--archive]</code> records the
+conversations behind the messages; <code>--archive</code> retains their text and needs a
+Memory license and an encryption key.</li>
 <li><code>whodar ask [--mode keyword|semantic|llm] [--limit N] [--pretty] QUESTION</code>
-answers a question.</li>
+answers who to talk to.</li>
+<li><code>whodar recall [--me EMAIL] [--meaning] QUESTION</code> finds the past conversation
+where something was worked out, and who was in it.</li>
+<li><code>whodar directory [people|channels|teams|topics]</code> lists what is indexed.</li>
+<li><code>whodar status</code> shows the counts, per-source sizes, build time, whether
+embeddings and encryption are set, and the license tier.</li>
 <li><code>whodar index ... --embed</code> adds embeddings for semantic and llm retrieval.</li>
 <li><code>whodar feedback record QUESTION (--person ID | --channel NAME) (--helpful | --not-helpful) [--comment TEXT]</code>
 records a vote; <code>whodar feedback list</code> and <code>whodar feedback clear</code> review and
@@ -629,10 +658,21 @@ undo votes.</li>
 <li><code>whodar serve [--addr HOST:PORT] [--mode keyword|llm]</code> runs the web UI.</li>
 <li><code>whodar bot [--transport socket|events] [--mode keyword|llm] [--addr HOST:PORT]</code>
 runs the Slack bot.</li>
+<li><code>whodar mcp</code> serves the index to an MCP client such as an editor assistant.</li>
+<li><code>whodar vault</code> and <code>whodar archive</code> manage the encrypted store; <code>whodar license</code>
+shows which features this install is licensed for.</li>
 <li><code>whodar version</code> prints the version.</li>
 </ul>
 <p>Shared flags: <code>--data-dir</code> sets the index location, <code>--policy</code> sets the egress
-mode, <code>--pretty</code> indents JSON.</p>
+mode, <code>--pretty</code> indents JSON. Set <code>WHODAR_INDEX_KEY</code> (base64 of 32 random bytes)
+or <code>WHODAR_INDEX_PASSPHRASE</code> to encrypt the index and episodes at rest.</p>
+<h2 id="scale">Scale</h2>
+<p>The index and its embeddings load fully into memory to answer a question, so
+size scales with people and, when <code>--embed</code> is set, with the vector dimension.
+A few thousand people is comfortable on a laptop; embeddings roughly multiply the
+file size, so a large org that wants semantic search should expect an index in
+the hundreds of megabytes and size the serving host accordingly. <code>whodar status</code>
+reports the current people and source counts.</p>
 
 			<div class="doc-foot">
 				<span></span>

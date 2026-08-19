@@ -106,8 +106,10 @@ addition: index without <code>--episodes</code> and none of it is written. <code
 pass <code>--archive</code>. Without both, whodar stores a pointer and nothing more. An
 organization can forbid keeping words outright with <code>&quot;archive&quot;: &quot;deny&quot;</code> in the
 policy file, which no license overrides.</li>
-<li>Credentials are read only from the environment, never from a flag. No token is
-written to disk and nothing is logged.</li>
+<li>Credentials are read from the OS keychain, when <code>whodar connect</code> saved them
+there, or from the environment, never from a flag, and nothing is logged. The
+keychain keeps a token out of your shell profile and history; an environment
+variable still wins when it is set.</li>
 <li>Indexing talks only to the sources you name, with your own tokens.</li>
 </ul>
 <h2 id="encrypt-the-index-at-rest">Encrypt the index at rest</h2>
@@ -138,7 +140,8 @@ variables and stops.</li>
 <li>The key is the only way back in. Losing it makes an encrypted index unrecoverable,
 so store it as carefully as any other secret and keep a backup.</li>
 <li>The vault covers the index and the conversations beside it. <code>feedback.json</code>,
-which holds your queries and votes, stays plain JSON today.</li>
+which holds your queries and votes, and <code>index.state.json</code>, which holds only
+per-source re-index timestamps and scope names, stay plain JSON today.</li>
 </ul>
 <h2 id="control-what-a-model-sees">Control what a model sees</h2>
 <p>Answers are computed locally by default. When you opt into an AI model, an egress

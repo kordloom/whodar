@@ -21,8 +21,10 @@ guarantees in one place.
   pass `--archive`. Without both, whodar stores a pointer and nothing more. An
   organization can forbid keeping words outright with `"archive": "deny"` in the
   policy file, which no license overrides.
-- Credentials are read only from the environment, never from a flag. No token is
-  written to disk and nothing is logged.
+- Credentials are read from the OS keychain, when `whodar connect` saved them
+  there, or from the environment, never from a flag, and nothing is logged. The
+  keychain keeps a token out of your shell profile and history; an environment
+  variable still wins when it is set.
 - Indexing talks only to the sources you name, with your own tokens.
 
 ## Encrypt the index at rest
@@ -58,7 +60,8 @@ Three things to know:
 - The key is the only way back in. Losing it makes an encrypted index unrecoverable,
   so store it as carefully as any other secret and keep a backup.
 - The vault covers the index and the conversations beside it. `feedback.json`,
-  which holds your queries and votes, stays plain JSON today.
+  which holds your queries and votes, and `index.state.json`, which holds only
+  per-source re-index timestamps and scope names, stay plain JSON today.
 
 ## Control what a model sees
 

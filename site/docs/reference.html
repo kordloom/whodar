@@ -212,7 +212,19 @@ resolved PagerDuty incidents.</p>
 <td><code>--merge</code></td>
 <td>off</td>
 <td>all</td>
-<td>Add to the existing index instead of replacing.</td>
+<td>Add to the existing index instead of replacing. Re-indexing an incremental source this way fetches only what changed.</td>
+</tr>
+<tr>
+<td><code>--full</code></td>
+<td>off</td>
+<td>jira, confluence, github, slack</td>
+<td>With <code>--merge</code>, re-read everything and recompact instead of only what changed.</td>
+</tr>
+<tr>
+<td><code>--allow-shrink</code></td>
+<td>off</td>
+<td>all</td>
+<td>Accept a source returning far less than last time, otherwise refused as a truncated read.</td>
 </tr>
 <tr>
 <td><code>--aliases</code></td>
@@ -402,6 +414,24 @@ resolved PagerDuty incidents.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="incremental-re-indexing">Incremental re-indexing</h3>
+<p>Re-indexing Jira, Confluence, GitHub, or Slack with <code>--merge</code> is incremental: it
+fetches only the items changed since the last run and folds them into the index,
+keeping everyone it did not re-read. A per-source watermark is kept in
+<code>index.state.json</code> beside the index. Other sources always read in full.</p>
+<ul>
+<li>Jira and Confluence query for items updated since the watermark, oldest first.</li>
+<li>GitHub reads only the pull requests and issues changed since the watermark, and
+skips its whole-repo contributor and CODEOWNERS lists on an incremental run,
+since re-counting those every time would inflate their weight. A full run
+reads them.</li>
+<li>Slack reads only messages posted since the watermark. An edit to an older
+message is missed until a full run.</li>
+</ul>
+<p>Pass <code>--full</code> to re-read everything and recompact, which also picks up anything
+an incremental run skipped. A source driven by an explicit <code>--jira-jql</code> or
+<code>--confluence-cql</code> always reads in full, since that query is authoritative and
+cannot be narrowed to a delta.</p>
 <h2 id="whodar-connect">whodar connect</h2>
 <p>Sets up a source interactively: it explains the source, shows how to create the
 credential, reads and validates it, runs the first index, and prints the <code>export</code>
@@ -814,8 +844,10 @@ reconnects with backoff.</p>
 <p>Prints the version stamped at build time. Release binaries carry the tag; a plain
 <code>go build</code> or <code>go install</code> prints <code>dev</code>.</p>
 <h2 id="environment-variables">Environment variables</h2>
-<p>Credentials are read only from the environment, never from flags, and are
-never logged or stored.</p>
+<p>Credentials are read from the OS keychain, when <code>whodar connect</code> saved them
+there, or from the environment, never from flags, and are never logged. An
+environment variable always wins over the keychain, so a one-off run can
+override a stored value.</p>
 <table>
 <thead>
 <tr>
@@ -1001,6 +1033,14 @@ can be denied the same way. See <code>examples/policy.json</code>.</p>
 <tr>
 <td><code>license.json</code></td>
 <td>The signed license, when one is installed. Verified offline against a key in the binary.</td>
+</tr>
+<tr>
+<td><code>index.sources.json</code></td>
+<td>The per-source records the index was built from, redacted to stemmed terms, so a <code>--merge</code> rebuilds without re-reading every source. Encrypted with the same key as the index.</td>
+</tr>
+<tr>
+<td><code>index.state.json</code></td>
+<td>Per-source incremental watermarks: the newest activity time indexed for each source and scope, so a <code>--merge</code> fetches only what changed. Plain JSON of timestamps and scope names.</td>
 </tr>
 </tbody>
 </table>

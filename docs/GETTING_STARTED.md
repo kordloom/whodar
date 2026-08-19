@@ -45,6 +45,22 @@ Check it runs:
 The examples below use `whodar`. From a source checkout without installing, use
 `go run .` from the repository instead.
 
+## Verify a download
+
+Every release is signed. To check a prebuilt binary from the releases page before
+you run it, download `checksums.txt`, `checksums.txt.bundle`, and `cosign.pub`
+alongside your archive, then:
+
+    cosign verify-blob \
+      --key cosign.pub \
+      --bundle checksums.txt.bundle \
+      --new-bundle-format \
+      checksums.txt
+    shasum -a 256 -c checksums.txt --ignore-missing
+
+The first command proves the checksum file is the one we signed; the second
+proves your archive matches it. Homebrew and `go install` need no manual step.
+
 ## Try it in sixty seconds
 
 The fastest look is the demo: a simulated company indexed across all eight
@@ -486,6 +502,13 @@ Start with the org chart, then merge every other source onto it:
 Each run prints what joined and left since the last index, for example
 "+3 people, -1 people, +1 channels". Add `--changes-file changes.json` to write
 the full diff as JSON for a script or a report.
+
+Re-indexing Jira, Confluence, GitHub, or Slack with `--merge` is incremental: it
+fetches only what changed since the last run and folds it in, so a scheduled
+refresh stays fast on a large tracker or workspace. A per-source watermark is
+kept beside the index. Add `--full` to re-read everything and recompact, which
+also picks up the few things an incremental run skips, such as a Slack message
+edited after the window. Other sources always read in full.
 
 ## Joining one person across sources
 

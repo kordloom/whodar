@@ -48,7 +48,9 @@ Builds or extends the index from one source per run.
 | Flag                | Default   | Applies to | What it does                                     |
 | ------------------- | --------- | ---------- | ------------------------------------------------ |
 | `--source`          | `org-csv` | all        | Which source to ingest.                          |
-| `--merge`           | off       | all        | Add to the existing index instead of replacing.  |
+| `--merge`           | off       | all        | Add to the existing index instead of replacing. Re-indexing an incremental source this way fetches only what changed. |
+| `--full`            | off       | jira, confluence, github, slack | With `--merge`, re-read everything and recompact instead of only what changed. |
+| `--allow-shrink`    | off       | all        | Accept a source returning far less than last time, otherwise refused as a truncated read. |
 | `--aliases`         |           | all        | JSON alias file joining one person across sources. |
 | `--half-life-days`  | `180`     | all        | Days for a dated record's weight to halve; `0` disables decay. |
 | `--changes-file`    |           | all        | Write the joiner and leaver diff as JSON.        |
@@ -80,6 +82,26 @@ Builds or extends the index from one source per run.
 | `--repo-path`       |           | git        | Local repository root, repeatable.               |
 | `--git-since-days`  | `365`     | git        | History window in days.                          |
 | `--max-commits`     | `2000`    | git        | Commit cap per repository.                       |
+
+### Incremental re-indexing
+
+Re-indexing Jira, Confluence, GitHub, or Slack with `--merge` is incremental: it
+fetches only the items changed since the last run and folds them into the index,
+keeping everyone it did not re-read. A per-source watermark is kept in
+`index.state.json` beside the index. Other sources always read in full.
+
+- Jira and Confluence query for items updated since the watermark, oldest first.
+- GitHub reads only the pull requests and issues changed since the watermark, and
+  skips its whole-repo contributor and CODEOWNERS lists on an incremental run,
+  since re-counting those every time would inflate their weight. A full run
+  reads them.
+- Slack reads only messages posted since the watermark. An edit to an older
+  message is missed until a full run.
+
+Pass `--full` to re-read everything and recompact, which also picks up anything
+an incremental run skipped. A source driven by an explicit `--jira-jql` or
+`--confluence-cql` always reads in full, since that query is authoritative and
+cannot be narrowed to a delta.
 
 ## whodar connect
 
@@ -306,8 +328,10 @@ Prints the version stamped at build time. Release binaries carry the tag; a plai
 
 ## Environment variables
 
-Credentials are read only from the environment, never from flags, and are
-never logged or stored.
+Credentials are read from the OS keychain, when `whodar connect` saved them
+there, or from the environment, never from flags, and are never logged. An
+environment variable always wins over the keychain, so a one-off run can
+override a stored value.
 
 | Variable                      | Used by            | What it is                                |
 | ----------------------------- | ------------------ | ----------------------------------------- |
@@ -405,3 +429,5 @@ Everything lives under `--data-dir` (default `~/.whodar`):
 | `feedback.json` | Votes and the queries behind them, kept apart so they survive re-indexing. Not covered by `vault` encryption today. |
 | `episodes.json` | Past conversations: who took part, where, when, the link back, and matched terms. Written by `whodar index --episodes`, and by `whodar connect`, which records conversations as a matter of course. Holds the words themselves only with a Memory license and `--archive`. Encrypted with the same key as the index. |
 | `license.json`  | The signed license, when one is installed. Verified offline against a key in the binary. |
+| `index.sources.json` | The per-source records the index was built from, redacted to stemmed terms, so a `--merge` rebuilds without re-reading every source. Encrypted with the same key as the index. |
+| `index.state.json` | Per-source incremental watermarks: the newest activity time indexed for each source and scope, so a `--merge` fetches only what changed. Plain JSON of timestamps and scope names. |
