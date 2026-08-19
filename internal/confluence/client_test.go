@@ -8,7 +8,47 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
+
+// TestBuildCQL verifies the query an incremental read builds: it restricts to
+// pages modified since the watermark, orders them oldest first, and leaves an
+// explicit CQL untouched.
+func TestBuildCQL(t *testing.T) {
+	t.Parallel()
+	since := time.Date(2026, 3, 4, 9, 30, 0, 0, time.UTC)
+	tests := []struct {
+		Name      string
+		Q         Query
+		WantHas   []string
+		WantLacks []string
+	}{{ // Test 0: Incremental adds the modified-since clause and oldest-first order.
+		Name: "incremental with spaces", Q: Query{Spaces: []string{"ENG"}, Since: since},
+		WantHas: []string{`space in ("ENG")`, `lastmodified >= "2026/03/04 09:28"`, "order by lastmodified asc"},
+	}, { // Test 1: A full read has no time clause.
+		Name: "full with spaces", Q: Query{Spaces: []string{"ENG"}},
+		WantHas: []string{`space in ("ENG")`}, WantLacks: []string{"lastmodified"},
+	}, { // Test 2: An explicit CQL is authoritative and ignores Since.
+		Name: "explicit cql", Q: Query{CQL: "label = runbook", Since: since},
+		WantHas: []string{"label = runbook"}, WantLacks: []string{"lastmodified", "order by"},
+	}}
+	for _, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			t.Parallel()
+			got := buildCQL(test.Q)
+			for _, s := range test.WantHas {
+				if !strings.Contains(got, s) {
+					t.Errorf("buildCQL = %q, want it to contain %q", got, s)
+				}
+			}
+			for _, s := range test.WantLacks {
+				if strings.Contains(got, s) {
+					t.Errorf("buildCQL = %q, want it to NOT contain %q", got, s)
+				}
+			}
+		})
+	}
+}
 
 // TestPages verifies the Cloud v2 read reassembles a page from the separate
 // pages, spaces, labels, and user endpoints, since v2 returns account ids only

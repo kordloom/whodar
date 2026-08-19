@@ -275,13 +275,19 @@ type Query struct {
 	CQL string
 	// Max caps the number of pages returned; non-positive returns all.
 	Max int
+	// Since, when set, limits the read to pages last modified at or after it,
+	// oldest first, for an incremental re-index. It forces the CQL search path on
+	// Cloud, since the v2 enumeration cannot filter by modification time.
+	Since time.Time
 }
 
 // Pages returns the pages the query selects. Server and Data Center always read
 // through the v1 content search; Cloud reads through the v2 API unless the
 // caller supplied a raw CQL string, which only the search endpoint understands.
 func (c *Client) Pages(ctx context.Context, q Query) ([]Page, error) {
-	if c.cloud && strings.TrimSpace(q.CQL) == "" {
+	// The v2 enumeration cannot filter by modification time, so an incremental
+	// read (Since set) always takes the CQL search path even on Cloud.
+	if c.cloud && strings.TrimSpace(q.CQL) == "" && q.Since.IsZero() {
 		return c.enumerateV2(ctx, q.Spaces, q.Max)
 	}
 	return c.searchCQL(ctx, buildCQL(q), q.Max)
@@ -293,14 +299,26 @@ func buildCQL(q Query) string {
 	if s := strings.TrimSpace(q.CQL); s != "" {
 		return s
 	}
+	cql := "type = page"
 	if len(q.Spaces) > 0 {
 		quoted := make([]string, len(q.Spaces))
 		for i, s := range q.Spaces {
 			quoted[i] = `"` + s + `"`
 		}
-		return "type = page and space in (" + strings.Join(quoted, ",") + ")"
+		cql += " and space in (" + strings.Join(quoted, ",") + ")"
 	}
-	return "type = page"
+	// Incremental: restrict to pages modified since the watermark, oldest first,
+	// so a capped read leaves the newest pages for the next run and never skips.
+	if !q.Since.IsZero() {
+		cql += fmt.Sprintf(` and lastmodified >= "%s" order by lastmodified asc`, confluenceCQLTime(q.Since))
+	}
+	return cql
+}
+
+// confluenceCQLTime formats t as a CQL absolute timestamp, backed off by a small
+// margin so minor clock or timezone skew re-reads a little rather than skips.
+func confluenceCQLTime(t time.Time) string {
+	return t.Add(-2 * time.Minute).Format("2006/01/02 15:04")
 }
 
 // searchResponse decodes the v1 content search endpoint.
