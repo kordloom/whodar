@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/kordloom/whodar/internal/invindex"
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/util"
 	"github.com/kordloom/whodar/internal/vault"
@@ -20,8 +21,10 @@ import (
 type snapshot struct {
 	// Episodes are the stored episodes.
 	Episodes []*Episode `json:"episodes"`
-	// Postings maps a term to per-episode weight.
-	Postings map[string]map[string]float64 `json:"postings"`
+	// Postings is the term-to-per-episode inverted index, packed as a compact
+	// binary blob (JSON stores a byte slice as base64) rather than a JSON map of
+	// maps, which is far smaller and faster to read back.
+	Postings []byte `json:"postings"`
 	// Vecs holds per-episode embedding vectors.
 	Vecs map[string][]float32 `json:"vecs,omitempty"`
 }
@@ -64,7 +67,7 @@ func (s *Store) Save(path string, opts ...Option) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("episode: mkdir: %w", err)
 	}
-	snap := snapshot{Episodes: s.All(), Postings: s.postings, Vecs: s.vecs}
+	snap := snapshot{Episodes: s.All(), Postings: invindex.EncodePostings(s.postings), Vecs: s.vecs}
 	raw, err := json.Marshal(snap)
 	if err != nil {
 		return fmt.Errorf("episode: encode: %w", err)
@@ -97,8 +100,12 @@ func Load(path string, opts ...Option) (*Store, error) {
 		return nil, fmt.Errorf("episode: decode: %w", err)
 	}
 	s := New()
-	if snap.Postings != nil {
-		s.postings = snap.Postings
+	postings, err := invindex.DecodePostings[string](snap.Postings)
+	if err != nil {
+		return nil, fmt.Errorf("episode: %w", err)
+	}
+	if len(postings) > 0 {
+		s.postings = postings
 	}
 	if snap.Vecs != nil {
 		s.vecs = snap.Vecs
