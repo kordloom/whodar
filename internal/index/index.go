@@ -365,7 +365,12 @@ func foldRecord(base, add connector.Record) connector.Record {
 	if add.Time.After(base.Time) {
 		base.Time = add.Time
 	}
-	base.Name = firstNonEmpty(add.Name, base.Name)
+	// Keep the better display name rather than always taking the delta's, so an
+	// incremental record carrying a handle placeholder never overwrites a real
+	// name already held, matching how a full read resolves identity.
+	if betterName(base.Name, add.Name) {
+		base.Name = add.Name
+	}
 	base.Email = firstNonEmpty(base.Email, add.Email)
 	base.Title = firstNonEmpty(add.Title, base.Title)
 	base.Team = firstNonEmpty(add.Team, base.Team)

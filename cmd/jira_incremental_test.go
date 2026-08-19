@@ -70,3 +70,52 @@ func TestJiraIncrementalReindex(t *testing.T) {
 		}
 	}
 }
+
+// TestJiraExplicitJQLNotIncremental verifies an explicit --jira-jql source is
+// never treated as incremental. The connector ignores the watermark for a raw
+// query, so folding it would stack a copy every run; instead the run replaces,
+// and no watermark (which would embed the raw JQL in the plain state file) is
+// written.
+func TestJiraExplicitJQLNotIncremental(t *testing.T) {
+	issues := []fakeapi.JiraIssue{
+		{Key: "KAFKA-1", Summary: "consumer rebalance", Description: "session timeout",
+			AssigneeEmail: "amaki@apache.invalid", ProjectKey: "KAFKA", ProjectName: "Kafka",
+			Updated: "2026-06-20T09:30:00.000+0000"},
+	}
+	fake := &fakeapi.Jira{Issues: issues, ServerMode: true}
+	srv := fake.Server()
+	t.Cleanup(srv.Close)
+
+	dir := t.TempDir()
+	base := []string{"index", "--source", "jira", "--jira-server", "--jira-url", srv.URL,
+		"--jira-jql", "project = KAFKA ORDER BY updated DESC", "--data-dir", dir}
+	if _, stderr, err := runCmd(t, base...); err != nil {
+		t.Fatalf("first index: %v\n%s", err, stderr)
+	}
+	st, err := state.Load(filepath.Join(dir, "index.state.json"))
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	if len(st.Watermarks) != 0 {
+		t.Errorf("explicit JQL wrote a watermark (raw query would leak to plain state): %+v", st.Watermarks)
+	}
+
+	before := len(fake.Queries)
+	merge := append(append([]string{}, base...), "--merge")
+	if _, stderr, err := runCmd(t, merge...); err != nil {
+		t.Fatalf("merge index: %v\n%s", err, stderr)
+	}
+	for _, raw := range fake.Queries[before:] {
+		dec, _ := url.QueryUnescape(raw)
+		if strings.Contains(dec, "updated >=") {
+			t.Errorf("explicit-JQL merge injected a since clause, should replace not fold: %s", dec)
+		}
+	}
+	out, _, err := runCmd(t, "ask", "--data-dir", dir, "rebalance", "--limit", "3")
+	if err != nil {
+		t.Fatalf("ask: %v", err)
+	}
+	if !strings.Contains(string(out), "amaki") {
+		t.Errorf("amaki missing after explicit-JQL merge:\n%s", out)
+	}
+}
