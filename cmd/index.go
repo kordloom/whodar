@@ -140,9 +140,14 @@ Start with the org chart, then merge everything else onto it:
 				confluenceCQL: confluenceCQL, confluenceSpaces: confluenceSpaces,
 				githubRepos: repos, githubOrg: githubOrg, slackPrivate: includePrivate,
 			})
+			// An explicit --jira-jql or --confluence-cql is authoritative, so the
+			// connector ignores the watermark and returns the full result. Folding
+			// that would stack a copy every run, so such a source is never treated
+			// as incremental: it replaces on every merge, as a full read does.
+			canInc := incrementalCapable(source) && !usesExplicitQuery(source, jiraJQL, confluenceCQL)
 			var since time.Time
 			var incremental bool
-			if merge && !full && incrementalCapable(source) && indexExists(opts) {
+			if merge && !full && canInc && indexExists(opts) {
 				st, serr := opts.loadState()
 				if serr != nil {
 					return serr
@@ -207,7 +212,10 @@ Start with the org chart, then merge everything else onto it:
 			// Advance the incremental watermark only after a successful index, so a
 			// failed run never moves it. This is a no-op for a source that does not
 			// support incremental re-indexing.
-			return updateWatermark(opts, source, scope, full, recs)
+			if canInc {
+				return updateWatermark(opts, source, scope, full, recs)
+			}
+			return nil
 		},
 	}
 	f := cmd.Flags()
@@ -443,6 +451,21 @@ func embedProgressEvery(total int) int {
 // they gain the same support.
 func incrementalCapable(source string) bool {
 	return source == "jira" || source == "confluence" || source == "slack" || source == "github"
+}
+
+// usesExplicitQuery reports whether a source is driven by a raw query the
+// connector treats as authoritative. Such a query ignores the watermark and
+// returns its full result, so the run must replace rather than fold, and no
+// watermark is kept for it, keeping the raw query out of the plain state file.
+func usesExplicitQuery(source, jiraJQL, confluenceCQL string) bool {
+	switch source {
+	case "jira":
+		return strings.TrimSpace(jiraJQL) != ""
+	case "confluence":
+		return strings.TrimSpace(confluenceCQL) != ""
+	default:
+		return false
+	}
 }
 
 // scopeInputs carries the query-scope flags that key a source's watermark.
