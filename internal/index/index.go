@@ -925,10 +925,11 @@ type snapshot struct {
 	ChannelPostings []byte `json:"channel_postings"`
 	// ChannelTexts holds normalized per-channel field text.
 	ChannelTexts map[model.ID]*channelText `json:"channel_texts"`
-	// PersonVecs holds per-person embedding vectors.
-	PersonVecs map[model.ID][]float32 `json:"person_vecs,omitempty"`
-	// ChannelVecs holds per-channel embedding vectors.
-	ChannelVecs map[model.ID][]float32 `json:"channel_vecs,omitempty"`
+	// PersonVecs holds per-person embedding vectors, quantized to int8 (JSON
+	// stores each as a small number array), a quarter the size of float32.
+	PersonVecs map[model.ID][]int8 `json:"person_vecs,omitempty"`
+	// ChannelVecs holds per-channel embedding vectors, quantized the same way.
+	ChannelVecs map[model.ID][]int8 `json:"channel_vecs,omitempty"`
 	// Aliases maps each known alias identifier to its canonical form.
 	Aliases map[model.ID]model.ID `json:"aliases,omitempty"`
 	// SourceCounts is how many records each source contributed. The records
@@ -996,8 +997,8 @@ func (ix *Index) Save(path string, opts ...Option) error {
 		Texts:           ix.texts,
 		ChannelPostings: invindex.EncodePostings(ix.channelPostings),
 		ChannelTexts:    ix.channelTexts,
-		PersonVecs:      ix.personVecs,
-		ChannelVecs:     ix.channelVecs,
+		PersonVecs:      quantizeVecs(ix.personVecs),
+		ChannelVecs:     quantizeVecs(ix.channelVecs),
 		Aliases:         ix.identityResolver().Pairs(),
 		SourceCounts:    ix.sourceCounts,
 		BuiltAt:         ix.now(),
@@ -1072,8 +1073,8 @@ func Load(path string, opts ...Option) (*Index, error) {
 		texts:           snap.Texts,
 		channelPostings: channelPostings,
 		channelTexts:    snap.ChannelTexts,
-		personVecs:      snap.PersonVecs,
-		channelVecs:     snap.ChannelVecs,
+		personVecs:      dequantizeVecs(snap.PersonVecs),
+		channelVecs:     dequantizeVecs(snap.ChannelVecs),
 		// sources stays nil: a loaded index answers queries, which never read
 		// the records. A merge calls LoadSources to bring them in from the
 		// sidecar before rebuilding.
