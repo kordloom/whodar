@@ -13,6 +13,7 @@ import (
 	"github.com/kordloom/whodar/internal/bot"
 	"github.com/kordloom/whodar/internal/recall"
 	"github.com/kordloom/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/secret"
 	"github.com/kordloom/whodar/internal/slack"
 )
 
@@ -80,7 +81,7 @@ Transports and their credentials:
   socket  no public URL needed     WHODAR_SLACK_TOKEN + WHODAR_SLACK_APP_TOKEN
   events  serves HTTP for Slack    WHODAR_SLACK_TOKEN + WHODAR_SLACK_SIGNING_SECRET`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			botToken := os.Getenv(slackTokenEnv)
+			botToken := secret.Resolve(slackTokenEnv)
 			if botToken == "" {
 				return fmt.Errorf("%w: set %s", ErrBadArgs, slackTokenEnv)
 			}
