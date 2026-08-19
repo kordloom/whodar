@@ -260,8 +260,10 @@ is sent to any third party.</p>
 <h2 id="ask-questions">Ask questions</h2>
 <pre><code>whodar ask &quot;who owns billing retries&quot;
 </code></pre>
-<p>Output is JSON on stdout, so you can pipe it into other tools. Add <code>--pretty</code> to
-read it yourself. Useful flags:</p>
+<p>At a terminal you get a readable, colored answer. Piped or redirected, you get
+JSON on stdout, so you can feed it to other tools. Add <code>--pretty</code> to indent that
+JSON, <code>--json</code> to force JSON at a terminal, or <code>--human</code> to force the readable
+form through a pipe. Useful flags:</p>
 <ul>
 <li><code>--limit N</code> caps results per section (default 5).</li>
 <li><code>--mode keyword</code> (default) ranks with no model.</li>

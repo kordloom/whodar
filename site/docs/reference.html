@@ -116,8 +116,21 @@ walkthrough, start with <a href="/docs/getting-started">GETTING_STARTED.md</a> i
 <td>off</td>
 <td>Indent JSON output.</td>
 </tr>
+<tr>
+<td><code>--human</code></td>
+<td>off</td>
+<td>Force human-readable output, even when piped.</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>off</td>
+<td>Force JSON output, even at a terminal.</td>
+</tr>
 </tbody>
 </table>
+<p>Without <code>--human</code> or <code>--json</code>, output is human-readable at a terminal and JSON
+when piped or redirected, so a person reads a clean answer and a script gets the
+same machine format as before.</p>
 <h2 id="sources">Sources</h2>
 <p>Each source is one connector against a single interface; all of them merge
 into one index with <code>--merge</code>. People join across sources by email, or by an

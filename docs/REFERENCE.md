@@ -12,6 +12,12 @@ Every command accepts these.
 | `--data-dir` | `~/.whodar` | Directory holding the index and feedback files.&nbsp;&nbsp;&nbsp; |
 | `--policy`   | `strict`    | Egress policy: `strict`, `redacted`, or `open`.     |
 | `--pretty`   | off         | Indent JSON output.                                 |
+| `--human`    | off         | Force human-readable output, even when piped.       |
+| `--json`     | off         | Force JSON output, even at a terminal.              |
+
+Without `--human` or `--json`, output is human-readable at a terminal and JSON
+when piped or redirected, so a person reads a clean answer and a script gets the
+same machine format as before.
 
 ## Sources
 

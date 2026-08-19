@@ -159,8 +159,10 @@ is sent to any third party.
 
     whodar ask "who owns billing retries"
 
-Output is JSON on stdout, so you can pipe it into other tools. Add `--pretty` to
-read it yourself. Useful flags:
+At a terminal you get a readable, colored answer. Piped or redirected, you get
+JSON on stdout, so you can feed it to other tools. Add `--pretty` to indent that
+JSON, `--json` to force JSON at a terminal, or `--human` to force the readable
+form through a pipe. Useful flags:
 
 - `--limit N` caps results per section (default 5).
 - `--mode keyword` (default) ranks with no model.
