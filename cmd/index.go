@@ -268,6 +268,13 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 
 	ix := index.New()
 	if p.merge && existing != nil {
+		// A merge rebuilds from every source, so the records for the sources
+		// already indexed must come back from the sidecar first; without them
+		// the rebuild would keep only the source being added.
+		if err := opts.loadSources(existing); err != nil {
+			return fmt.Errorf(
+				"cannot merge: %w; run a full index once without --merge to rebuild the sources file", err)
+		}
 		ix = existing
 	}
 	ix.SetHalfLife(time.Duration(p.halfLifeDays) * 24 * time.Hour)

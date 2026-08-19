@@ -122,6 +122,11 @@ func newVaultEncryptCmd(opts *options) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				// Bring the sources sidecar in too so the save rewrites it under
+				// the key; leaving it would encrypt the index but not its records.
+				if err := opts.loadSources(ix); err != nil && !errors.Is(err, fs.ErrNotExist) {
+					return err
+				}
 				if err := opts.saveIndex(ix); err != nil {
 					return err
 				}
@@ -153,6 +158,11 @@ func newVaultDecryptCmd(opts *options) *cobra.Command {
 			} else {
 				ix, err := opts.loadIndex(cmd)
 				if err != nil {
+					return err
+				}
+				// Bring the sources sidecar in too so the plain save rewrites it;
+				// leaving it would decrypt the index but not its records.
+				if err := opts.loadSources(ix); err != nil && !errors.Is(err, fs.ErrNotExist) {
 					return err
 				}
 				if err := ix.Save(opts.indexPath()); err != nil {

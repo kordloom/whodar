@@ -91,6 +91,16 @@ func unlockAndLoad[T any](
 	return zero, fmt.Errorf("%w: gave up after %d attempts", vault.ErrCorrupt, attempts)
 }
 
+// loadSources reads the sources sidecar into ix with the same key as the index,
+// so a merge can rebuild from every source and not just the one being added.
+func (o *options) loadSources(ix *index.Index) error {
+	c, err := o.codec()
+	if err != nil {
+		return err
+	}
+	return ix.LoadSources(o.indexPath(), index.WithCodec(c))
+}
+
 // saveIndex writes the index, encrypting it when a key is configured. It reuses
 // any passphrase entered during a preceding loadIndex.
 func (o *options) saveIndex(ix *index.Index) error {
