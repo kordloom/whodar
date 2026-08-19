@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,6 +84,91 @@ func TestJiraTime(t *testing.T) {
 			t.Parallel()
 			if got := jiraTime(test.In).IsZero(); got != test.WantZero {
 				t.Errorf("jiraTime(%q) zero=%v, want %v", test.In, got, test.WantZero)
+			}
+		})
+	}
+}
+
+// TestJiraJQL verifies the query an incremental read builds: it restricts to
+// issues updated since the watermark, orders them oldest first, and leaves an
+// explicit JQL untouched.
+func TestJiraJQL(t *testing.T) {
+	t.Parallel()
+	since := time.Date(2026, 3, 4, 9, 30, 0, 0, time.UTC)
+	tests := []struct {
+		Name      string
+		Opts      JiraOptions
+		WantHas   []string
+		WantLacks []string
+	}{{ // Test 0: Incremental with a project scope.
+		Name: "incremental with projects", Opts: JiraOptions{Projects: []string{"SEC"}, Since: since},
+		WantHas: []string{`project in ("SEC")`, `updated >= "2026/03/04 09:28"`, "ORDER BY updated ASC"},
+	}, { // Test 1: Incremental with no scope.
+		Name: "incremental no projects", Opts: JiraOptions{Since: since},
+		WantHas: []string{`updated >= "2026/03/04 09:28"`, "ORDER BY updated ASC"}, WantLacks: []string{"project in"},
+	}, { // Test 2: A full read keeps newest-first and adds no since clause.
+		Name: "full with projects", Opts: JiraOptions{Projects: []string{"SEC"}},
+		WantHas: []string{`project in ("SEC")`, "ORDER BY updated DESC"}, WantLacks: []string{"updated >="},
+	}, { // Test 3: An explicit JQL is authoritative and ignores Since.
+		Name: "explicit jql", Opts: JiraOptions{JQL: "assignee = currentUser() ORDER BY created DESC", Since: since},
+		WantHas: []string{"assignee = currentUser() ORDER BY created DESC"}, WantLacks: []string{"updated >=", "ASC"},
+	}}
+	for _, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			t.Parallel()
+			j := &Jira{opts: test.Opts.withDefaults()}
+			got := j.jql()
+			for _, s := range test.WantHas {
+				if !strings.Contains(got, s) {
+					t.Errorf("jql = %q, want it to contain %q", got, s)
+				}
+			}
+			for _, s := range test.WantLacks {
+				if strings.Contains(got, s) {
+					t.Errorf("jql = %q, want it to NOT contain %q", got, s)
+				}
+			}
+		})
+	}
+}
+
+// TestJiraWatermark verifies Fetch reports the newest issue update time and
+// whether the read reached every match or stopped at the cap.
+func TestJiraWatermark(t *testing.T) {
+	t.Parallel()
+	body := `{"total":2,"startAt":0,"issues":[` +
+		`{"key":"SEC-1","fields":{"summary":"older","project":{"key":"SEC","name":"Sec"},` +
+		`"updated":"2026-06-20T09:30:00.000-0500"}},` +
+		`{"key":"SEC-2","fields":{"summary":"newer","project":{"key":"SEC","name":"Sec"},` +
+		`"updated":"2026-06-22T11:00:00.000-0500"}}]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+
+	tests := []struct {
+		Name         string
+		MaxIssues    int
+		WantComplete bool
+	}{
+		{Name: "under cap is complete", MaxIssues: 10, WantComplete: true},
+		{Name: "at cap is incomplete", MaxIssues: 2, WantComplete: false},
+	}
+	for _, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			t.Parallel()
+			client := jira.New(srv.URL, "me@x.com", "token")
+			j := NewJiraWithClient(client, JiraOptions{Projects: []string{"SEC"}, MaxIssues: test.MaxIssues})
+			if _, err := j.Fetch(context.Background()); err != nil {
+				t.Fatalf("Fetch: %v", err)
+			}
+			cursor, complete := j.Watermark()
+			zone := time.FixedZone("", -5*3600)
+			if want := time.Date(2026, 6, 22, 11, 0, 0, 0, zone); !cursor.Equal(want) {
+				t.Errorf("watermark cursor = %v, want the newest issue time %v", cursor, want)
+			}
+			if complete != test.WantComplete {
+				t.Errorf("complete = %v, want %v", complete, test.WantComplete)
 			}
 		})
 	}

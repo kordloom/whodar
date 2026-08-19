@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/secret"
 	"github.com/kordloom/whodar/internal/slack"
+	"github.com/kordloom/whodar/internal/state"
 	"github.com/kordloom/whodar/internal/util"
 )
 
@@ -76,6 +78,7 @@ func newIndexCmd(opts *options) *cobra.Command {
 		jiraJQL          string
 		maxIssues        int
 		merge            bool
+		full             bool
 		allowShrink      bool
 		aliasesFile      string
 		halfLifeDays     int
@@ -94,6 +97,10 @@ func newIndexCmd(opts *options) *cobra.Command {
 		Long: `Build or extend the index from one source per run. Combine sources with --merge;
 people join across sources by email, or by an alias file (--aliases) when a
 source only knows a handle. Dated activity decays per --half-life-days.
+
+Re-indexing Jira with --merge is incremental: it fetches only issues updated
+since the last run and folds them in, keeping everyone it did not re-read. Pass
+--full to re-read every issue and recompact. Other sources always read in full.
 
 Sources and their credentials:
   org-csv     --file people.csv                          none
@@ -122,6 +129,22 @@ Start with the org chart, then merge everything else onto it:
 					return err
 				}
 			}
+			// Decide whether this run is incremental: a merge into an existing
+			// index of a source that supports it, with a saved watermark and no
+			// --full. When so, fetch only what changed since the watermark and
+			// fold it in rather than re-reading and replacing the whole source.
+			scope := indexScope(source, jiraJQL, jiraProjects)
+			var since time.Time
+			var incremental bool
+			if merge && !full && incrementalCapable(source) && indexExists(opts) {
+				st, serr := opts.loadState()
+				if serr != nil {
+					return serr
+				}
+				if wm, ok := st.Get(source, scope); ok {
+					since, incremental = wm.Cursor, true
+				}
+			}
 			switch source {
 			case "org-csv":
 				if file == "" {
@@ -146,7 +169,7 @@ Start with the org chart, then merge everything else onto it:
 					githubArgs{repos, githubOrg, maxRepos, githubEmails, episodes || archive})
 			case "jira":
 				recs, eps, err = fetchJira(cmd,
-					jiraArgs{jiraURL, jiraProjects, jiraJQL, maxIssues, episodes || archive, jiraServer})
+					jiraArgs{jiraURL, jiraProjects, jiraJQL, maxIssues, episodes || archive, jiraServer, since})
 			case "confluence":
 				recs, err = fetchConfluence(cmd, confluenceArgs{confluenceURL, confluenceSpaces, confluenceCQL, maxPages, confluenceServer})
 			case "pagerduty":
@@ -168,11 +191,17 @@ Start with the org chart, then merge everything else onto it:
 				return err
 			}
 
-			return indexRecords(cmd, opts, recs, indexParams{
-				merge: merge, allowShrink: allowShrink, halfLifeDays: halfLifeDays, aliasesFile: aliasesFile,
-				embed: embed, embedModel: embedModel, ollamaURL: ollamaURL, changesFile: changesFile,
-				episodes: eps,
-			})
+			if err := indexRecords(cmd, opts, recs, indexParams{
+				merge: merge, incremental: incremental, allowShrink: allowShrink, halfLifeDays: halfLifeDays,
+				aliasesFile: aliasesFile, embed: embed, embedModel: embedModel, ollamaURL: ollamaURL,
+				changesFile: changesFile, episodes: eps,
+			}); err != nil {
+				return err
+			}
+			// Advance the incremental watermark only after a successful index, so a
+			// failed run never moves it. This is a no-op for a source that does not
+			// support incremental re-indexing.
+			return updateWatermark(opts, source, scope, full, recs)
 		},
 	}
 	f := cmd.Flags()
@@ -191,6 +220,8 @@ Start with the org chart, then merge everything else onto it:
 	f.IntVar(&maxArchive, "max-archive-messages", 50, "Retained message cap per conversation.")
 	f.StringVar(&changesFile, "changes-file", "", "Write the index diff as JSON to this path.")
 	f.BoolVar(&merge, "merge", false, "Merge into the existing index instead of replacing it.")
+	f.BoolVar(&full, "full", false,
+		"With --merge, re-read every item and recompact instead of only what changed since the last run.")
 	f.BoolVar(&allowShrink, "allow-shrink", false,
 		"Accept a source returning far less than last time, which is otherwise refused as a truncated read.")
 	f.StringVar(&aliasesFile, "aliases", "",
@@ -228,6 +259,10 @@ Start with the org chart, then merge everything else onto it:
 type indexParams struct {
 	// merge adds records onto the existing index instead of replacing it.
 	merge bool
+	// incremental folds a since-limited fetch into the source's existing
+	// records instead of replacing them, so a partial re-read keeps the people
+	// and topics it did not re-fetch. It always runs inside a merge.
+	incremental bool
 	// allowShrink accepts a source that returned far less than it did last
 	// time, which is otherwise refused as a truncated read.
 	allowShrink bool
@@ -283,12 +318,20 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 			return err
 		}
 	}
-	if err := guardShrink(existing, recs, p.allowShrink); err != nil {
-		return err
+	// An incremental read returns only what changed, so it is legitimately far
+	// smaller than the last full read; the shrink guard, which protects a full
+	// replace from a truncated read, does not apply to it.
+	if !p.incremental {
+		if err := guardShrink(existing, recs, p.allowShrink); err != nil {
+			return err
+		}
 	}
-	if p.merge {
+	switch {
+	case p.incremental && existing != nil:
+		ix.MergeIncremental(recs)
+	case p.merge:
 		ix.Add(recs)
-	} else {
+	default:
 		// A replacing run that read nothing would write an empty index over a
 		// good one and report success. The usual cause is a token that expired
 		// or lost a scope, which each connector reports as a skip rather than
@@ -387,6 +430,61 @@ func embedProgressEvery(total int) int {
 		return 1
 	}
 	return total / 20
+}
+
+// incrementalCapable reports whether a source supports incremental re-indexing,
+// fetching only what changed since a watermark. Jira is the first; other sources
+// read in full until they gain the same support.
+func incrementalCapable(source string) bool {
+	return source == "jira"
+}
+
+// indexScope returns the watermark key for a source's current query, so changing
+// the scope, such as the set of projects indexed, starts a fresh watermark
+// rather than reusing one taken over different items.
+func indexScope(source, jiraJQL string, jiraProjects []string) string {
+	if source != "jira" {
+		return ""
+	}
+	if strings.TrimSpace(jiraJQL) != "" {
+		return "jql:" + jiraJQL
+	}
+	if len(jiraProjects) > 0 {
+		p := append([]string(nil), jiraProjects...)
+		sort.Strings(p)
+		return "project:" + strings.Join(p, ",")
+	}
+	return "all"
+}
+
+// updateWatermark advances a source's incremental watermark to the newest
+// activity just indexed, after a successful run. It never moves the cursor
+// backward, and does nothing for a source without incremental support or a read
+// that saw nothing dated.
+func updateWatermark(opts *options, source, scope string, full bool, recs []connector.Record) error {
+	if !incrementalCapable(source) {
+		return nil
+	}
+	var cursor time.Time
+	for _, r := range recs {
+		if r.Time.After(cursor) {
+			cursor = r.Time
+		}
+	}
+	if cursor.IsZero() {
+		return nil
+	}
+	st, err := opts.loadState()
+	if err != nil {
+		return err
+	}
+	// A partial read only ever adds newer activity, so never let its cursor fall
+	// behind the stored one; a full read is authoritative and replaces it.
+	if prev, ok := st.Get(source, scope); ok && !full && prev.Cursor.After(cursor) {
+		cursor = prev.Cursor
+	}
+	st.Set(state.Watermark{Source: source, Scope: scope, Cursor: cursor, Complete: true, RanAt: time.Now()})
+	return opts.saveState(st)
 }
 
 // guardShrink refuses to replace a source's contribution with a far smaller
@@ -625,6 +723,9 @@ type jiraArgs struct {
 	episodes bool
 	// server selects a self-hosted Server or Data Center deployment.
 	server bool
+	// since limits an incremental read to issues updated at or after it; the
+	// zero value reads in full.
+	since time.Time
 }
 
 // fetchJira builds Jira records, reading the URL and credentials from flags and
@@ -651,7 +752,7 @@ func fetchJira(cmd *cobra.Command, a jiraArgs) ([]connector.Record, []episode.Ep
 	}
 	src := connector.NewJira(site, email, token, connector.JiraOptions{
 		Projects: a.projects, JQL: a.jql, MaxIssues: a.maxIssues,
-		Episodes: a.episodes, Server: a.server, Log: cmd.ErrOrStderr(),
+		Episodes: a.episodes, Server: a.server, Since: a.since, Log: cmd.ErrOrStderr(),
 	})
 	recs, err := src.Fetch(cmd.Context())
 	if err != nil {
