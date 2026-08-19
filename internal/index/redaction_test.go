@@ -50,12 +50,10 @@ func TestSavedIndexHoldsNoReadableText(t *testing.T) {
 			t.Errorf("the saved index contains the readable word run %q", run)
 		}
 	}
-	// The stemmed search term is present, so keyword search still works.
-	if !strings.Contains(on, "reconcil") {
-		t.Error("the saved index is missing the stemmed search term")
-	}
 
-	// Reloaded, the person is still findable by the words they used.
+	// Reloaded, the person is still findable by the words they used, which proves
+	// the stemmed search terms were retained even though the postings are packed
+	// as a binary blob rather than readable text.
 	reloaded, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
