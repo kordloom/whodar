@@ -1,11 +1,15 @@
 package episode
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+
+	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/vault"
 )
 
@@ -96,5 +100,65 @@ func TestLoadOrNew(t *testing.T) {
 	}
 	if _, err := LoadOrNew(bad); err == nil {
 		t.Error("LoadOrNew on a corrupt file = nil error, want a failure")
+	}
+}
+
+// TestInternedParticipantsRoundTrip verifies participants and archived authors
+// survive interning to a shared id table and back, and that a person shared
+// across episodes is written to the table once rather than per appearance.
+func TestInternedParticipantsRoundTrip(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "episodes.json")
+	s := newTestStore()
+	a := testEpisode("a", 10, "me@x.com", "billy@x.com")
+	a.Archive = []Note{{Author: "billy@x.com", At: fixedNow, Text: "bump the cert"}}
+	s.Add(a)
+	s.Add(testEpisode("b", 9, "me@x.com", "billy@x.com", "sam@x.com"))
+	s.Add(testEpisode("c", 8, "billy@x.com", "sam@x.com"))
+	if err := s.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Three distinct people across the episodes, so the interned table holds
+	// three ids, not the seven participant slots and one archived author.
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	var snap snapshot
+	if err := json.Unmarshal(raw, &snap); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(snap.IDs) != 3 {
+		t.Errorf("interned id table = %d ids, want 3: %v", len(snap.IDs), snap.IDs)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	ep, ok := got.Episode("a")
+	if !ok {
+		t.Fatal("episode a missing after load")
+	}
+	if diff := cmp.Diff([]model.ID{"me@x.com", "billy@x.com"}, ep.Participants); diff != "" {
+		t.Errorf("participants mismatch (-want +got):\n%s", diff)
+	}
+	if len(ep.Archive) != 1 || ep.Archive[0].Author != "billy@x.com" {
+		t.Errorf("archived author did not survive interning: %+v", ep.Archive)
+	}
+	if !got.HasPerson("sam@x.com") {
+		t.Error("sam is no longer indexed as a participant after load")
+	}
+}
+
+// TestUnpackRejectsOutOfRangeIndex verifies a packed episode whose participant
+// index points past the id table is reported rather than loaded as a wrong or
+// empty person.
+func TestUnpackRejectsOutOfRangeIndex(t *testing.T) {
+	t.Parallel()
+	_, err := unpackEpisode(packedEpisode{ID: "e", Participants: []uint32{2}}, []model.ID{"only@x.com"})
+	if err == nil {
+		t.Fatal("unpackEpisode with an out-of-range index = nil error, want failure")
 	}
 }
