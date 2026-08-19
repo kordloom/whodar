@@ -20,8 +20,14 @@ import (
 // derived on load rather than stored, so it can never disagree with the
 // episodes themselves.
 type snapshot struct {
-	// Episodes are the stored episodes.
-	Episodes []*Episode `json:"episodes"`
+	// IDs is the interned table of person ids the episodes reference. A person
+	// who took part in a thousand conversations is written here once, and each
+	// packed episode names them by index. Repeated ids were most of a store's
+	// bulk before interning, after the retained archive itself.
+	IDs []model.ID `json:"ids,omitempty"`
+	// Episodes are the stored episodes in packed form, their participant and
+	// archived-author ids replaced by indices into IDs.
+	Episodes []packedEpisode `json:"episodes"`
 	// Postings is the term-to-per-episode inverted index, packed as a compact
 	// binary blob (JSON stores a byte slice as base64) rather than a JSON map of
 	// maps, which is far smaller and faster to read back.
@@ -29,6 +35,48 @@ type snapshot struct {
 	// Vecs holds per-episode embedding vectors, quantized to int8, a quarter the
 	// size of float32 and the largest part of a store once episodes are embedded.
 	Vecs map[string][]int8 `json:"vecs,omitempty"`
+}
+
+// packedEpisode is the on-disk form of an Episode. It mirrors the domain type
+// field for field except that participants and archived-note authors are held
+// as indices into the snapshot id table rather than repeated id strings. A
+// field added to Episode that must persist has to be added here too; Body is
+// deliberately absent, since it is never written to disk.
+type packedEpisode struct {
+	// ID uniquely identifies the episode.
+	ID string `json:"id"`
+	// Source names the origin connector.
+	Source string `json:"source"`
+	// Kind classifies the conversation shape.
+	Kind Kind `json:"kind"`
+	// Place is the human-readable location.
+	Place string `json:"place"`
+	// PlaceID is the source's own identifier for that location.
+	PlaceID string `json:"place_id,omitempty"`
+	// Title is a short subject line when the source has one.
+	Title string `json:"title,omitempty"`
+	// Participants are the people who took part, as indices into the snapshot id
+	// table, most involved first.
+	Participants []uint32 `json:"participants"`
+	// Occurred is when the conversation last saw activity.
+	Occurred time.Time `json:"occurred"`
+	// Permalink points back to the conversation in its own tool.
+	Permalink string `json:"permalink,omitempty"`
+	// Messages counts the messages the episode was built from.
+	Messages int `json:"messages,omitempty"`
+	// Archive holds retained conversation content, its authors interned.
+	Archive []packedNote `json:"archive,omitempty"`
+}
+
+// packedNote is the on-disk form of a Note, its author held as an index into
+// the snapshot id table.
+type packedNote struct {
+	// Author is the index of the canonical writer in the snapshot id table.
+	Author uint32 `json:"author"`
+	// At is when it was written.
+	At time.Time `json:"at"`
+	// Text is the message body as written.
+	Text string `json:"text"`
 }
 
 // Option configures Load and Save. With no option the store is read and
@@ -69,7 +117,13 @@ func (s *Store) Save(path string, opts ...Option) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("episode: mkdir: %w", err)
 	}
-	snap := snapshot{Episodes: s.All(), Postings: invindex.EncodePostings(s.postings), Vecs: quantizeEpisodeVecs(s.vecs)}
+	ids, packed := packEpisodes(s.All())
+	snap := snapshot{
+		IDs:      ids,
+		Episodes: packed,
+		Postings: invindex.EncodePostings(s.postings),
+		Vecs:     quantizeEpisodeVecs(s.vecs),
+	}
 	raw, err := json.Marshal(snap)
 	if err != nil {
 		return fmt.Errorf("episode: encode: %w", err)
@@ -112,8 +166,12 @@ func Load(path string, opts ...Option) (*Store, error) {
 	if len(snap.Vecs) > 0 {
 		s.vecs = dequantizeEpisodeVecs(snap.Vecs)
 	}
-	for _, ep := range snap.Episodes {
-		if ep == nil || ep.ID == "" {
+	for _, pe := range snap.Episodes {
+		ep, err := unpackEpisode(pe, snap.IDs)
+		if err != nil {
+			return nil, fmt.Errorf("episode: %w", err)
+		}
+		if ep.ID == "" {
 			continue
 		}
 		s.episodes[ep.ID] = ep
@@ -122,6 +180,116 @@ func Load(path string, opts ...Option) (*Store, error) {
 		}
 	}
 	return s, nil
+}
+
+// idTable interns person ids to indices while saving, so an id shared by many
+// episodes is written to the snapshot once.
+type idTable struct {
+	// ids is the interned list in first-seen order.
+	ids []model.ID
+	// index maps an id to its position in ids.
+	index map[model.ID]uint32
+}
+
+// newIDTable returns an empty interner.
+func newIDTable() *idTable {
+	return &idTable{index: make(map[model.ID]uint32)}
+}
+
+// intern returns the index of id, appending it on first sight.
+func (t *idTable) intern(id model.ID) uint32 {
+	if i, ok := t.index[id]; ok {
+		return i
+	}
+	i := uint32(len(t.ids))
+	t.ids = append(t.ids, id)
+	t.index[id] = i
+	return i
+}
+
+// packEpisodes converts episodes to their on-disk form and returns the shared
+// id table their indices refer to. Participants and archived-note authors are
+// interned into the same table in the order the episodes are given, so the
+// output is deterministic.
+func packEpisodes(eps []*Episode) ([]model.ID, []packedEpisode) {
+	t := newIDTable()
+	packed := make([]packedEpisode, 0, len(eps))
+	for _, ep := range eps {
+		if ep == nil {
+			continue
+		}
+		parts := make([]uint32, len(ep.Participants))
+		for i, p := range ep.Participants {
+			parts[i] = t.intern(p)
+		}
+		var archive []packedNote
+		if len(ep.Archive) > 0 {
+			archive = make([]packedNote, len(ep.Archive))
+			for i, n := range ep.Archive {
+				archive[i] = packedNote{Author: t.intern(n.Author), At: n.At, Text: n.Text}
+			}
+		}
+		packed = append(packed, packedEpisode{
+			ID:           ep.ID,
+			Source:       ep.Source,
+			Kind:         ep.Kind,
+			Place:        ep.Place,
+			PlaceID:      ep.PlaceID,
+			Title:        ep.Title,
+			Participants: parts,
+			Occurred:     ep.Occurred,
+			Permalink:    ep.Permalink,
+			Messages:     ep.Messages,
+			Archive:      archive,
+		})
+	}
+	return t.ids, packed
+}
+
+// unpackEpisode restores an episode from its on-disk form, resolving each
+// interned index against ids. An index past the end of the table means a
+// truncated or corrupt file and is reported rather than silently dropped.
+func unpackEpisode(pe packedEpisode, ids []model.ID) (*Episode, error) {
+	parts := make([]model.ID, len(pe.Participants))
+	for i, idx := range pe.Participants {
+		p, err := idAt(ids, idx)
+		if err != nil {
+			return nil, err
+		}
+		parts[i] = p
+	}
+	var archive []Note
+	if len(pe.Archive) > 0 {
+		archive = make([]Note, len(pe.Archive))
+		for i, n := range pe.Archive {
+			author, err := idAt(ids, n.Author)
+			if err != nil {
+				return nil, err
+			}
+			archive[i] = Note{Author: author, At: n.At, Text: n.Text}
+		}
+	}
+	return &Episode{
+		ID:           pe.ID,
+		Source:       pe.Source,
+		Kind:         pe.Kind,
+		Place:        pe.Place,
+		PlaceID:      pe.PlaceID,
+		Title:        pe.Title,
+		Participants: parts,
+		Occurred:     pe.Occurred,
+		Permalink:    pe.Permalink,
+		Messages:     pe.Messages,
+		Archive:      archive,
+	}, nil
+}
+
+// idAt returns the id at idx, or an error when idx is out of range.
+func idAt(ids []model.ID, idx uint32) (model.ID, error) {
+	if int(idx) >= len(ids) {
+		return "", fmt.Errorf("person index %d out of range %d", idx, len(ids))
+	}
+	return ids[idx], nil
 }
 
 // LoadOrNew reads a store from path, returning an empty store when the file

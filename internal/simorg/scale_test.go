@@ -46,16 +46,16 @@ func TestScale(t *testing.T) {
 		{"company", Spec{People: 1000, Channels: 150, Topics: 16, ThreadsPerChannel: 100, ChatterPerChannel: 600}},
 		{"enterprise", Spec{People: 5000, Channels: 400, Topics: 16, ThreadsPerChannel: 120, ChatterPerChannel: 800}},
 	}
-	t.Logf("%-11s %7s %7s %7s %8s %9s %8s %8s %8s %8s %9s %8s %8s",
-		"size", "people", "convos", "terms", "ingest", "index", "cold", "ask", "recall",
+	t.Logf("%-11s %7s %7s %7s %8s %9s %9s %8s %8s %8s %8s %9s %8s %8s",
+		"size", "people", "convos", "terms", "ingest", "index", "estore", "cold", "ask", "recall",
 		"embed", "vectors", "sem", "heap")
 	for _, size := range sizes {
 		size.Spec.Seed = 11
 		t.Run(size.Name, func(t *testing.T) {
 			m := measure(t, size.Spec)
-			t.Logf("%-11s %7d %7d %7d %8s %9s %8s %8s %8s %8s %9s %8s %9s",
+			t.Logf("%-11s %7d %7d %7d %8s %9s %9s %8s %8s %8s %8s %9s %8s %9s",
 				size.Name, m.people, m.episodes, m.postings, short(m.ingest), bytes(m.indexBytes),
-				short(m.coldStart), short(m.askLatency), short(m.recallLatency),
+				bytes(m.episodeBytes), short(m.coldStart), short(m.askLatency), short(m.recallLatency),
 				short(m.embed), bytes(m.vectorBytes), short(m.semantic), bytes(int64(m.heap)))
 		})
 	}
