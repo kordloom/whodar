@@ -278,6 +278,10 @@ func (ix *Index) rebuild() {
 // stale it is. It is the zero time for an index that has never been saved.
 func (ix *Index) BuiltAt() time.Time { return ix.builtAt }
 
+// PostingCount returns the number of distinct terms in the person index, a
+// measure of the searchable vocabulary size.
+func (ix *Index) PostingCount() int { return len(ix.postings) }
+
 // SourceNames returns the names of the sources that contributed to the index,
 // sorted, so a status view can list each one with its size.
 func (ix *Index) SourceNames() []string {
