@@ -222,6 +222,7 @@ func configuredConnectors() map[string]bool {
 		"slack":      set(slackTokenEnv),
 		"github":     set(githubTokenEnv),
 		"pagerduty":  set(pagerdutyTokenEnv),
+		"graph":      set(graphTokenEnv),
 		"jira":       jiraCreds,
 		"confluence": confluenceURL && confluenceToken,
 	}

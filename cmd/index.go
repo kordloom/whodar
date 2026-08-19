@@ -17,6 +17,7 @@ import (
 
 	"github.com/kordloom/whodar/internal/connector"
 	"github.com/kordloom/whodar/internal/episode"
+	"github.com/kordloom/whodar/internal/graph"
 	"github.com/kordloom/whodar/internal/httputil"
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/license"
@@ -36,6 +37,13 @@ const githubTokenEnv = "WHODAR_GITHUB_TOKEN"
 
 // pagerdutyTokenEnv is the environment variable holding the PagerDuty token.
 const pagerdutyTokenEnv = "WHODAR_PAGERDUTY_TOKEN"
+
+// graphTokenEnv holds the Microsoft Graph bearer token; graphURLEnv overrides
+// the Graph root for a sovereign or national cloud.
+const (
+	graphTokenEnv = "WHODAR_GRAPH_TOKEN"
+	graphURLEnv   = "WHODAR_GRAPH_URL"
+)
 
 // Jira environment variables for the site URL, email, and API token.
 const (
@@ -117,6 +125,8 @@ Sources and their credentials:
   confluence  --confluence-space KEY | --confluence-cql  WHODAR_CONFLUENCE_* (or Jira's)
               (--confluence-server for self-hosted)       WHODAR_CONFLUENCE_URL[/TOKEN]
   pagerduty   (no scope flags)                           WHODAR_PAGERDUTY_TOKEN
+  graph       (no scope flags)                           WHODAR_GRAPH_TOKEN
+              (WHODAR_GRAPH_URL for a sovereign cloud)
 
 Start with the org chart, then merge everything else onto it:
   whodar index --source org-csv --file people.csv
@@ -204,8 +214,10 @@ Start with the org chart, then merge everything else onto it:
 				}
 				recs, err = connector.NewJSON(rc, "json").Fetch(cmd.Context())
 				closeJSON()
+			case "graph":
+				recs, err = fetchGraph(cmd)
 			default:
-				return fmt.Errorf("%w: %q (want org-csv, slack, codeowners, github, jira, confluence, pagerduty, git, or json)", ErrUnknownSource, source)
+				return fmt.Errorf("%w: %q (want org-csv, slack, codeowners, github, jira, confluence, pagerduty, git, json, or graph)", ErrUnknownSource, source)
 			}
 			if err != nil {
 				return err
@@ -221,6 +233,12 @@ Start with the org chart, then merge everything else onto it:
 			// Advance the incremental watermark only after a successful index, so a
 			// failed run never moves it. This is a no-op for a source that does not
 			// support incremental re-indexing.
+			// Record the flags this source was indexed with, so `whodar refresh`
+			// and a scheduled refresh can replay them. Best-effort: a save failure
+			// warns but does not fail the index.
+			if err := saveInvocation(opts, cmd, source); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not save refresh config: %v\n", err)
+			}
 			if canInc {
 				return updateWatermark(opts, source, scope, full, recs)
 			}
@@ -228,7 +246,7 @@ Start with the org chart, then merge everything else onto it:
 		},
 	}
 	f := cmd.Flags()
-	f.StringVar(&source, "source", "org-csv", "Source type: org-csv, slack, codeowners, github, jira, confluence, pagerduty, git, or json.")
+	f.StringVar(&source, "source", "org-csv", "Source type: org-csv, slack, codeowners, github, jira, confluence, pagerduty, git, json, or graph.")
 	f.StringVar(&file, "file", "", "Path to the source file: the CSV for org-csv, the CODEOWNERS file or repo root for codeowners, the JSON array for json (- for stdin).")
 	f.BoolVar(&includePrivate, "include-private", false, "Ingest private Slack channels if policy allows.")
 	f.BoolVar(&slackJoin, "slack-join", false,
@@ -916,6 +934,21 @@ func fetchConfluence(cmd *cobra.Command, a confluenceArgs) ([]connector.Record, 
 }
 
 // fetchPagerDuty builds PagerDuty records from services and on-call data.
+// fetchGraph reads the org chart from Microsoft Graph. The token is required;
+// the base URL is optional and points at a sovereign cloud when set.
+func fetchGraph(cmd *cobra.Command) ([]connector.Record, error) {
+	token := secret.Resolve(graphTokenEnv)
+	if token == "" {
+		return nil, fmt.Errorf("%w: set %s for the graph source", ErrBadArgs, graphTokenEnv)
+	}
+	client := graph.New(token, graph.WithBaseURL(secret.Resolve(graphURLEnv)))
+	recs, err := connector.NewGraph(client).Fetch(cmd.Context())
+	if err != nil {
+		return nil, explainSourceError("graph", graphTokenEnv, err)
+	}
+	return recs, nil
+}
+
 func fetchPagerDuty(cmd *cobra.Command, episodes bool) ([]connector.Record, []episode.Episode, error) {
 	token := secret.Resolve(pagerdutyTokenEnv)
 	if token == "" {

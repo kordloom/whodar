@@ -154,7 +154,7 @@ func (s *Store) Clear(f Filter) (int, error) {
 // a failed write never leaves memory ahead of disk and a concurrent process's
 // votes are not lost. Callers hold s.mu.
 func (s *Store) mutate(fn func([]Entry) []Entry) error {
-	unlock, err := lockFile(s.path + lockSuffix)
+	unlock, err := util.LockFile(s.path + util.LockSuffix)
 	if err != nil {
 		return err
 	}

@@ -15,7 +15,50 @@ import (
 // lowercased. It is the canonical form of a person's merge key, so stray casing
 // or spacing never splits one human across records from different sources.
 func NormalizeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
+	e := strings.ToLower(strings.TrimSpace(email))
+	at := strings.LastIndexByte(e, '@')
+	if at <= 0 {
+		return e
+	}
+	local, domain := e[:at], e[at+1:]
+	// Drop a plus-tag: alice+ci@x.com and alice@x.com are the same mailbox.
+	// Dots are left alone because many corporate domains make first.last
+	// significant, so folding them would merge distinct people.
+	if plus := strings.IndexByte(local, '+'); plus >= 0 {
+		local = local[:plus]
+	}
+	return local + "@" + domain
+}
+
+// roleLocals are email local-parts that name a function or shared team mailbox
+// rather than one person, so an address at one of them must not be used to merge
+// two distinct people.
+//
+//nolint:gochecknoglobals // Read-only lookup table.
+var roleLocals = map[string]bool{
+	"admin": true, "administrator": true, "support": true, "help": true,
+	"helpdesk": true, "info": true, "sales": true, "contact": true,
+	"noreply": true, "no-reply": true, "donotreply": true, "do-not-reply": true,
+	"team": true, "teams": true, "dev": true, "devops": true, "ops": true,
+	"oncall": true, "on-call": true, "alerts": true, "alert": true,
+	"notifications": true, "notification": true, "hello": true,
+	"billing": true, "accounts": true, "accounting": true, "hr": true,
+	"security": true, "abuse": true, "postmaster": true, "webmaster": true,
+	"marketing": true, "press": true, "jobs": true, "careers": true,
+	"recruiting": true, "root": true, "service": true, "services": true,
+	"system": true, "sysadmin": true, "bot": true,
+}
+
+// IsRoleEmail reports whether email addresses a function or shared team mailbox
+// rather than a single person, so a caller can avoid merging two people who
+// happen to share it. It checks the local-part after normalization.
+func IsRoleEmail(email string) bool {
+	e := NormalizeEmail(email)
+	at := strings.IndexByte(e, '@')
+	if at <= 0 {
+		return false
+	}
+	return roleLocals[e[:at]]
 }
 
 // Truncate returns s cut to at most max bytes without splitting a UTF-8 rune.

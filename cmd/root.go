@@ -50,6 +50,19 @@ func (o *options) feedbackPath() string {
 	return filepath.Join(o.dataDir, "feedback.json")
 }
 
+// factsPath returns the facts file path under the data directory. It is
+// separate from the index so recorded facts survive re-indexing.
+func (o *options) factsPath() string {
+	return filepath.Join(o.dataDir, "facts.json")
+}
+
+// refreshPath returns the refresh-config path under the data directory. It
+// records the flags each source was last indexed with so `refresh` can replay
+// them without the operator retyping the scope.
+func (o *options) refreshPath() string {
+	return filepath.Join(o.dataDir, "refresh.json")
+}
+
 // episodePath returns the episode file path under the data directory. Past
 // conversations live beside the index rather than inside it, so a question
 // about who knows something never pays to load them.
@@ -87,9 +100,10 @@ func newRootCmd() *cobra.Command {
 	pf.BoolVar(&opts.pretty, "pretty", false, "Indent JSON output.")
 
 	root.AddCommand(
-		newIndexCmd(opts), newConnectCmd(opts), newAskCmd(opts), newRecallCmd(opts),
+		newIndexCmd(opts), newConnectCmd(opts), newAskCmd(opts), newRecallCmd(opts), newNearCmd(opts),
 		newDirectoryCmd(opts), newStatusCmd(opts), newDoctorCmd(opts), newServeCmd(opts), newBotCmd(opts),
-		newFeedbackCmd(opts), newDemoCmd(opts), newMCPCmd(opts), newVaultCmd(opts),
+		newFeedbackCmd(opts), newFactCmd(opts), newDemoCmd(opts), newMCPCmd(opts), newVaultCmd(opts),
+		newRefreshCmd(opts), newScheduleCmd(opts),
 		newArchiveCmd(opts), newLicenseCmd(opts), newVersionCmd())
 	return root
 }

@@ -474,8 +474,8 @@ func (ix *Index) buildPerson(rec connector.Record) {
 	if raw == "" {
 		return
 	}
-	if rec.PersonID != "" && rec.Email != "" {
-		r.Union(model.ID(rec.Email), model.ID(rec.PersonID))
+	if rec.PersonID != "" && rec.Email != "" && !util.IsRoleEmail(rec.Email) {
+		r.Union(model.ID(util.NormalizeEmail(rec.Email)), model.ID(strings.ToLower(strings.TrimSpace(rec.PersonID))))
 	}
 	pid := r.Canonical(raw)
 	w := rec.Weight

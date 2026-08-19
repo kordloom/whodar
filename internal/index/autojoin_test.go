@@ -100,3 +100,44 @@ func peopleIDs(ix *Index) []model.ID {
 	slices.Sort(out)
 	return out
 }
+
+// TestAutoJoinCorroboration checks that an ambiguous handle (two people share a
+// flattened name) merges into the one it corroborates with via a shared team.
+func TestAutoJoinCorroboration(t *testing.T) {
+	t.Parallel()
+	recs := []connector.Record{
+		{Kind: connector.KindPerson, Email: "alice@x.com", Name: "Alice Smith", Team: "Payments", Source: "t"},
+		{Kind: connector.KindPerson, Email: "alice@y.com", Name: "Alice Smith", Team: "Sales", Source: "t"},
+		{Kind: connector.KindPerson, PersonID: "github:alice-smith", Name: "@alice-smith", Team: "Payments", Source: "t"},
+	}
+	ix := New()
+	ix.Build(recs)
+	res := ix.AutoJoin()
+	ix.Canonicalize()
+	if res.Joined != 1 {
+		t.Errorf("joined = %d, want 1 (corroborated by shared team)", res.Joined)
+	}
+	if len(ix.Graph.People) != 2 {
+		t.Errorf("people = %d, want 2: %v", len(ix.Graph.People), peopleIDs(ix))
+	}
+}
+
+// TestAutoJoinAmbiguousNoCorroboration checks that an ambiguous handle with no
+// shared signal stays unresolved and reported, never silently merged.
+func TestAutoJoinAmbiguousNoCorroboration(t *testing.T) {
+	t.Parallel()
+	recs := []connector.Record{
+		{Kind: connector.KindPerson, Email: "alice@x.com", Name: "Alice Smith", Team: "Payments", Source: "t"},
+		{Kind: connector.KindPerson, Email: "alice@y.com", Name: "Alice Smith", Team: "Sales", Source: "t"},
+		{Kind: connector.KindPerson, PersonID: "github:alice-smith", Name: "@alice-smith", Team: "Marketing", Source: "t"},
+	}
+	ix := New()
+	ix.Build(recs)
+	res := ix.AutoJoin()
+	if res.Joined != 0 {
+		t.Errorf("joined = %d, want 0 (no corroboration)", res.Joined)
+	}
+	if len(res.Ambiguous) != 1 {
+		t.Errorf("ambiguous = %v, want exactly the blocked handle", res.Ambiguous)
+	}
+}

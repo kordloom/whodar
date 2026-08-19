@@ -32,33 +32,56 @@ func (ix *Index) AutoJoin() JoinResult {
 	r := ix.identityResolver()
 	g := ix.Graph
 
-	byFlat := make(map[string]model.ID)
-	ambiguous := make(map[string]bool)
-	add := func(key string, id model.ID) {
+	// Index every canonical person by all of their flattened forms: display
+	// name, every email local-part, and each joined identity (email or handle),
+	// so a source-prefixed handle can match on any of them, not just one name.
+	byKey := make(map[string]map[model.ID]bool)
+	addKey := func(key string, id model.ID) {
 		if len(key) < minHandleLen {
 			return
 		}
-		// Two entries collide only when they are genuinely distinct people; two
-		// identifiers the resolver already unions are one person, not ambiguity.
-		if have, ok := byFlat[key]; ok && r.Canonical(have) != r.Canonical(id) {
-			ambiguous[key] = true
-			return
+		set := byKey[key]
+		if set == nil {
+			set = make(map[model.ID]bool)
+			byKey[key] = set
 		}
-		byFlat[key] = id
+		set[r.Canonical(id)] = true
 	}
 	for id, p := range g.People {
 		if handleOnly(id) {
 			continue
 		}
-		add(flatten(p.Name), id)
+		addKey(flatten(p.Name), id)
 		if p.Email != "" {
-			add(flatten(emailLocal(p.Email)), id)
+			addKey(flatten(emailLocal(p.Email)), id)
 		}
+		for _, alt := range p.Identities {
+			addKey(flatten(altKeyPart(alt)), id)
+		}
+	}
+
+	// distinct returns the distinct canonical people sharing key, minus self.
+	distinct := func(key string, self model.ID) []model.ID {
+		set := byKey[key]
+		if set == nil {
+			return nil
+		}
+		seen := make(map[model.ID]bool)
+		var out []model.ID
+		for c := range set {
+			cc := r.Canonical(c)
+			if cc == self || seen[cc] {
+				continue
+			}
+			seen[cc] = true
+			out = append(out, cc)
+		}
+		return out
 	}
 
 	joined := 0
 	var blocked []string
-	for id := range g.People {
+	for id, hp := range g.People {
 		if !handleOnly(id) {
 			continue
 		}
@@ -66,12 +89,28 @@ func (ix *Index) AutoJoin() JoinResult {
 		if len(key) < minHandleLen {
 			continue
 		}
-		if ambiguous[key] {
-			blocked = append(blocked, string(id))
+		cands := distinct(key, r.Canonical(id))
+		if len(cands) == 0 {
 			continue
 		}
-		target, ok := byFlat[key]
-		if !ok || r.Canonical(target) == r.Canonical(id) {
+		target, ok := cands[0], true
+		if len(cands) > 1 {
+			// Ambiguous: an ambiguous name must never silently collapse two
+			// people, so merge only when exactly one candidate corroborates by
+			// a shared team or two shared topics.
+			ok = false
+			var matches []model.ID
+			for _, c := range cands {
+				if corroborate(hp, g.People[c]) {
+					matches = append(matches, c)
+				}
+			}
+			if len(matches) == 1 {
+				target, ok = matches[0], true
+			}
+		}
+		if !ok {
+			blocked = append(blocked, string(id))
 			continue
 		}
 		r.Union(target, id)
@@ -79,6 +118,41 @@ func (ix *Index) AutoJoin() JoinResult {
 	}
 	sort.Strings(blocked)
 	return JoinResult{Joined: joined, Ambiguous: blocked}
+}
+
+// corroborate reports whether two people share enough signal (the same team, or
+// at least two topics) to treat an otherwise ambiguous handle match as one
+// person rather than a coincidence of names.
+func corroborate(a, b *model.Person) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	if a.TeamID != "" && a.TeamID == b.TeamID {
+		return true
+	}
+	shared := 0
+	for tid := range a.Topics {
+		if _, ok := b.Topics[tid]; ok {
+			shared++
+			if shared >= 2 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// altKeyPart returns the flattenable part of an alternate identity: the email
+// local-part, the handle after a source prefix, or the whole slug.
+func altKeyPart(alt model.ID) string {
+	s := string(alt)
+	if strings.Contains(s, "@") {
+		return emailLocal(s)
+	}
+	if strings.IndexByte(s, ':') > 0 {
+		return handlePart(alt)
+	}
+	return s
 }
 
 // handleOnly reports whether id is a source-prefixed handle, such as

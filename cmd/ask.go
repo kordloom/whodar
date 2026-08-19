@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/kordloom/whodar/internal/fact"
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/llm"
 	"github.com/kordloom/whodar/internal/policy"
@@ -81,7 +82,11 @@ Examples:
 				return err
 			}
 			warnEmptyAsk(cmd, ix, ans)
-			return writeJSON(cmd.OutOrStdout(), ans.View(query), opts.pretty)
+			if err := writeJSON(cmd.OutOrStdout(), ans.View(query), opts.pretty); err != nil {
+				return err
+			}
+			showRelatedFacts(cmd, opts, query)
+			return nil
 		},
 	}
 	f := cmd.Flags()
@@ -115,6 +120,60 @@ func warnEmptyAsk(cmd *cobra.Command, ix *index.Index, ans resolve.Answer) {
 	fmt.Fprintln(w,
 		"No match for that question. Matching is on the words people and channels are described by, "+
 			"so try the terms your team would use, or `whodar directory` to see what is indexed.")
+}
+
+// showRelatedFacts prints any recorded facts whose subject, object, or detail
+// mentions a query term, so a fact somebody typed appears alongside the crawled
+// answer, labeled with its source and date. Facts are supplementary, so a
+// failure to load them never fails the answer.
+func showRelatedFacts(cmd *cobra.Command, opts *options, query string) {
+	store, err := fact.Load(opts.factsPath())
+	if err != nil {
+		return
+	}
+	terms := queryTerms(query)
+	if len(terms) == 0 {
+		return
+	}
+	var hits []fact.Fact
+	for _, f := range store.List(fact.Filter{}) {
+		if factMentions(f, terms) {
+			hits = append(hits, f)
+		}
+	}
+	if len(hits) == 0 {
+		return
+	}
+	w := cmd.ErrOrStderr()
+	fmt.Fprintln(w, "Recorded facts:")
+	writeFactLines(w, hits)
+}
+
+// queryTerms lowercases the query and returns its words of three or more
+// letters or digits, the terms a fact is matched against.
+func queryTerms(q string) []string {
+	var out []string
+	fields := strings.FieldsFunc(strings.ToLower(q), func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'))
+	})
+	for _, w := range fields {
+		if len(w) >= 3 {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// factMentions reports whether any term appears in the fact's subject, object,
+// or detail.
+func factMentions(f fact.Fact, terms []string) bool {
+	hay := strings.ToLower(f.Subject + " " + f.Object + " " + f.Detail)
+	for _, t := range terms {
+		if strings.Contains(hay, t) {
+			return true
+		}
+	}
+	return false
 }
 
 // pickResolver builds the resolver for the chosen mode. Semantic mode and the

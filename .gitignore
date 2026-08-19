@@ -29,3 +29,6 @@ coverage.*
 
 # Cloudflare wrangler local state, written during pages deploy.
 .wrangler/
+
+# Local release helper, never committed
+/ship.sh

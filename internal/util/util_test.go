@@ -166,3 +166,48 @@ func TestGitHubNoreplyLogin(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeEmail(t *testing.T) {
+	t.Parallel()
+	tests := []struct{ In, Want string }{
+		{"Alice@X.COM", "alice@x.com"},
+		{"  bob@x.com  ", "bob@x.com"},
+		{"alice+ci@x.com", "alice@x.com"},
+		{"alice+a+b@x.com", "alice@x.com"},
+		{"first.last@corp.com", "first.last@corp.com"},
+		{"notanemail", "notanemail"},
+		{"", ""},
+	}
+	for _, test := range tests {
+		t.Run(test.In, func(t *testing.T) {
+			t.Parallel()
+			if got := NormalizeEmail(test.In); got != test.Want {
+				t.Errorf("NormalizeEmail(%q) = %q, want %q", test.In, got, test.Want)
+			}
+		})
+	}
+}
+
+func TestIsRoleEmail(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		In   string
+		Want bool
+	}{
+		{"support@x.com", true},
+		{"NoReply@x.com", true},
+		{"oncall@x.com", true},
+		{"support+x@x.com", true},
+		{"alice@x.com", false},
+		{"first.last@corp.com", false},
+		{"notanemail", false},
+	}
+	for _, test := range tests {
+		t.Run(test.In, func(t *testing.T) {
+			t.Parallel()
+			if got := IsRoleEmail(test.In); got != test.Want {
+				t.Errorf("IsRoleEmail(%q) = %v, want %v", test.In, got, test.Want)
+			}
+		})
+	}
+}
