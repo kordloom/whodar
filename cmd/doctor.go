@@ -1,0 +1,270 @@
+package cmd
+
+import (
+	"fmt"
+	"io"
+	"sort"
+	"time"
+
+	"github.com/spf13/cobra"
+
+	"github.com/kordloom/whodar/internal/license"
+	"github.com/kordloom/whodar/internal/secret"
+)
+
+// staleAfter is how old an index may get before doctor flags it for a refresh.
+const staleAfter = 30 * 24 * time.Hour
+
+// checkLevel is a doctor finding's severity.
+type checkLevel int
+
+const (
+	// levelOK marks a passing check.
+	levelOK checkLevel = iota
+	// levelWarn marks a check that works but should be addressed.
+	levelWarn
+	// levelFail marks a check that stops whodar from answering.
+	levelFail
+)
+
+// label renders the level as a fixed-width tag.
+func (l checkLevel) label() string {
+	switch l {
+	case levelFail:
+		return "FAIL"
+	case levelWarn:
+		return "WARN"
+	default:
+		return " OK "
+	}
+}
+
+// finding is one doctor check result: what was examined, how it turned out, and
+// the exact command that fixes it when it did not pass.
+type finding struct {
+	// Name is the short check name.
+	Name string
+	// Level is the severity.
+	Level checkLevel
+	// Detail is what doctor found.
+	Detail string
+	// Fix is the command that resolves the finding; empty when nothing to fix.
+	Fix string
+}
+
+// doctorFacts is the plain snapshot diagnose reasons over, so the check logic is
+// pure and testable apart from loading the index and resolving credentials.
+type doctorFacts struct {
+	// IndexPath is where the index is expected on disk.
+	IndexPath string
+	// IndexLoaded is true when the index opened successfully.
+	IndexLoaded bool
+	// IndexErr is the load error text when IndexLoaded is false.
+	IndexErr string
+	// BuiltAt is when the index was last built; zero when unknown.
+	BuiltAt time.Time
+	// Now is the reference time for the freshness check.
+	Now time.Time
+	// People is how many people the index holds.
+	People int
+	// Encrypted is true when a key is configured to encrypt the index at rest.
+	Encrypted bool
+	// Embeddings is true when the index carries vectors for semantic search.
+	Embeddings bool
+	// IndexSources names the sources already folded into the index.
+	IndexSources []string
+	// Configured maps a connector name to whether its credentials are present.
+	Configured map[string]bool
+	// LicenseReason is the resolved license tier description.
+	LicenseReason string
+}
+
+// diagnose runs every check against the facts and returns findings in report
+// order. It never reads the environment or disk, so a test can drive any state.
+func diagnose(f doctorFacts) []finding {
+	var out []finding
+
+	if !f.IndexLoaded {
+		out = append(out, finding{
+			Name:   "index",
+			Level:  levelFail,
+			Detail: fmt.Sprintf("cannot load %s: %s", f.IndexPath, f.IndexErr),
+			Fix:    "whodar index --source org-csv --file people.csv",
+		})
+		// Nothing else is knowable without an index; the credential survey below
+		// still helps the user get to a first index.
+	} else {
+		out = append(out, finding{
+			Name:   "index",
+			Level:  levelOK,
+			Detail: fmt.Sprintf("%d people at %s", f.People, f.IndexPath),
+		})
+		if f.People == 0 {
+			out = append(out, finding{
+				Name:   "content",
+				Level:  levelWarn,
+				Detail: "index holds no people",
+				Fix:    "whodar index --source org-csv --file people.csv",
+			})
+		}
+		out = append(out, freshnessFinding(f))
+		out = append(out, staleSourceFindings(f)...)
+		if !f.Embeddings {
+			out = append(out, finding{
+				Name:   "embeddings",
+				Level:  levelWarn,
+				Detail: "no vectors; semantic and llm ask modes are unavailable",
+				Fix:    "whodar index --merge --embed",
+			})
+		}
+		enc := "index is not encrypted at rest"
+		if f.Encrypted {
+			enc = "index is encrypted at rest"
+		}
+		out = append(out, finding{Name: "encryption", Level: levelOK, Detail: enc})
+	}
+
+	out = append(out, credentialFindings(f)...)
+	out = append(out, finding{Name: "license", Level: levelOK, Detail: f.LicenseReason})
+	return out
+}
+
+// freshnessFinding checks how old the index is against staleAfter.
+func freshnessFinding(f doctorFacts) finding {
+	if f.BuiltAt.IsZero() {
+		return finding{Name: "freshness", Level: levelWarn, Detail: "build time unknown", Fix: "whodar index --full"}
+	}
+	age := f.Now.Sub(f.BuiltAt).Round(time.Hour)
+	if age > staleAfter {
+		return finding{
+			Name:   "freshness",
+			Level:  levelWarn,
+			Detail: fmt.Sprintf("last built %s ago", age),
+			Fix:    "whodar index --merge",
+		}
+	}
+	return finding{Name: "freshness", Level: levelOK, Detail: fmt.Sprintf("last built %s ago", age)}
+}
+
+// staleSourceFindings warns when a source already in the index has since lost
+// the credentials needed to refresh it. A source with no credential need (org
+// chart CSV, git, codeowners, json) is skipped.
+func staleSourceFindings(f doctorFacts) []finding {
+	var out []finding
+	for _, name := range f.IndexSources {
+		need, ok := f.Configured[name]
+		if ok && !need {
+			out = append(out, finding{
+				Name:   "source:" + name,
+				Level:  levelWarn,
+				Detail: fmt.Sprintf("%s is indexed but its credentials are missing, so it cannot refresh", name),
+				Fix:    "whodar connect",
+			})
+		}
+	}
+	return out
+}
+
+// credentialFindings reports which live connectors are ready to run. It lists
+// only connectors that need credentials; the file and repo sources never do.
+func credentialFindings(f doctorFacts) []finding {
+	names := make([]string, 0, len(f.Configured))
+	for name := range f.Configured {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	ready := 0
+	for _, name := range names {
+		if f.Configured[name] {
+			ready++
+		}
+	}
+	if ready == 0 {
+		return []finding{{
+			Name:   "connectors",
+			Level:  levelWarn,
+			Detail: "no live connector credentials are set",
+			Fix:    "whodar connect",
+		}}
+	}
+	var out []finding
+	for _, name := range names {
+		if f.Configured[name] {
+			out = append(out, finding{Name: "connector:" + name, Level: levelOK, Detail: "credentials present"})
+		}
+	}
+	return out
+}
+
+// writeFindings prints the report and returns how many findings failed.
+func writeFindings(w io.Writer, findings []finding) int {
+	fails := 0
+	for _, fnd := range findings {
+		if fnd.Level == levelFail {
+			fails++
+		}
+		fmt.Fprintf(w, "[%s] %s: %s\n", fnd.Level.label(), fnd.Name, fnd.Detail)
+		if fnd.Fix != "" {
+			fmt.Fprintf(w, "       fix: %s\n", fnd.Fix)
+		}
+	}
+	return fails
+}
+
+// configuredConnectors resolves which live connectors have their credentials
+// set, reading only presence and never the secret value.
+func configuredConnectors() map[string]bool {
+	set := func(name string) bool { return secret.Resolve(name) != "" }
+	jiraCreds := set(jiraURLEnv) && set(jiraTokenEnv)
+	confluenceURL := set(confluenceURLEnv) || set(jiraURLEnv)
+	confluenceToken := set(confluenceTokenEnv) || set(jiraTokenEnv)
+	return map[string]bool{
+		"slack":      set(slackTokenEnv),
+		"github":     set(githubTokenEnv),
+		"pagerduty":  set(pagerdutyTokenEnv),
+		"jira":       jiraCreds,
+		"confluence": confluenceURL && confluenceToken,
+	}
+}
+
+// newDoctorCmd builds the doctor command: it diagnoses why whodar cannot answer
+// or is misconfigured, prints the exact fix for each problem, and exits nonzero
+// when something is broken so it can gate a script.
+func newDoctorCmd(opts *options) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "doctor",
+		Short: "Diagnose configuration and index problems and print the fix for each",
+		Long: `Check the index and the connector credentials, report what is wrong, and print
+the exact command that fixes each problem. Exits nonzero when a problem stops
+whodar from answering, so it works as a gate in a script.`,
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			facts := doctorFacts{
+				IndexPath:     opts.indexPath(),
+				Now:           time.Now(),
+				Configured:    configuredConnectors(),
+				LicenseReason: license.Resolve(opts.dataDir, time.Now()).Reason(),
+			}
+			if ix, err := opts.loadIndex(cmd); err != nil {
+				facts.IndexErr = err.Error()
+			} else {
+				facts.IndexLoaded = true
+				facts.People = len(ix.Graph.People)
+				facts.BuiltAt = ix.BuiltAt()
+				facts.Embeddings = ix.HasEmbeddings()
+				facts.IndexSources = ix.SourceNames()
+				if codec, cerr := opts.codec(); cerr == nil {
+					facts.Encrypted = codec != nil
+				}
+			}
+			findings := diagnose(facts)
+			fails := writeFindings(cmd.OutOrStdout(), findings)
+			if fails > 0 {
+				return fmt.Errorf("doctor: %d problem(s) need attention", fails)
+			}
+			return nil
+		},
+	}
+	return cmd
+}

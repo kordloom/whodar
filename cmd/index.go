@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -108,6 +109,7 @@ Sources and their credentials:
   org-csv     --file people.csv                          none
   codeowners  --file CODEOWNERS|repo-root                none
   git         --repo-path DIR (repeatable)               none
+  json        --file FILE or - for stdin                 none
   slack       [--include-private] [--slack-join]         WHODAR_SLACK_TOKEN
   github      --repo o/r | --github-org ORG              WHODAR_GITHUB_TOKEN
   jira        --jira-project KEY | --jira-jql JQL        WHODAR_JIRA_URL/EMAIL/TOKEN
@@ -195,8 +197,15 @@ Start with the org chart, then merge everything else onto it:
 					MaxCommits: maxCommits,
 					Log:        cmd.ErrOrStderr(),
 				}).Fetch(cmd.Context())
+			case "json":
+				rc, closeJSON, jerr := jsonInput(cmd, file)
+				if jerr != nil {
+					return jerr
+				}
+				recs, err = connector.NewJSON(rc, "json").Fetch(cmd.Context())
+				closeJSON()
 			default:
-				return fmt.Errorf("%w: %q (want org-csv, slack, codeowners, github, jira, confluence, pagerduty, or git)", ErrUnknownSource, source)
+				return fmt.Errorf("%w: %q (want org-csv, slack, codeowners, github, jira, confluence, pagerduty, git, or json)", ErrUnknownSource, source)
 			}
 			if err != nil {
 				return err
@@ -219,8 +228,8 @@ Start with the org chart, then merge everything else onto it:
 		},
 	}
 	f := cmd.Flags()
-	f.StringVar(&source, "source", "org-csv", "Source type: org-csv, slack, codeowners, github, jira, confluence, pagerduty, or git.")
-	f.StringVar(&file, "file", "", "Path to the source file: the CSV for org-csv, the CODEOWNERS file or repo root for codeowners.")
+	f.StringVar(&source, "source", "org-csv", "Source type: org-csv, slack, codeowners, github, jira, confluence, pagerduty, git, or json.")
+	f.StringVar(&file, "file", "", "Path to the source file: the CSV for org-csv, the CODEOWNERS file or repo root for codeowners, the JSON array for json (- for stdin).")
 	f.BoolVar(&includePrivate, "include-private", false, "Ingest private Slack channels if policy allows.")
 	f.BoolVar(&slackJoin, "slack-join", false,
 		"Have the bot self-join public channels it is not in, so a workspace indexes without manual invites (needs channels:join; posts a join notice per channel).")
@@ -358,8 +367,14 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 		}
 		ix.Build(recs)
 	}
-	if joined := ix.AutoJoin(); joined > 0 {
-		fmt.Fprintf(cmd.ErrOrStderr(), "auto-joined %d handle identities\n", joined)
+	res := ix.AutoJoin()
+	if res.Joined > 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "auto-joined %d handle identities\n", res.Joined)
+	}
+	if len(res.Ambiguous) > 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(),
+			"%d handle(s) share a name with more than one person and were left unresolved; add them to the alias file: %s\n",
+			len(res.Ambiguous), strings.Join(res.Ambiguous, ", "))
 	}
 	ix.Canonicalize()
 
@@ -449,6 +464,20 @@ func embedProgressEvery(total int) int {
 // incrementalCapable reports whether a source supports incremental re-indexing,
 // fetching only what changed since a watermark. Other sources read in full until
 // they gain the same support.
+// jsonInput opens the JSON import source: stdin when file is empty or "-",
+// otherwise the named file. The returned close func is always safe to call,
+// so the caller closes unconditionally without tracking which branch ran.
+func jsonInput(cmd *cobra.Command, file string) (io.Reader, func(), error) {
+	if file == "" || file == "-" {
+		return cmd.InOrStdin(), func() {}, nil
+	}
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, nil, fmt.Errorf("json source: open %s: %w", file, err)
+	}
+	return f, func() { _ = f.Close() }, nil
+}
+
 func incrementalCapable(source string) bool {
 	return source == "jira" || source == "confluence" || source == "slack" || source == "github"
 }

@@ -14,11 +14,12 @@ import (
 func TestAutoJoin(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		Records    []connector.Record
-		WantPeople int
-		WantJoined int
-		WantAlias  string // identity expected after the join; empty skips
-		WantOn     string // email of the person carrying the alias
+		Records       []connector.Record
+		WantAmbiguous []string // handle ids left unresolved by a name collision
+		WantPeople    int
+		WantJoined    int
+		WantAlias     string // identity expected after the join; empty skips
+		WantOn        string // email of the person carrying the alias
 	}{{ // Test 0: A handle joins its unique person by flattened name.
 		Records: []connector.Record{
 			{Kind: connector.KindPerson, Email: "kim.doe@x.com", Name: "Kim Doe", Source: "t"},
@@ -37,7 +38,7 @@ func TestAutoJoin(t *testing.T) {
 			{Kind: connector.KindPerson, Email: "kdoe@y.com", Name: "Kim-Doe", Source: "t"},
 			{Kind: connector.KindPerson, PersonID: "codeowners:kim-doe", Name: "@kim-doe", Source: "t"},
 		},
-		WantPeople: 3, WantJoined: 0,
+		WantPeople: 3, WantJoined: 0, WantAmbiguous: []string{"codeowners:kim-doe"},
 	}, { // Test 3: A handle matching nobody stays separate.
 		Records: []connector.Record{
 			{Kind: connector.KindPerson, Email: "kim.doe@x.com", Name: "Kim Doe", Source: "t"},
@@ -56,11 +57,15 @@ func TestAutoJoin(t *testing.T) {
 			t.Parallel()
 			ix := New()
 			ix.Build(test.Records)
-			joined := ix.AutoJoin()
+			res := ix.AutoJoin()
+			joined := res.Joined
 			ix.Canonicalize()
 
 			if joined != test.WantJoined {
 				t.Errorf("joined = %d, want %d", joined, test.WantJoined)
+			}
+			if !slices.Equal(res.Ambiguous, test.WantAmbiguous) {
+				t.Errorf("ambiguous = %v, want %v", res.Ambiguous, test.WantAmbiguous)
 			}
 			if len(ix.Graph.People) != test.WantPeople {
 				t.Errorf("people = %d, want %d: %v",

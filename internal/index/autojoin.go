@@ -1,6 +1,7 @@
 package index
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/kordloom/whodar/internal/model"
@@ -9,14 +10,25 @@ import (
 // minHandleLen keeps trivially short handles from joining anyone.
 const minHandleLen = 3
 
+// JoinResult reports what AutoJoin did: how many handle-only people it unioned
+// to a canonical person, and which handles it left separate because their name
+// or email collided across more than one distinct person.
+type JoinResult struct {
+	// Joined is how many handle-only people were unioned to a canonical person.
+	Joined int
+	// Ambiguous lists the handle ids left unresolved because they matched more
+	// than one person, so a reader can add them to the alias file.
+	Ambiguous []string
+}
+
 // AutoJoin unions each handle-only person, such as github:kim-doe or
 // codeowners:kim-doe, with the one canonical person whose flattened name or
 // email local-part matches the handle, so kim-doe, Kim Doe, and
 // kim.doe@example.com become one node without an alias file. A handle that
 // matches nobody or more than one person stays separate; the alias file
-// remains the override for those. It returns how many handles joined; run
-// Canonicalize afterward to merge the graph.
-func (ix *Index) AutoJoin() int {
+// remains the override for those. It returns a JoinResult with the join count
+// and the handles left ambiguous; run Canonicalize afterward to merge the graph.
+func (ix *Index) AutoJoin() JoinResult {
 	r := ix.identityResolver()
 	g := ix.Graph
 
@@ -45,12 +57,17 @@ func (ix *Index) AutoJoin() int {
 	}
 
 	joined := 0
+	var blocked []string
 	for id := range g.People {
 		if !handleOnly(id) {
 			continue
 		}
 		key := flatten(handlePart(id))
-		if len(key) < minHandleLen || ambiguous[key] {
+		if len(key) < minHandleLen {
+			continue
+		}
+		if ambiguous[key] {
+			blocked = append(blocked, string(id))
 			continue
 		}
 		target, ok := byFlat[key]
@@ -60,7 +77,8 @@ func (ix *Index) AutoJoin() int {
 		r.Union(target, id)
 		joined++
 	}
-	return joined
+	sort.Strings(blocked)
+	return JoinResult{Joined: joined, Ambiguous: blocked}
 }
 
 // handleOnly reports whether id is a source-prefixed handle, such as
