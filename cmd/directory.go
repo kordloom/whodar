@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
@@ -51,7 +52,9 @@ Examples:
 				return fmt.Errorf(
 					"%w: unknown section %q; use people, channels, teams, or topics", ErrBadArgs, section)
 			}
-			return writeJSON(cmd.OutOrStdout(), v, opts.pretty)
+			return opts.render(cmd.OutOrStdout(), v, func(w io.Writer, s style) {
+				renderDirectory(w, dir, section, s)
+			})
 		},
 	}
 	return cmd

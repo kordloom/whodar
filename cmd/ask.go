@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"strings"
@@ -82,7 +83,10 @@ Examples:
 				return err
 			}
 			warnEmptyAsk(cmd, ix, ans)
-			if err := writeJSON(cmd.OutOrStdout(), ans.View(query), opts.pretty); err != nil {
+			view := ans.View(query)
+			if err := opts.render(cmd.OutOrStdout(), view, func(w io.Writer, s style) {
+				renderAsk(w, query, view, s)
+			}); err != nil {
 				return err
 			}
 			showRelatedFacts(cmd, opts, query)

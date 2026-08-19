@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"io"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -47,7 +48,9 @@ embeddings, whether a key is set to encrypt it at rest, and the license tier.`,
 				view["built_at"] = t.Format(time.RFC3339)
 				view["age"] = time.Since(t).Round(time.Minute).String()
 			}
-			return writeJSON(cmd.OutOrStdout(), view, opts.pretty)
+			return opts.render(cmd.OutOrStdout(), view, func(w io.Writer, s style) {
+				renderStatus(w, view, s)
+			})
 		},
 	}
 	return cmd

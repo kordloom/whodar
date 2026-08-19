@@ -1,6 +1,7 @@
 package index
 
 import (
+	"unicode"
 	"math"
 	"sort"
 	"strings"
@@ -212,7 +213,20 @@ func groupLabel(key string) string {
 	if strings.HasPrefix(key, "ch:") {
 		return "#" + name
 	}
-	return "team " + name
+	return "team " + titleName(name)
+}
+
+// titleName capitalizes each word of a folded group name for a readable label.
+func titleName(s string) string {
+	words := strings.Fields(s)
+	for i, w := range words {
+		r := []rune(w)
+		if len(r) > 0 {
+			r[0] = unicode.ToUpper(r[0])
+			words[i] = string(r)
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 // topicName returns a topic's display name, or the raw id when unknown.

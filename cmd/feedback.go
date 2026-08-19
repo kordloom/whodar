@@ -95,7 +95,9 @@ func newFeedbackListCmd(opts *options) *cobra.Command {
 			if entries == nil {
 				entries = []feedback.Entry{}
 			}
-			return writeJSON(cmd.OutOrStdout(), entries, opts.pretty)
+			return opts.render(cmd.OutOrStdout(), entries, func(w io.Writer, s style) {
+				renderFeedback(w, entries, s)
+			})
 		},
 	}
 	addFeedbackFilterFlags(cmd, &filter)

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -52,7 +53,7 @@ built from.
 Examples:
   whodar recall "certificate renewal"
   whodar recall --me jane@example.com "kafka consumer lag"`,
-		Args: cobra.MinimumNArgs(1),
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ix, err := opts.loadIndex(cmd)
 			if err != nil {
@@ -92,7 +93,9 @@ Examples:
 				})
 			warnEmptyRecall(cmd, res, ans, person)
 			warnUnexplained(cmd, ans, explain)
-			return writeJSON(cmd.OutOrStdout(), ans, opts.pretty)
+			return opts.render(cmd.OutOrStdout(), ans, func(w io.Writer, s style) {
+				renderRecall(w, ans, s)
+			})
 		},
 	}
 	cmd.Flags().IntVar(&limit, "limit", 5, "Maximum conversations to return.")

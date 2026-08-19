@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -49,7 +50,7 @@ func newLicenseStatusCmd(opts *options) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			state := license.Resolve(opts.dataDir, time.Now())
-			return writeJSON(cmd.OutOrStdout(), struct {
+			out := struct {
 				// Tier is the feature set in force.
 				Tier string `json:"tier"`
 				// Org is who the license was issued to, when there is one.
@@ -66,7 +67,10 @@ func newLicenseStatusCmd(opts *options) *cobra.Command {
 				ID:      state.License.ID,
 				Expires: expiryText(state.License.Expires),
 				Reason:  state.Reason(),
-			}, opts.pretty)
+			}
+			return opts.render(cmd.OutOrStdout(), out, func(w io.Writer, s style) {
+				renderLicense(w, string(state.Tier), state.License.Org, state.License.ID, expiryText(state.License.Expires), state.Reason(), s)
+			})
 		},
 	}
 }

@@ -26,6 +26,10 @@ type options struct {
 	policyName string
 	// pretty indents JSON output when true.
 	pretty bool
+	// jsonOut forces JSON output even at a terminal.
+	jsonOut bool
+	// humanOut forces human-readable output even when piped.
+	humanOut bool
 	// pol is the resolved egress policy, set before any subcommand runs.
 	pol policy.Policy
 	// systemPolicyFile is the org-pinned policy path, defaultPolicyFile in production.
@@ -98,6 +102,8 @@ func newRootCmd() *cobra.Command {
 	pf.StringVar(&opts.dataDir, "data-dir", opts.dataDir, "Directory for the on-disk index.")
 	pf.StringVar(&opts.policyName, "policy", opts.policyName, "Egress policy: strict, redacted, or open.")
 	pf.BoolVar(&opts.pretty, "pretty", false, "Indent JSON output.")
+	pf.BoolVar(&opts.jsonOut, "json", false, "Force JSON output, even at a terminal.")
+	pf.BoolVar(&opts.humanOut, "human", false, "Force human-readable output, even when piped.")
 
 	root.AddCommand(
 		newIndexCmd(opts), newConnectCmd(opts), newAskCmd(opts), newRecallCmd(opts), newNearCmd(opts),

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -33,11 +34,14 @@ id, or an exact name.
 			if p == nil {
 				return fmt.Errorf("%w: no person matches %q; try an email, or run `whodar directory`", ErrBadArgs, who)
 			}
+			nearList := ix.Near(p.ID, limit)
 			view := map[string]any{
 				"person": map[string]string{"id": string(p.ID), "name": p.Name, "email": p.Email},
-				"near":   ix.Near(p.ID, limit),
+				"near":   nearList,
 			}
-			return writeJSON(cmd.OutOrStdout(), view, opts.pretty)
+			return opts.render(cmd.OutOrStdout(), view, func(w io.Writer, s style) {
+				renderNear(w, p.Name, nearList, s)
+			})
 		},
 	}
 	cmd.Flags().IntVar(&limit, "limit", 10, "Maximum number of people to return.")
