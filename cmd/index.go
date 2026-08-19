@@ -98,10 +98,11 @@ func newIndexCmd(opts *options) *cobra.Command {
 people join across sources by email, or by an alias file (--aliases) when a
 source only knows a handle. Dated activity decays per --half-life-days.
 
-Re-indexing Jira or Confluence with --merge is incremental: it fetches only the
-issues or pages changed since the last run and folds them in, keeping everyone it
-did not re-read. Pass --full to re-read everything and recompact. Other sources
-always read in full.
+Re-indexing Jira, Confluence, GitHub, or Slack with --merge is incremental: it
+fetches only what changed since the last run and folds it in, keeping everyone it
+did not re-read. GitHub skips its whole-repo contributor and CODEOWNERS snapshots
+on an incremental run, and Slack misses edits to messages older than the window,
+so pass --full periodically to re-read everything and recompact.
 
 Sources and their credentials:
   org-csv     --file people.csv                          none
@@ -134,7 +135,11 @@ Start with the org chart, then merge everything else onto it:
 			// index of a source that supports it, with a saved watermark and no
 			// --full. When so, fetch only what changed since the watermark and
 			// fold it in rather than re-reading and replacing the whole source.
-			scope := indexScope(source, jiraJQL, jiraProjects, confluenceCQL, confluenceSpaces)
+			scope := indexScope(source, scopeInputs{
+				jiraJQL: jiraJQL, jiraProjects: jiraProjects,
+				confluenceCQL: confluenceCQL, confluenceSpaces: confluenceSpaces,
+				githubRepos: repos, githubOrg: githubOrg, slackPrivate: includePrivate,
+			})
 			var since time.Time
 			var incremental bool
 			if merge && !full && incrementalCapable(source) && indexExists(opts) {
@@ -158,7 +163,7 @@ Start with the org chart, then merge everything else onto it:
 				recs, eps, err = fetchSlack(cmd, opts, slackArgs{
 					includePrivate: includePrivate, joinPublic: slackJoin, sinceDays: sinceDays, maxMessages: maxMessages,
 					episodes: episodes || archive, maxEpisodes: maxEpisodes,
-					archive: archive, maxArchive: maxArchive,
+					archive: archive, maxArchive: maxArchive, since: since,
 				})
 			case "codeowners":
 				if file == "" {
@@ -167,7 +172,7 @@ Start with the org chart, then merge everything else onto it:
 				recs, err = connector.NewCodeOwners(file).Fetch(cmd.Context())
 			case "github":
 				recs, eps, err = fetchGitHub(cmd,
-					githubArgs{repos, githubOrg, maxRepos, githubEmails, episodes || archive})
+					githubArgs{repos, githubOrg, maxRepos, githubEmails, episodes || archive, since})
 			case "jira":
 				recs, eps, err = fetchJira(cmd,
 					jiraArgs{jiraURL, jiraProjects, jiraJQL, maxIssues, episodes || archive, jiraServer, since})
@@ -437,30 +442,58 @@ func embedProgressEvery(total int) int {
 // fetching only what changed since a watermark. Other sources read in full until
 // they gain the same support.
 func incrementalCapable(source string) bool {
-	return source == "jira" || source == "confluence"
+	return source == "jira" || source == "confluence" || source == "slack" || source == "github"
+}
+
+// scopeInputs carries the query-scope flags that key a source's watermark.
+type scopeInputs struct {
+	// jiraJQL and jiraProjects scope a Jira read.
+	jiraJQL      string
+	jiraProjects []string
+	// confluenceCQL and confluenceSpaces scope a Confluence read.
+	confluenceCQL    string
+	confluenceSpaces []string
+	// githubRepos and githubOrg scope a GitHub read.
+	githubRepos []string
+	githubOrg   string
+	// slackPrivate reports whether private channels are in scope.
+	slackPrivate bool
 }
 
 // indexScope returns the watermark key for a source's current query, so changing
-// the scope, such as the set of projects or spaces indexed, starts a fresh
-// watermark rather than reusing one taken over different items.
-func indexScope(source, jiraJQL string, jiraProjects []string, confluenceCQL string, confluenceSpaces []string) string {
+// the scope, such as the set of projects, spaces, or repositories indexed,
+// starts a fresh watermark rather than reusing one taken over different items.
+func indexScope(source string, in scopeInputs) string {
 	switch source {
 	case "jira":
-		if strings.TrimSpace(jiraJQL) != "" {
-			return "jql:" + jiraJQL
+		if strings.TrimSpace(in.jiraJQL) != "" {
+			return "jql:" + in.jiraJQL
 		}
-		if len(jiraProjects) > 0 {
-			return "project:" + sortedJoin(jiraProjects)
+		if len(in.jiraProjects) > 0 {
+			return "project:" + sortedJoin(in.jiraProjects)
 		}
 		return "all"
 	case "confluence":
-		if strings.TrimSpace(confluenceCQL) != "" {
-			return "cql:" + confluenceCQL
+		if strings.TrimSpace(in.confluenceCQL) != "" {
+			return "cql:" + in.confluenceCQL
 		}
-		if len(confluenceSpaces) > 0 {
-			return "space:" + sortedJoin(confluenceSpaces)
+		if len(in.confluenceSpaces) > 0 {
+			return "space:" + sortedJoin(in.confluenceSpaces)
 		}
 		return "all"
+	case "github":
+		if in.githubOrg != "" {
+			return "org:" + in.githubOrg
+		}
+		if len(in.githubRepos) > 0 {
+			return "repos:" + sortedJoin(in.githubRepos)
+		}
+		return "all"
+	case "slack":
+		if in.slackPrivate {
+			return "all"
+		}
+		return "public"
 	default:
 		return ""
 	}
@@ -610,6 +643,9 @@ type slackArgs struct {
 	archive bool
 	// maxArchive caps retained messages per conversation.
 	maxArchive int
+	// since limits an incremental read to messages posted at or after it; the
+	// zero value reads the full window.
+	since time.Time
 }
 
 // fetchSlack builds Slack records, enforcing the private-channel policy guard.
@@ -655,6 +691,7 @@ func fetchSlack(
 		MaxEpisodesPerChannel: a.maxEpisodes,
 		Archive:               a.archive,
 		MaxArchiveMessages:    a.maxArchive,
+		Since:                 a.since,
 		Log:                   cmd.ErrOrStderr(),
 	})
 	recs, err := src.Fetch(cmd.Context())
@@ -704,6 +741,9 @@ type githubArgs struct {
 	emails bool
 	// episodes records merged changes.
 	episodes bool
+	// since limits an incremental read to pull requests and issues updated at or
+	// after it; the zero value reads in full.
+	since time.Time
 }
 
 // fetchGitHub builds GitHub records from the configured repositories or org.
@@ -717,7 +757,7 @@ func fetchGitHub(cmd *cobra.Command, a githubArgs) ([]connector.Record, []episod
 	}
 	src := connector.NewGitHub(token, connector.GitHubOptions{
 		Repos: a.repos, Org: a.org, MaxRepos: a.maxRepos, ResolveEmails: a.emails,
-		Episodes: a.episodes, Log: cmd.ErrOrStderr(),
+		Episodes: a.episodes, Since: a.since, Log: cmd.ErrOrStderr(),
 	})
 	recs, err := src.Fetch(cmd.Context())
 	if err != nil {
