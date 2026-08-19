@@ -3,6 +3,9 @@ package simorg
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
+	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -19,10 +22,15 @@ import (
 // companies and take minutes, so an ordinary `go test ./...` skips them.
 const scaleEnv = "WHODAR_SCALE"
 
+// embedDim is the vector width of a typical local embedding model, used to
+// profile the memory and query cost of embeddings without standing up a model.
+const embedDim = 768
+
 // TestScale measures what whodar costs as a company grows: how long ingest
 // takes, how large the files get, how long a cold start takes, and how fast it
-// answers. The store is one JSON file read whole on every command, so the
-// question this answers is where that stops being reasonable.
+// answers, both by keyword and, with vectors filled, by meaning. The store is
+// one JSON file read whole on every command, so the question this answers is
+// where that stops being reasonable.
 //
 //	WHODAR_SCALE=1 go test ./internal/simorg/ -run TestScale -v -timeout 30m
 func TestScale(t *testing.T) {
@@ -38,16 +46,17 @@ func TestScale(t *testing.T) {
 		{"company", Spec{People: 1000, Channels: 150, Topics: 16, ThreadsPerChannel: 100, ChatterPerChannel: 600}},
 		{"enterprise", Spec{People: 5000, Channels: 400, Topics: 16, ThreadsPerChannel: 120, ChatterPerChannel: 800}},
 	}
-	t.Logf("%-11s %7s %7s %8s %9s %9s %9s %8s %8s %9s",
-		"size", "people", "convos", "ingest", "index", "episodes", "cold", "ask", "recall", "heap")
+	t.Logf("%-11s %7s %7s %7s %8s %9s %8s %8s %8s %8s %9s %8s %8s",
+		"size", "people", "convos", "terms", "ingest", "index", "cold", "ask", "recall",
+		"embed", "vectors", "sem", "heap")
 	for _, size := range sizes {
 		size.Spec.Seed = 11
 		t.Run(size.Name, func(t *testing.T) {
 			m := measure(t, size.Spec)
-			t.Logf("%-11s %7d %7d %8s %9s %9s %9s %8s %8s %9s",
-				size.Name, m.people, m.episodes, short(m.ingest), bytes(m.indexBytes),
-				bytes(m.episodeBytes), short(m.coldStart), short(m.askLatency),
-				short(m.recallLatency), bytes(int64(m.heap)))
+			t.Logf("%-11s %7d %7d %7d %8s %9s %8s %8s %8s %8s %9s %8s %9s",
+				size.Name, m.people, m.episodes, m.postings, short(m.ingest), bytes(m.indexBytes),
+				short(m.coldStart), short(m.askLatency), short(m.recallLatency),
+				short(m.embed), bytes(m.vectorBytes), short(m.semantic), bytes(int64(m.heap)))
 		})
 	}
 }
@@ -56,6 +65,8 @@ func TestScale(t *testing.T) {
 type measurement struct {
 	// people and episodes are the size actually produced.
 	people, episodes int
+	// postings is the distinct-term vocabulary of the person index.
+	postings int
 	// ingest is how long the connectors and indexer took.
 	ingest time.Duration
 	// indexBytes and episodeBytes are the files on disk.
@@ -65,6 +76,14 @@ type measurement struct {
 	coldStart time.Duration
 	// askLatency and recallLatency are median-ish answer times.
 	askLatency, recallLatency time.Duration
+	// embed is how long filling every person's vector took.
+	embed time.Duration
+	// vectorBytes is the index file's size once embeddings are stored, which
+	// dwarfs the keyword index and is what semantic search costs on disk.
+	vectorBytes int64
+	// semantic is a median semantic answer time, the cost of the cosine scan
+	// over every person that grows linearly with the company.
+	semantic time.Duration
 	// heap is bytes resident after loading, which is what a long-lived serve
 	// or bot process holds.
 	heap uint64
@@ -119,9 +138,66 @@ func measure(t *testing.T, spec Spec) measurement {
 		m.heap = after.HeapAlloc - before.HeapAlloc
 	}
 
+	m.postings = loadedIndex.PostingCount()
 	m.askLatency = timeAsk(t, loadedIndex, built)
 	m.recallLatency = timeRecall(t, loadedIndex, loadedEpisodes, built)
+	m.embed, m.vectorBytes, m.semantic = measureVectors(t, dir, loadedIndex)
 	return m
+}
+
+// measureVectors fills fake embeddings and measures what semantic search costs:
+// the time to embed, the on-disk size of the vectors, and a median cosine-scan
+// query. The values are meaningless for ranking; only the shape and count drive
+// the cost, which is what a scale profile needs.
+func measureVectors(t *testing.T, dir string, ix *index.Index) (time.Duration, int64, time.Duration) {
+	t.Helper()
+	start := time.Now()
+	if err := ix.Embed(context.Background(), fakeEmbedder{}); err != nil {
+		t.Fatalf("embed: %v", err)
+	}
+	embedDur := time.Since(start)
+
+	vecPath := filepath.Join(dir, "vectors.json")
+	if err := ix.Save(vecPath); err != nil {
+		t.Fatalf("save vectors: %v", err)
+	}
+	vecBytes := fileSize(t, vecPath)
+
+	q, _ := fakeEmbedder{}.Embed(context.Background(), "who owns billing retries")
+	var total time.Duration
+	const runs = 15
+	for range runs {
+		s := time.Now()
+		_ = ix.SemanticPeople(q, 5)
+		total += time.Since(s)
+	}
+	return embedDur, vecBytes, per(total, runs)
+}
+
+// fakeEmbedder returns a deterministic unit vector per text, so a scale run can
+// measure the cost of the cosine scan and the memory of the vectors without a
+// real model.
+type fakeEmbedder struct{}
+
+// Embed returns a deterministic embedDim-wide unit vector seeded by text.
+func (fakeEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(text))
+	rng := rand.New(rand.NewSource(int64(h.Sum64()))) //nolint:gosec // Not security sensitive.
+	v := make([]float32, embedDim)
+	var norm float64
+	for i := range v {
+		v[i] = float32(rng.NormFloat64())
+		norm += float64(v[i]) * float64(v[i])
+	}
+	if norm == 0 {
+		return v, nil
+	}
+	norm = math.Sqrt(norm)
+	for i := range v {
+		v[i] /= float32(norm)
+	}
+	return v, nil
 }
 
 // timeAsk measures answering who-knows questions against a loaded index.
