@@ -20,9 +20,9 @@ sources by email or an alias file, so one person stays one entry across them.
 
 ## Engine
 
-- Binary vector store: embeddings are kept as JSON today, which is heavy for
-  large organizations. A compact on-disk format keeps the index small.
-- Incremental indexing: update only what changed instead of rebuilding.
+- Memory-mapped vector store: embeddings are int8-quantized in the index today,
+  a quarter of their float32 size; a separate memory-mapped store would let a
+  very large graph search without loading every vector into memory.
 
 ## Experience
 

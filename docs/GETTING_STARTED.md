@@ -553,8 +553,8 @@ turns decay off entirely.
 | no index: run `whodar index` first                  | No index built yet                 | Run a `whodar index` command                 |
 | invalid arguments: set WHODAR_SLACK_TOKEN           | Slack token not exported           | `export WHODAR_SLACK_TOKEN=xoxb-...`         |
 | private-channel ingest is disabled by policy        | Policy denies private channels     | Drop `--include-private` or adjust the policy |
-| llm host ...: policy: egress denied                 | Non-local Ollama under strict      | Use a local URL or `--policy open`           |
-| llm: request to http://localhost:11434 ... refused  | Ollama is not running              | Start Ollama and pull a model                |
+| policy: egress denied: model host ... needs --policy open | A non-local model under strict or redacted | Use a local URL, or `--policy open` to send profiles |
+| llm: model error: cannot reach a local model ...    | Ollama is not running              | Start it with `ollama serve` and pull a model |
 | slack ...: api error: invalid_auth                  | Bad token or missing scope         | Recreate the token with the listed scopes    |
 | --policy ignored; pinned by org policy              | A locked org policy is in effect   | Expected. Ask your administrator             |
 
@@ -587,8 +587,8 @@ turns decay off entirely.
 - `whodar feedback record QUESTION (--person ID | --channel NAME) (--helpful | --not-helpful) [--comment TEXT]`
   records a vote; `whodar feedback list` and `whodar feedback clear` review and
   undo votes.
-- `whodar serve [--addr HOST:PORT] [--mode keyword|llm]` runs the web UI.
-- `whodar bot [--transport socket|events] [--mode keyword|llm] [--addr HOST:PORT]`
+- `whodar serve [--addr HOST:PORT] [--mode keyword|semantic|llm]` runs the web UI.
+- `whodar bot [--transport socket|events] [--mode keyword|semantic|llm] [--addr HOST:PORT]`
   runs the Slack bot.
 - `whodar mcp` serves the index to an MCP client such as an editor assistant.
 - `whodar vault` and `whodar archive` manage the encrypted store; `whodar license`

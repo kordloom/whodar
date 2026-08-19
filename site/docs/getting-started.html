@@ -605,14 +605,14 @@ turns decay off entirely.</p>
 <td>Drop <code>--include-private</code> or adjust the policy</td>
 </tr>
 <tr>
-<td>llm host ...: policy: egress denied</td>
-<td>Non-local Ollama under strict</td>
-<td>Use a local URL or <code>--policy open</code></td>
+<td>policy: egress denied: model host ... needs --policy open</td>
+<td>A non-local model under strict or redacted</td>
+<td>Use a local URL, or <code>--policy open</code> to send profiles</td>
 </tr>
 <tr>
-<td>llm: request to http://localhost:11434 ... refused</td>
+<td>llm: model error: cannot reach a local model ...</td>
 <td>Ollama is not running</td>
-<td>Start Ollama and pull a model</td>
+<td>Start it with <code>ollama serve</code> and pull a model</td>
 </tr>
 <tr>
 <td>slack ...: api error: invalid_auth</td>
@@ -655,8 +655,8 @@ embeddings and encryption are set, and the license tier.</li>
 <li><code>whodar feedback record QUESTION (--person ID | --channel NAME) (--helpful | --not-helpful) [--comment TEXT]</code>
 records a vote; <code>whodar feedback list</code> and <code>whodar feedback clear</code> review and
 undo votes.</li>
-<li><code>whodar serve [--addr HOST:PORT] [--mode keyword|llm]</code> runs the web UI.</li>
-<li><code>whodar bot [--transport socket|events] [--mode keyword|llm] [--addr HOST:PORT]</code>
+<li><code>whodar serve [--addr HOST:PORT] [--mode keyword|semantic|llm]</code> runs the web UI.</li>
+<li><code>whodar bot [--transport socket|events] [--mode keyword|semantic|llm] [--addr HOST:PORT]</code>
 runs the Slack bot.</li>
 <li><code>whodar mcp</code> serves the index to an MCP client such as an editor assistant.</li>
 <li><code>whodar vault</code> and <code>whodar archive</code> manage the encrypted store; <code>whodar license</code>

@@ -278,7 +278,7 @@ resolved PagerDuty incidents.</p>
 <td><code>--archive</code></td>
 <td>off</td>
 <td>slack</td>
-<td>Keep the words of each conversation, not just a link. Needs a Memory license; implies <code>--episodes</code>.</td>
+<td>Keep the words of each conversation, not just a link. Needs a Memory license and an encryption key; implies <code>--episodes</code>.</td>
 </tr>
 <tr>
 <td><code>--max-episodes-per-channel</code></td>
@@ -297,6 +297,12 @@ resolved PagerDuty incidents.</p>
 <td>off</td>
 <td>slack</td>
 <td>Ingest private channels if policy allows.</td>
+</tr>
+<tr>
+<td><code>--slack-join</code></td>
+<td>off</td>
+<td>slack</td>
+<td>Self-join public channels the bot is not in (needs <code>channels:join</code>; posts a join notice per channel).</td>
 </tr>
 <tr>
 <td><code>--since-days</code></td>

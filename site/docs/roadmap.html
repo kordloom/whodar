@@ -104,9 +104,9 @@ connector, so Microsoft-centric orgs get first-class coverage.</li>
 sources by email or an alias file, so one person stays one entry across them.</p>
 <h2 id="engine">Engine</h2>
 <ul>
-<li>Binary vector store: embeddings are kept as JSON today, which is heavy for
-large organizations. A compact on-disk format keeps the index small.</li>
-<li>Incremental indexing: update only what changed instead of rebuilding.</li>
+<li>Memory-mapped vector store: embeddings are int8-quantized in the index today,
+a quarter of their float32 size; a separate memory-mapped store would let a
+very large graph search without loading every vector into memory.</li>
 </ul>
 <h2 id="experience">Experience</h2>
 <ul>

@@ -16,7 +16,7 @@ messages into the people graph.
 Every hard piece already exists. The Slack Web API client reads users, channels,
 and history. The messaging client sends direct messages and opens a Socket Mode
 connection. The LLM layer supports a local model through Ollama and a cloud model
-through Anthropic or OpenAI. The policy layer governs egress with strict,
+through Anthropic, OpenAI, or Gemini. The policy layer governs egress with strict,
 redacted, and open modes and an org lock. The bot frontend runs over Socket Mode.
 The digest reuses all of it and adds only a per-message relevance path.
 

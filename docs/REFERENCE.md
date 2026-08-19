@@ -59,10 +59,11 @@ Builds or extends the index from one source per run.
 | `--ollama-url`      | localhost | all        | Ollama base URL for `--embed`.                   |
 | `--file`            |           | org-csv, codeowners | Path to the CSV or CODEOWNERS file (or repo root). |
 | `--episodes`        | off       | slack, github, jira, pagerduty | Record past conversations so `recall` can point back at them. |
-| `--archive`         | off       | slack      | Keep the words of each conversation, not just a link. Needs a Memory license; implies `--episodes`. |
+| `--archive`         | off       | slack      | Keep the words of each conversation, not just a link. Needs a Memory license and an encryption key; implies `--episodes`. |
 | `--max-episodes-per-channel` | `200` | slack | Conversation cap per channel.                   |
 | `--max-archive-messages` | `50`  | slack      | Retained message cap per conversation.           |
 | `--include-private` | off       | slack      | Ingest private channels if policy allows.        |
+| `--slack-join`      | off       | slack      | Self-join public channels the bot is not in (needs `channels:join`; posts a join notice per channel). |
 | `--since-days`      | `180`     | slack      | History window in days.                          |
 | `--max-messages`    | `5000`    | slack      | Message cap per channel.                         |
 | `--repo`            |           | github     | Repo as `owner/name`, repeatable.                |
