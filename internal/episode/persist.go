@@ -13,6 +13,7 @@ import (
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/util"
 	"github.com/kordloom/whodar/internal/vault"
+	"github.com/kordloom/whodar/internal/vector"
 )
 
 // snapshot is the serializable form of a store. The participant index is
@@ -25,8 +26,9 @@ type snapshot struct {
 	// binary blob (JSON stores a byte slice as base64) rather than a JSON map of
 	// maps, which is far smaller and faster to read back.
 	Postings []byte `json:"postings"`
-	// Vecs holds per-episode embedding vectors.
-	Vecs map[string][]float32 `json:"vecs,omitempty"`
+	// Vecs holds per-episode embedding vectors, quantized to int8, a quarter the
+	// size of float32 and the largest part of a store once episodes are embedded.
+	Vecs map[string][]int8 `json:"vecs,omitempty"`
 }
 
 // Option configures Load and Save. With no option the store is read and
@@ -67,7 +69,7 @@ func (s *Store) Save(path string, opts ...Option) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("episode: mkdir: %w", err)
 	}
-	snap := snapshot{Episodes: s.All(), Postings: invindex.EncodePostings(s.postings), Vecs: s.vecs}
+	snap := snapshot{Episodes: s.All(), Postings: invindex.EncodePostings(s.postings), Vecs: quantizeEpisodeVecs(s.vecs)}
 	raw, err := json.Marshal(snap)
 	if err != nil {
 		return fmt.Errorf("episode: encode: %w", err)
@@ -107,8 +109,8 @@ func Load(path string, opts ...Option) (*Store, error) {
 	if len(postings) > 0 {
 		s.postings = postings
 	}
-	if snap.Vecs != nil {
-		s.vecs = snap.Vecs
+	if len(snap.Vecs) > 0 {
+		s.vecs = dequantizeEpisodeVecs(snap.Vecs)
 	}
 	for _, ep := range snap.Episodes {
 		if ep == nil || ep.ID == "" {
@@ -201,6 +203,27 @@ func (s *Store) Participants() []model.ID {
 	out := make([]model.ID, 0, len(s.byParticipant))
 	for p := range s.byParticipant {
 		out = append(out, p)
+	}
+	return out
+}
+
+// quantizeEpisodeVecs compresses each episode vector to int8 for compact storage.
+func quantizeEpisodeVecs(vecs map[string][]float32) map[string][]int8 {
+	if len(vecs) == 0 {
+		return nil
+	}
+	out := make(map[string][]int8, len(vecs))
+	for id, v := range vecs {
+		out[id] = vector.Quantize(v)
+	}
+	return out
+}
+
+// dequantizeEpisodeVecs restores int8 episode vectors to float32 for scoring.
+func dequantizeEpisodeVecs(vecs map[string][]int8) map[string][]float32 {
+	out := make(map[string][]float32, len(vecs))
+	for id, q := range vecs {
+		out[id] = vector.Dequantize(q)
 	}
 	return out
 }

@@ -135,13 +135,13 @@ func TestReembedAfterMergeKeepsRichVectors(t *testing.T) {
 	if err := first.Embed(context.Background(), &mockEmbedder{}); err != nil {
 		t.Fatalf("embed: %v", err)
 	}
-	janeVec := first.personVecs["jane@x.com"]
 	if err := first.Save(path); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
 	// Reload the redacted index (Jane now carries no message text), merge a new
-	// person, and re-embed.
+	// person, and re-embed. The vectors are quantized on save, so the loaded one
+	// is the baseline the re-embed must not disturb, not the pre-save float32.
 	reloaded, err := Load(path)
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -151,6 +151,7 @@ func TestReembedAfterMergeKeepsRichVectors(t *testing.T) {
 	if err := reloaded.LoadSources(path); err != nil {
 		t.Fatalf("load sources: %v", err)
 	}
+	janeLoaded := append([]float32(nil), reloaded.personVecs["jane@x.com"]...)
 	reloaded.Add([]connector.Record{
 		{Source: "jira", Kind: connector.KindPerson, Email: "bob@x.com", Name: "Bob",
 			Text: "kafka consumer lag on the ingest topic"},
@@ -160,9 +161,9 @@ func TestReembedAfterMergeKeepsRichVectors(t *testing.T) {
 		t.Fatalf("re-embed: %v", err)
 	}
 
-	// Jane's rich vector is unchanged; only Bob was embedded this pass.
-	if got := reloaded.personVecs["jane@x.com"]; !equalVec(got, janeVec) {
-		t.Errorf("Jane's vector changed on re-embed: %v vs %v", got, janeVec)
+	// Jane's loaded vector is kept as-is; only Bob was embedded this pass.
+	if got := reloaded.personVecs["jane@x.com"]; !equalVec(got, janeLoaded) {
+		t.Errorf("Jane's vector changed on re-embed: %v vs %v", got, janeLoaded)
 	}
 	if len(em.seen) != 1 {
 		t.Errorf("re-embed called the model %d times, want 1 (only the new person)", len(em.seen))

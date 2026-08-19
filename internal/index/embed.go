@@ -164,6 +164,28 @@ func cosineScores(vecs map[model.ID][]float32, query []float32) map[model.ID]flo
 // cosine returns the cosine similarity of a and b.
 func cosine(a, b []float32) float64 { return vector.Cosine(a, b) }
 
+// quantizeVecs compresses each embedding vector to int8 for compact storage.
+func quantizeVecs(vecs map[model.ID][]float32) map[model.ID][]int8 {
+	if len(vecs) == 0 {
+		return nil
+	}
+	out := make(map[model.ID][]int8, len(vecs))
+	for id, v := range vecs {
+		out[id] = vector.Quantize(v)
+	}
+	return out
+}
+
+// dequantizeVecs restores int8 vectors to float32 for scoring. Cosine is scale
+// invariant, so the restored direction ranks the same as the original.
+func dequantizeVecs(vecs map[model.ID][]int8) map[model.ID][]float32 {
+	out := make(map[model.ID][]float32, len(vecs))
+	for id, q := range vecs {
+		out[id] = vector.Dequantize(q)
+	}
+	return out
+}
+
 // personEmbedText is the text representation of a person used for embedding.
 func personEmbedText(p *model.Person, pt *personText) string {
 	parts := []string{p.Name, p.Title}
