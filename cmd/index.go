@@ -8,7 +8,6 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -21,6 +20,7 @@ import (
 	"github.com/kordloom/whodar/internal/license"
 	"github.com/kordloom/whodar/internal/llm"
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/secret"
 	"github.com/kordloom/whodar/internal/slack"
 	"github.com/kordloom/whodar/internal/util"
 )
@@ -524,7 +524,7 @@ func explainSourceError(source, tokenEnv string, err error) error {
 func fetchSlack(
 	cmd *cobra.Command, opts *options, a slackArgs,
 ) ([]connector.Record, []episode.Episode, error) {
-	token := os.Getenv(slackTokenEnv)
+	token := secret.Resolve(slackTokenEnv)
 	if token == "" {
 		return nil, nil, fmt.Errorf("%w: set %s", ErrBadArgs, slackTokenEnv)
 	}
@@ -593,7 +593,7 @@ type githubArgs struct {
 
 // fetchGitHub builds GitHub records from the configured repositories or org.
 func fetchGitHub(cmd *cobra.Command, a githubArgs) ([]connector.Record, []episode.Episode, error) {
-	token := os.Getenv(githubTokenEnv)
+	token := secret.Resolve(githubTokenEnv)
 	if token == "" {
 		return nil, nil, fmt.Errorf("%w: set %s", ErrBadArgs, githubTokenEnv)
 	}
@@ -632,10 +632,10 @@ type jiraArgs struct {
 func fetchJira(cmd *cobra.Command, a jiraArgs) ([]connector.Record, []episode.Episode, error) {
 	site := a.url
 	if site == "" {
-		site = os.Getenv(jiraURLEnv)
+		site = secret.Resolve(jiraURLEnv)
 	}
-	email := os.Getenv(jiraEmailEnv)
-	token := os.Getenv(jiraTokenEnv)
+	email := secret.Resolve(jiraEmailEnv)
+	token := secret.Resolve(jiraTokenEnv)
 	// Cloud needs a site, an email, and a token. Server and Data Center need
 	// only the site: the token is a bearer, optional for a public tracker that
 	// allows anonymous read.
@@ -677,9 +677,9 @@ type confluenceArgs struct {
 // fetchConfluence builds Confluence records. The URL and credentials fall back
 // to the Jira environment variables, since both use the same Atlassian site.
 func fetchConfluence(cmd *cobra.Command, a confluenceArgs) ([]connector.Record, error) {
-	site := cmp.Or(a.url, os.Getenv(confluenceURLEnv), os.Getenv(jiraURLEnv))
-	email := cmp.Or(os.Getenv(confluenceEmailEnv), os.Getenv(jiraEmailEnv))
-	token := cmp.Or(os.Getenv(confluenceTokenEnv), os.Getenv(jiraTokenEnv))
+	site := cmp.Or(a.url, secret.Resolve(confluenceURLEnv), secret.Resolve(jiraURLEnv))
+	email := cmp.Or(secret.Resolve(confluenceEmailEnv), secret.Resolve(jiraEmailEnv))
+	token := cmp.Or(secret.Resolve(confluenceTokenEnv), secret.Resolve(jiraTokenEnv))
 	// Cloud needs the site, an email, and a token; Server and Data Center need
 	// only the site, the token being an optional bearer for a public wiki.
 	if a.server {
@@ -703,7 +703,7 @@ func fetchConfluence(cmd *cobra.Command, a confluenceArgs) ([]connector.Record, 
 
 // fetchPagerDuty builds PagerDuty records from services and on-call data.
 func fetchPagerDuty(cmd *cobra.Command, episodes bool) ([]connector.Record, []episode.Episode, error) {
-	token := os.Getenv(pagerdutyTokenEnv)
+	token := secret.Resolve(pagerdutyTokenEnv)
 	if token == "" {
 		return nil, nil, fmt.Errorf("%w: set %s", ErrBadArgs, pagerdutyTokenEnv)
 	}

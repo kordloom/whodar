@@ -47,9 +47,13 @@ line to save.
     whodar connect --status   # report what is configured, without prompting
 
 connect keeps the same privacy promise as everything else. The token you type is
-held in memory for that one run, never written to disk and never logged. connect
-prints the `export` line for you to add to your shell profile; it never edits your
-dotfiles for you. It needs a terminal, so scripts and CI keep using `whodar index`
+held in memory for that one run and never logged. To keep it for later, connect
+offers to store it in your OS keychain, the encrypted secret store your other
+credentials live in, so future runs read it with no environment variable set.
+Decline and it prints the `export` line for your shell profile instead. Either
+way it never edits your dotfiles. An environment variable, when set, always wins
+over the keychain, so a one-off run can override a stored value. connect needs a
+terminal, so scripts and CI keep setting the variables and using `whodar index`
 directly.
 
 The rest of this page is the reference connect automates, and the copy-paste path

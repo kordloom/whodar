@@ -14,6 +14,7 @@ import (
 	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/httputil"
 	"github.com/kordloom/whodar/internal/prompt"
+	"github.com/kordloom/whodar/internal/secret"
 	"github.com/kordloom/whodar/internal/slack"
 )
 
@@ -261,7 +262,9 @@ func runConnect(cmd *cobra.Command, opts *options, ui *prompt.IO, spec sourceSpe
 		if creds, err = collectAndValidate(cmd, ui, spec); err != nil {
 			return err
 		}
-		persistCreds(ui, spec, creds)
+		if err := persistCreds(ui, spec, creds); err != nil {
+			return err
+		}
 	}
 
 	ui.Blank()
@@ -324,7 +327,7 @@ func collectAndValidate(cmd *cobra.Command, ui *prompt.IO, spec sourceSpec) (map
 func collect(ui *prompt.IO, spec sourceSpec) (map[string]string, error) {
 	creds := make(map[string]string, len(spec.creds))
 	for _, cf := range spec.creds {
-		if existing := os.Getenv(cf.env); existing != "" {
+		if existing := secret.Resolve(cf.env); existing != "" {
 			use, err := ui.Confirm(fmt.Sprintf("%s is already set. Use it?", cf.env), true)
 			if err != nil {
 				return nil, err
@@ -358,14 +361,52 @@ func collect(ui *prompt.IO, spec sourceSpec) (map[string]string, error) {
 	return creds, nil
 }
 
-// persistCreds prints the export lines the user adds to their shell profile.
-// connect never edits dotfiles or writes credentials to disk itself.
-func persistCreds(ui *prompt.IO, spec sourceSpec, creds map[string]string) {
+// persistCreds offers to store the collected credentials in the OS keychain so
+// future runs read them without environment variables, falling back to printing
+// export lines when the keychain is declined or unavailable. connect never edits
+// dotfiles.
+func persistCreds(ui *prompt.IO, spec sourceSpec, creds map[string]string) error {
 	ui.Blank()
 	ui.Step("Make it permanent")
-	ui.Detail("Add these to your shell profile so future runs stay connected.")
+	save, err := ui.Confirm("Save these to your OS keychain?", true)
+	if err != nil {
+		return err
+	}
+	if save {
+		if kerr := saveToKeychain(ui, spec, creds); kerr == nil {
+			return nil
+		}
+		// A headless or locked keychain must never leave the user stuck, so fall
+		// through to export lines they can persist by hand.
+		ui.Detail("Could not use the keychain; add these to your shell profile instead.")
+	} else {
+		ui.Detail("Add these to your shell profile so future runs stay connected.")
+	}
 	ui.Detail("They hold your credentials, so treat that file as a secret.")
 	ui.Blank()
+	printExports(ui, spec, creds)
+	return nil
+}
+
+// saveToKeychain writes each collected credential to the OS keychain. An error
+// from the store aborts so the caller can fall back to export lines.
+func saveToKeychain(ui *prompt.IO, spec sourceSpec, creds map[string]string) error {
+	for _, cf := range spec.creds {
+		v := creds[cf.env]
+		if v == "" {
+			continue
+		}
+		if err := secret.Save(cf.env, v); err != nil {
+			return err
+		}
+	}
+	ui.Success("Saved to your OS keychain. Future runs read them from there, no environment variables needed.")
+	return nil
+}
+
+// printExports prints the export lines the user adds to their shell profile,
+// naming a secret variable without echoing its value.
+func printExports(ui *prompt.IO, spec sourceSpec, creds map[string]string) {
 	for _, cf := range spec.creds {
 		v := creds[cf.env]
 		if v == "" {
@@ -541,7 +582,7 @@ func runStatus(cmd *cobra.Command, opts *options) error {
 }
 
 // statusNote describes a source's readiness: sources with no credentials are
-// always ready, credentialed ones report whether their variables are set.
+// always ready, credentialed ones report whether their credentials resolve.
 func statusNote(spec sourceSpec) string {
 	if len(spec.creds) == 0 {
 		return "ready, no credentials needed"
@@ -552,23 +593,24 @@ func statusNote(spec sourceSpec) string {
 	return "not configured"
 }
 
-// credsSet reports whether a source's credentials are present in the
-// environment. Confluence also counts as configured when the Jira variables are
-// set, because it falls back to them.
+// credsSet reports whether a source's credentials resolve, from either the
+// keychain or the environment. Confluence also counts as configured when the
+// Jira variables are set, because it falls back to them.
 func credsSet(spec sourceSpec) bool {
-	if allEnvSet(spec.creds) {
+	if allCredsSet(spec.creds) {
 		return true
 	}
 	if spec.id == "confluence" {
-		return os.Getenv(jiraURLEnv) != "" && os.Getenv(jiraEmailEnv) != "" && os.Getenv(jiraTokenEnv) != ""
+		return secret.Resolve(jiraURLEnv) != "" && secret.Resolve(jiraEmailEnv) != "" &&
+			secret.Resolve(jiraTokenEnv) != ""
 	}
 	return false
 }
 
-// allEnvSet reports whether every field's environment variable is non-empty.
-func allEnvSet(fields []credField) bool {
+// allCredsSet reports whether every field resolves to a non-empty value.
+func allCredsSet(fields []credField) bool {
 	for _, cf := range fields {
-		if os.Getenv(cf.env) == "" {
+		if secret.Resolve(cf.env) == "" {
 			return false
 		}
 	}
