@@ -64,12 +64,19 @@ func TestRecallAPI(t *testing.T) {
 		t.Errorf("answer = %+v, want the conversation and who was in it", got)
 	}
 
-	for _, path := range []string{"/api/recall?q=certificate", "/api/recall?me=jane@x.com"} {
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
-		if rec.Code != http.StatusBadRequest {
-			t.Errorf("%s: status = %d, want 400", path, rec.Code)
-		}
+	// Missing the person is still a bad request: recall is personal.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/recall?q=certificate", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("missing me: status = %d, want 400", rec.Code)
+	}
+
+	// Missing the topic is valid now: recall returns the conversations you
+	// took part in, most recent first.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/recall?me=jane@x.com", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("missing q: status = %d, want 200", rec.Code)
 	}
 }
 

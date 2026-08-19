@@ -107,7 +107,7 @@ func Handler(cfg Config) (http.Handler, error) {
 	if cfg.Ask == nil {
 		panic("web: Handler requires an Ask function")
 	}
-	tmpl, err := template.ParseFS(assets, "templates/index.html")
+	tmpl, err := template.ParseFS(assets, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("web: parse templates: %w", err)
 	}
@@ -138,6 +138,9 @@ func Handler(cfg Config) (http.Handler, error) {
 	}
 	if cfg.Recall != nil {
 		mux.HandleFunc("/api/recall", recallHandler(cfg.Recall, logw))
+	}
+	if cfg.Directory != nil {
+		mux.HandleFunc("/orgchart", orgchartHandler(tmpl, cfg))
 	}
 	mux.HandleFunc("/", indexHandler(tmpl, cfg))
 
@@ -224,7 +227,29 @@ func indexHandler(tmpl *template.Template, cfg Config) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := tmpl.Execute(w, data); err != nil {
+		if err := tmpl.ExecuteTemplate(w, "index.html", data); err != nil {
+			http.Error(w, "template error", http.StatusInternalServerError)
+		}
+	}
+}
+
+// orgchartHandler serves the org-chart page, a full-screen interactive view of
+// the reporting graph. It reads its data from the same /api/directory and
+// /api/person endpoints the search UI uses.
+func orgchartHandler(tmpl *template.Template, cfg Config) http.HandlerFunc {
+	data := struct {
+		// Version is the running whodar version.
+		Version string
+		// Me is the person running whodar, for the "My team" jump.
+		Me string
+	}{Version: cfg.Version, Me: cfg.RecallMe}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/orgchart" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := tmpl.ExecuteTemplate(w, "orgchart.html", data); err != nil {
 			http.Error(w, "template error", http.StatusInternalServerError)
 		}
 	}
@@ -285,11 +310,9 @@ func recallHandler(fn RecallFunc, logw io.Writer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
+		// An empty query is valid: recall then returns the conversations you
+		// took part in, most recent first. A person is still required.
 		query := strings.TrimSpace(r.URL.Query().Get("q"))
-		if query == "" {
-			writeError(w, http.StatusBadRequest, "missing q")
-			return
-		}
 		person := strings.TrimSpace(r.URL.Query().Get("me"))
 		if person == "" {
 			writeError(w, http.StatusBadRequest,

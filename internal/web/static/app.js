@@ -22,6 +22,13 @@ const recallMe = document.getElementById("recall-me");
 const recallStatus = document.getElementById("recall-status");
 const recallList = document.getElementById("recall-list");
 const recallScope = document.getElementById("recall-scope");
+const recallSince = document.getElementById("recall-since");
+const recallSources = document.getElementById("recall-sources");
+const recallSlabel = document.getElementById("recall-slabel");
+const recallCount = document.getElementById("recall-count");
+let recallData = null;
+let recallSourceFilter = null;
+let recallTimer = null;
 const dirTitle = document.getElementById("dir-title");
 const dirFilter = document.getElementById("dir-filter");
 const dirStatus = document.getElementById("dir-status");
@@ -470,7 +477,7 @@ function showView(view) {
   facetTeam.hidden = view !== "people";
   facetOrg.hidden = view !== "people";
   if (view === "recall") {
-    recallQuery.focus();
+    openRecall();
     return;
   }
   if (view !== "ask") {
@@ -601,36 +608,43 @@ function dirChannelRow(c) {
   return card;
 }
 
-function dirTeamRow(t) {
-  const card = el("div", "card");
-  const name = el("div", "name");
-  const toggle = el("button", "name-toggle", t.name);
-  toggle.type = "button";
-  toggle.title = "Show this team's people";
-  toggle.addEventListener("click", () => {
-    pendingTeamFacet = t.name;
-    dirFilter.value = "";
-    if (location.hash === "#/people") {
-      renderDirectory("people");
-    } else {
-      location.hash = "#/people";
+// activate makes a whole card act as one button: click or Enter/Space anywhere
+// on it fires the action, not just an inner label.
+function activate(node, fn) {
+  node.addEventListener("click", fn);
+  node.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fn();
     }
   });
-  name.appendChild(toggle);
-  card.appendChild(name);
+}
+
+function dirTeamRow(t) {
+  const card = el("div", "card dir-clickable");
+  card.setAttribute("role", "button");
+  card.tabIndex = 0;
+  card.title = "Show this team's people";
+  card.appendChild(el("div", "name", t.name));
   const sub = [t.org, t.people + (t.people === 1 ? " person" : " people")].filter(Boolean).join(" · ");
   if (sub) card.appendChild(el("div", "sub", sub));
+  activate(card, () => {
+    pendingTeamFacet = t.name;
+    dirFilter.value = "";
+    if (location.hash === "#/people") renderDirectory("people");
+    else location.hash = "#/people";
+  });
   return card;
 }
 
 function dirTopicRow(t) {
-  const card = el("div", "card card-row");
-  const toggle = el("button", "name-toggle", t.name);
-  toggle.type = "button";
-  toggle.title = "Ask who knows about this";
-  toggle.addEventListener("click", () => runAsk(t.name));
-  card.appendChild(toggle);
+  const card = el("div", "card card-row dir-clickable");
+  card.setAttribute("role", "button");
+  card.tabIndex = 0;
+  card.title = "Ask who knows about this";
+  card.appendChild(el("span", "name", t.name));
   card.appendChild(el("span", "count", t.people + (t.people === 1 ? " person" : " people")));
+  activate(card, () => runAsk(t.name));
   return card;
 }
 
@@ -640,68 +654,166 @@ dirFilter.addEventListener("input", () => {
 facetTeam.addEventListener("change", () => renderDirectory("people"));
 facetOrg.addEventListener("change", () => renderDirectory("people"));
 
-if (recallForm) {
-  recallForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    runRecall();
-  });
+// Recall opens straight to your recent conversations, no typing required. The
+// topic box and the source and time controls are optional refinements.
+function openRecall() {
+  runRecall();
 }
 
-// runRecall asks what the named person worked through before and renders the
-// conversations, each with who was there and a link back to it.
+function scheduleRecall() {
+  if (recallTimer) clearTimeout(recallTimer);
+  recallTimer = setTimeout(runRecall, 300);
+}
+
+if (recallQuery) recallQuery.addEventListener("input", scheduleRecall);
+if (recallMe) recallMe.addEventListener("input", scheduleRecall);
+if (recallSince) recallSince.addEventListener("change", applyRecallFilters);
+
+// runRecall fetches the conversations you took part in. With no topic it
+// returns your most recent ones; a topic narrows them. It then rebuilds the
+// source filter and renders through applyRecallFilters.
 async function runRecall() {
-  const query = recallQuery.value.trim();
   const me = recallMe.value.trim();
-  if (!query) return;
+  const query = recallQuery.value.trim();
   if (!me) {
-    recallStatus.textContent = "Say who you are, so the answer covers your own conversations.";
+    recallStatus.textContent = "Set who you are to see your conversations.";
+    recallList.replaceChildren();
+    if (recallSources) recallSources.replaceChildren();
     return;
   }
-  recallStatus.textContent = "Looking...";
-  recallList.replaceChildren();
-  recallScope.textContent = "";
+  recallStatus.textContent = "Looking\u2026";
   try {
     const res = await fetch(
-      "/api/recall?q=" + encodeURIComponent(query) + "&me=" + encodeURIComponent(me));
+      "/api/recall?me=" + encodeURIComponent(me) +
+      (query ? "&q=" + encodeURIComponent(query) : "") + "&limit=25");
     const data = await res.json();
     if (!res.ok) {
       recallStatus.textContent = data.error || "Recall is unavailable.";
+      recallList.replaceChildren();
+      if (recallSources) recallSources.replaceChildren();
       return;
     }
-    renderRecall(data);
+    recallData = data;
+    buildRecallSources(data);
+    applyRecallFilters();
   } catch (err) {
     recallStatus.textContent = "Recall is unavailable.";
   }
 }
 
-// renderRecall draws one card per remembered conversation.
-function renderRecall(data) {
-  const episodes = data.episodes || [];
-  recallScope.textContent = (data.scope && data.scope.note) || "";
-  if (!episodes.length) {
-    recallStatus.textContent = "Nothing found in the conversations you took part in.";
-    return;
-  }
-  recallStatus.textContent = "";
-  for (const ep of episodes) {
-    recallList.appendChild(recallCard(ep));
+// buildRecallSources renders a checkbox per source present in the results so
+// you can narrow to the tools you care about. One source needs no filter.
+function buildRecallSources(data) {
+  if (!recallSources) return;
+  const eps = data.episodes || [];
+  const sources = [...new Set(eps.map((e) => e.source).filter(Boolean))].sort();
+  recallSources.replaceChildren();
+  recallSourceFilter = null;
+  if (recallSlabel) recallSlabel.hidden = sources.length < 2;
+  if (sources.length < 2) return;
+  for (const src of sources) {
+    const meta = sourceMeta(src);
+    const chip = el("label", "recall-src");
+    chip.style.setProperty("--sc", meta.color);
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = true;
+    box.value = src;
+    box.addEventListener("change", onRecallSourceToggle);
+    chip.appendChild(box);
+    chip.appendChild(el("span", "rc-dot"));
+    chip.appendChild(el("span", null, meta.label));
+    recallSources.appendChild(chip);
   }
 }
 
+function onRecallSourceToggle() {
+  const boxes = recallSources.querySelectorAll("input[type=checkbox]");
+  const on = new Set();
+  let allOn = true;
+  for (const b of boxes) {
+    if (b.checked) on.add(b.value);
+    else allOn = false;
+  }
+  recallSourceFilter = allOn ? null : on;
+  applyRecallFilters();
+}
+
+// applyRecallFilters renders the fetched conversations narrowed by the source
+// checkboxes and the time dropdown, without re-querying the server.
+function applyRecallFilters() {
+  if (!recallData) return;
+  let eps = recallData.episodes || [];
+  const total = eps.length;
+  const days = parseInt(recallSince ? recallSince.value : "0", 10) || 0;
+  if (days > 0) {
+    const cutoff = Date.now() - days * 86400000;
+    eps = eps.filter((e) => !e.when || new Date(e.when).getTime() >= cutoff);
+  }
+  if (recallSourceFilter) {
+    eps = eps.filter((e) => recallSourceFilter.has(e.source));
+  }
+  if (recallCount) {
+    recallCount.textContent = !total ? ""
+      : eps.length === total ? total + (total === 1 ? " conversation" : " conversations")
+      : eps.length + " of " + total;
+  }
+  recallScope.textContent = (recallData.scope && recallData.scope.note) || "";
+  recallList.replaceChildren();
+  if (!eps.length) {
+    recallStatus.textContent = total
+      ? "No conversations match these filters."
+      : "Nothing found in the conversations you took part in.";
+    return;
+  }
+  recallStatus.textContent = "";
+  for (const ep of eps) recallList.appendChild(recallCard(ep));
+}
+
 // recallCard builds the card for one remembered conversation.
+// SOURCE_META gives each tool a distinct color and label, so a glance tells you
+// where a conversation happened.
+const SOURCE_META = {
+  github: { label: "GitHub", color: "#a371f7" },
+  slack: { label: "Slack", color: "#e01e5a" },
+  pagerduty: { label: "PagerDuty", color: "#06ac38" },
+  jira: { label: "Jira", color: "#2684ff" },
+  confluence: { label: "Confluence", color: "#1d7afc" },
+  gitlab: { label: "GitLab", color: "#fc6d26" },
+  teams: { label: "Teams", color: "#6264a7" },
+  linear: { label: "Linear", color: "#5e6ad2" },
+  notion: { label: "Notion", color: "#b9b9b9" },
+  zendesk: { label: "Zendesk", color: "#17a289" },
+};
+
+// sourceMeta returns the color and label for a source, or a neutral default.
+function sourceMeta(src) {
+  return SOURCE_META[(src || "").toLowerCase()] || { label: src || "source", color: "#8b93a3" };
+}
+
+// recallCard draws one conversation, colored and labeled by its source, with a
+// clear place, who was there, and a button back to it.
 function recallCard(ep) {
-  const card = el("div", "card");
-  const head = el("div", "card-head");
-  head.appendChild(el("h3", null, recallPeople(ep)));
-  const badge = confidenceBadge(ep.confidence);
-  if (badge) head.appendChild(badge);
+  const meta = sourceMeta(ep.source);
+  const card = el("div", "card recall-card");
+  card.style.setProperty("--sc", meta.color);
+
+  const head = el("div", "rc-head");
+  const src = el("span", "rc-source");
+  src.appendChild(el("span", "rc-dot"));
+  src.appendChild(el("span", null, meta.label));
+  head.appendChild(src);
+  if (ep.when) {
+    head.appendChild(el("span", "rc-date", new Date(ep.when).toLocaleDateString(
+      undefined, { year: "numeric", month: "short", day: "numeric" })));
+  }
   card.appendChild(head);
 
-  const where = [];
-  if (ep.place) where.push(ep.kind === "thread" || ep.kind === "window" ? "#" + ep.place : ep.place);
-  if (ep.when) where.push(new Date(ep.when).toLocaleDateString());
-  if (ep.source) where.push(ep.source);
-  card.appendChild(el("p", "card-sub", where.join(" · ")));
+  if (ep.place) {
+    const place = ep.kind === "thread" || ep.kind === "window" ? "#" + ep.place : ep.place;
+    card.appendChild(el("h3", "rc-title", place));
+  }
+  card.appendChild(el("p", "rc-people", recallPeople(ep)));
 
   if (ep.matched && ep.matched.length) chips(card, ep.matched);
 
@@ -718,16 +830,21 @@ function recallCard(ep) {
     card.appendChild(sol);
   }
 
+  const foot = el("div", "rc-foot");
   if (ep.permalink) {
-    const link = el("a", "recall-link", "Open the conversation");
+    const link = el("a", "rc-open");
     link.href = ep.permalink;
     link.target = "_blank";
     link.rel = "noopener";
-    card.appendChild(link);
+    link.appendChild(el("span", null, "Open in " + meta.label));
+    link.appendChild(el("span", "rc-arrow", "\u2192"));
+    foot.appendChild(link);
   }
   if (ep.link_may_have_expired) {
-    card.appendChild(el("p", "recall-more", "Old enough that the link may no longer resolve."));
+    foot.appendChild(el("span", "rc-stale", "link may be stale"));
   }
+  if (foot.childNodes.length) card.appendChild(foot);
+
   return card;
 }
 

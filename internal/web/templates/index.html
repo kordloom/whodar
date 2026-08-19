@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>whodar</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/theme.js?v=10"></script>
+  <link rel="stylesheet" href="/static/style.css?v=10">
   <link rel="icon" type="image/png" href="/static/whodar-logo.png">
 </head>
 <body>
@@ -25,8 +26,14 @@
           <span class="nav-count" data-count="teams"></span></a>
         <a href="#/topics" data-view="topics">Topics
           <span class="nav-count" data-count="topics"></span></a>
+        <a href="/orgchart">Org chart</a>
       </nav>
       <div class="side-foot">
+      <div class="side-themes" role="group" aria-label="Theme">
+        <button data-theme-btn="radar" class="oc-sw oc-sw-radar" type="button" title="Radar theme" aria-label="Radar theme"></button>
+        <button data-theme-btn="ink" class="oc-sw oc-sw-ink" type="button" title="Ink theme" aria-label="Ink theme"></button>
+        <button data-theme-btn="loom" class="oc-sw oc-sw-loom" type="button" title="Loom theme" aria-label="Loom theme"></button>
+      </div>
         <a class="side-link" target="_blank" rel="noopener"
            href="https://github.com/kordloom/whodar/blob/main/docs/GETTING_STARTED.md">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"/></svg>
@@ -98,19 +105,38 @@
       </section>
 
       <section id="view-recall" hidden>
-        <form id="recall-form" autocomplete="off">
-          <input id="recall-q" name="q" type="text"
-                 placeholder="certificate renewal">
-          <div class="controls">
+        <div class="recall-head">
+          <div>
+            <h2 class="recall-title">Your recall</h2>
+            <p class="recall-note">The conversations you took part in, most recent first. Opening a link uses your own access to that tool.</p>
+          </div>
+          <label class="recall-as">as
             <input id="recall-me" class="recall-me" type="text" aria-label="Who you are"
                    placeholder="you@example.com" value="{{.RecallMe}}">
-            <button type="submit" class="ask-btn">Recall</button>
+          </label>
+        </div>
+        <div class="recall-toolbar">
+          <div class="recall-controls">
+            <label class="recall-search">
+              <svg class="recall-search-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input id="recall-q" type="search" placeholder="Refine by topic (optional)" autocomplete="off">
+            </label>
+            <select id="recall-since" class="recall-since" aria-label="Time range">
+              <option value="0">Any time</option>
+              <option value="7">Past week</option>
+              <option value="30">Past month</option>
+              <option value="90">Past 3 months</option>
+              <option value="365">Past year</option>
+            </select>
           </div>
-        </form>
-        <p class="recall-note">Finds the conversations you took part in, and who was with you.
-          Opening a link uses your own access to that tool.</p>
+          <div class="recall-filterline">
+            <span id="recall-slabel" class="recall-flabel" hidden>Sources</span>
+            <div id="recall-sources" class="recall-sources" role="group" aria-label="Filter by source"></div>
+            <span id="recall-count" class="recall-count"></span>
+          </div>
+        </div>
         <p id="recall-status" class="status" role="status"></p>
-        <div id="recall-list" class="cards"></div>
+        <div id="recall-list" class="cards recall-list"></div>
         <p id="recall-scope" class="recall-scope"></p>
       </section>
 
@@ -129,6 +155,6 @@
     </main>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=10"></script>
 </body>
 </html>

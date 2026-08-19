@@ -36,19 +36,19 @@ import (
 
 // OrgCSV returns the org chart in the org-csv source format.
 func OrgCSV() string {
-	return `name,email,title,team,topics
-Angela Malone,angela@corp.com,Staff Engineer,Payments,billing;retries
-Oscar Scott,oscar@corp.com,Engineering Manager,Payments,billing;roadmap
-Kevin Novak,kevin@corp.com,Software Engineer,Payments,retries
-Pam Vance,pam@corp.com,Support Lead,Payments,billing;support
-Bob Smith,bob@corp.com,Senior Engineer,Data Platform,kafka;streaming
-Carol Lee,carol@corp.com,Site Reliability Engineer,Infrastructure,deploys
-Victor Old,victor@corp.com,Systems Engineer,Infrastructure,
-Dan Park,dan@corp.com,Security Engineer,Security,oauth;sso
-Eve Ng,eve@corp.com,Frontend Engineer,Web,react;frontend
-Frank Ito,frank@corp.com,Machine Learning Engineer,ML Platform,embeddings;models
-Grace Kim,grace@corp.com,Site Reliability Engineer,Infrastructure,oncall;incidents
-Heidi Cho,heidi@corp.com,Search Engineer,Search,relevance
+	return `name,email,title,team,topics,manager
+Oscar Scott,oscar@corp.com,Engineering Manager,Payments,billing;roadmap,
+Angela Malone,angela@corp.com,Staff Engineer,Payments,billing;retries,oscar@corp.com
+Kevin Novak,kevin@corp.com,Software Engineer,Payments,retries,angela@corp.com
+Pam Vance,pam@corp.com,Support Lead,Payments,billing;support,oscar@corp.com
+Bob Smith,bob@corp.com,Senior Engineer,Data Platform,kafka;streaming,oscar@corp.com
+Carol Lee,carol@corp.com,Site Reliability Engineer,Infrastructure,deploys,oscar@corp.com
+Victor Old,victor@corp.com,Systems Engineer,Infrastructure,,carol@corp.com
+Grace Kim,grace@corp.com,Site Reliability Engineer,Infrastructure,oncall;incidents,carol@corp.com
+Dan Park,dan@corp.com,Security Engineer,Security,oauth;sso,oscar@corp.com
+Eve Ng,eve@corp.com,Frontend Engineer,Web,react;frontend,oscar@corp.com
+Frank Ito,frank@corp.com,Machine Learning Engineer,ML Platform,embeddings;models,oscar@corp.com
+Heidi Cho,heidi@corp.com,Search Engineer,Search,relevance,oscar@corp.com
 `
 }
 
