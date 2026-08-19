@@ -15,9 +15,10 @@ calls a resolver and presents the answer.
 
 ## Layers
 
-Connectors implement one method, Fetch, returning normalized records. Eight
+Connectors implement one method, Fetch, returning normalized records. Ten
 exist today: org-CSV, Slack, GitHub, Jira, Confluence, PagerDuty, git history,
-and CODEOWNERS. Each new source is one connector and changes nothing else.
+CODEOWNERS, Microsoft Graph, and a JSON import. Each new source is one connector
+and changes nothing else.
 
 The model is the normalized graph: people, teams, orgs, topics, and channels,
 with weighted edges. People merge across sources by email, so one human is one

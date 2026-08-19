@@ -25,7 +25,7 @@ import (
 // Asset cache-busting versions, mirrored in the landing page's link tags. Bump
 // stylesV when styles.css or app.js change, docsV when docs.css changes.
 const (
-	stylesV = "11"
+	stylesV = "13"
 	docsV   = "2"
 )
 

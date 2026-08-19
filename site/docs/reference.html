@@ -14,7 +14,7 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="/styles.css?v=11">
+	<link rel="stylesheet" href="/styles.css?v=13">
 	<link rel="stylesheet" href="/docs.css?v=2">
 
 </head>
@@ -64,6 +64,7 @@
 				<a href="/#how">Pipeline</a>
 				<a href="/#privacy">Privacy</a>
 				<a href="/#modes">Ranking</a>
+				<a href="/#recall">Recall</a>
 				<a href="/pricing">Pricing</a>
 				<a href="/docs/" class="on">Docs</a>
 				<a href="/#start">Install</a>
@@ -177,6 +178,18 @@ into one index with <code>--merge</code>. People join across sources by email, o
 <td><code>pagerduty</code></td>
 <td>Services and current on-calls</td>
 <td><code>WHODAR_PAGERDUTY_TOKEN</code></td>
+<td>no</td>
+</tr>
+<tr>
+<td><code>json</code></td>
+<td>JSON array of records from a file or stdin</td>
+<td>none</td>
+<td>no</td>
+</tr>
+<tr>
+<td><code>graph</code></td>
+<td>Microsoft Graph users and reporting lines</td>
+<td><code>WHODAR_GRAPH_TOKEN</code></td>
 <td>no</td>
 </tr>
 </tbody>
@@ -438,6 +451,19 @@ message is missed until a full run.</li>
 an incremental run skipped. A source driven by an explicit <code>--jira-jql</code> or
 <code>--confluence-cql</code> always reads in full, since that query is authoritative and
 cannot be narrowed to a delta.</p>
+<h2 id="whodar-refresh">whodar refresh</h2>
+<pre><code>whodar refresh
+</code></pre>
+<p>Re-index every source that has been indexed at least once, reusing the flags it
+was last indexed with and merging the result. Each <code>index</code> run records its flags
+in refresh.json; a source read from stdin is not recorded, since a scheduled run
+could not supply the input.</p>
+<h2 id="whodar-schedule">whodar schedule</h2>
+<pre><code>whodar schedule --install | --remove | --status
+</code></pre>
+<p>Install a launchd agent that runs <code>whodar refresh</code> every Sunday at 3am, so the
+graph stays current without remembering to. macOS only; on other systems run
+<code>whodar refresh</code> from cron. Logs go to ~/Library/Logs/whodar-refresh.log.</p>
 <h2 id="whodar-connect">whodar connect</h2>
 <p>Sets up a source interactively: it explains the source, shows how to create the
 credential, reads and validates it, runs the first index, and prints the <code>export</code>
@@ -621,6 +647,14 @@ are. It takes <code>--me</code>, then <code>WHODAR_ME</code>, then your git emai
 mention), where it answers only to the person who asked, and an MCP tool
 (<code>whodar_recall</code>). The web app serves it on localhost only: the serve token
 gates the server, not one person's history.</p>
+<h2 id="whodar-near">whodar near</h2>
+<pre><code>whodar near PERSON [--limit N]
+</code></pre>
+<p>Rank the people who work nearest PERSON by shared team and channel membership and
+shared topics. Co-membership is normalized by group size, so a small tight team
+counts for far more than a broad channel; groups that span most of the org are
+ignored as administrative; and permission tiers of one group (store-admin,
+store-write) fold together. PERSON is an email, an id, or an exact name.</p>
 <h2 id="whodar-archive">whodar archive</h2>
 <p>Reports and prunes the conversations whodar keeps.</p>
 <pre><code>whodar archive status                          # what is kept and how far back
@@ -702,6 +736,41 @@ with <code>--feedback off|low|normal|high</code> on <code>ask</code>, <code>serv
 gentle 1.1x capped at two votes, high is 1.5x capped at four, off ignores
 votes entirely. Votes live in <code>feedback.json</code> under the data directory and
 survive re-indexing.</p>
+<h2 id="whodar-fact">whodar fact</h2>
+<pre><code>whodar fact record SUBJECT RELATION OBJECT [--detail D] [--source S]
+whodar fact list [SUBJECT] [--relation R] [--source S] [--json]
+whodar fact forget [SUBJECT [RELATION [OBJECT]]] [--source S]
+whodar fact import [FILE|-] [--source S]
+</code></pre>
+<p>Facts state what no crawl can find: which team owns a service, who to escalate
+to, and above all what a team does not own. Each is a subject, a relation, and an
+object, labeled with the source that asserted it, and lives in facts.json next to
+the index so it survives re-indexing. Relations are <code>owned_by</code>, <code>not_owned_by</code>,
+<code>escalates_to</code>, <code>reports_to</code>, <code>runs_on</code>, and <code>answers_questions_about</code>; an unknown
+relation is refused. An <code>import</code> with <code>--source</code> replaces that source's facts, so
+it is the whole of what the source currently asserts, which makes a catalog easy
+to pipe in with <code>curl ... | jq ... | whodar fact import --source catalog -</code>.
+Recorded facts also appear alongside <code>whodar ask</code> answers when they mention a
+term from the question.</p>
+<h2 id="whodar-directory">whodar directory</h2>
+<pre><code>whodar directory
+</code></pre>
+<p>List everyone in the index with their team and topics, a read-only inventory of
+what has been indexed. It answers &quot;who is in here?&quot; without running a query.</p>
+<h2 id="whodar-status">whodar status</h2>
+<pre><code>whodar status
+</code></pre>
+<p>Report the index: when it was last built; how many people, channels, teams, and
+topics it holds; how many records each source contributed; whether it carries
+embeddings; whether a key encrypts it at rest; and the license tier.</p>
+<h2 id="whodar-doctor">whodar doctor</h2>
+<pre><code>whodar doctor
+</code></pre>
+<p>Diagnose configuration and index problems and print the fix for each. It checks
+that the index loads, is non-empty, and is fresh, whether it carries vectors and
+is encrypted at rest, and which connector credentials are set. Every problem
+prints the exact command that resolves it, and <code>doctor</code> exits nonzero when
+something stops whodar from answering, so it works as a gate in a script.</p>
 <h2 id="whodar-serve">whodar serve</h2>
 <p>Runs the local web UI over the same engine.</p>
 <pre><code>whodar serve [--addr HOST:PORT] [--mode keyword|semantic|llm]
@@ -1075,7 +1144,7 @@ can be denied the same way. See <code>examples/policy.json</code>.</p>
 			<span class="foot-note">Source-available under the Business Source License 1.1, converting to Apache 2.0 on 2030-08-03. Copyright 2026 KordLoom LLC.</span>
 		</div>
 	</footer>
-	<script src="/app.js?v=11"></script>
+	<script src="/app.js?v=13"></script>
 
 </body>
 </html>

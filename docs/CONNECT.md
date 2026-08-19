@@ -105,6 +105,16 @@ join other sources by their commit email. Bot accounts like dependabot are skipp
 `--git-since-days` bounds the window (default 365) and `--max-commits` caps each repo
 (default 2000).
 
+## JSON import  ·  anything else
+
+Any system that can emit JSON can feed whodar without a dedicated connector.
+Produce a JSON array of records and pipe it in:
+
+    curl -s "$CATALOG/people" | jq '[.items[] | {name, email, title, team}]' | whodar index --source json --file -
+
+Each object may set name, email, title, team, org, manager, topics, and a source
+label. It needs no credentials.
+
 ## Slack (index)  ·  5 minutes
 
 What you get: the strongest single source. Which channels exist, what they are
@@ -249,6 +259,22 @@ create a read-only API key.
 Verify:
 
     whodar ask "who is on call for search"
+
+## Microsoft Graph (org chart)  ·  2 minutes
+
+What you get: the live org chart, every person and their reporting line, read from
+Microsoft Graph (Entra ID). It is the org-chart source that stays current without
+re-exporting a CSV.
+
+**1. Get a token.** Obtain a bearer token that can read `User.Read.All`.
+
+**2. Connect:**
+
+    export WHODAR_GRAPH_TOKEN=your-graph-token
+    whodar index --source graph --merge
+
+For a sovereign or national cloud, point `WHODAR_GRAPH_URL` at that tenant's Graph
+root.
 
 ## Slack bot  ·  let your team ask from Slack
 

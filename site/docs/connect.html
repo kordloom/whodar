@@ -14,7 +14,7 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="/styles.css?v=11">
+	<link rel="stylesheet" href="/styles.css?v=13">
 	<link rel="stylesheet" href="/docs.css?v=2">
 
 </head>
@@ -64,6 +64,7 @@
 				<a href="/#how">Pipeline</a>
 				<a href="/#privacy">Privacy</a>
 				<a href="/#modes">Ranking</a>
+				<a href="/#recall">Recall</a>
 				<a href="/pricing">Pricing</a>
 				<a href="/docs/" class="on">Docs</a>
 				<a href="/#start">Install</a>
@@ -170,6 +171,13 @@ works for any repo you can clone, including ones with no CODEOWNERS.</p>
 join other sources by their commit email. Bot accounts like dependabot are skipped.
 <code>--git-since-days</code> bounds the window (default 365) and <code>--max-commits</code> caps each repo
 (default 2000).</p>
+<h2 id="json-import----anything-else">JSON import  ·  anything else</h2>
+<p>Any system that can emit JSON can feed whodar without a dedicated connector.
+Produce a JSON array of records and pipe it in:</p>
+<pre><code>curl -s &quot;$CATALOG/people&quot; | jq '[.items[] | {name, email, title, team}]' | whodar index --source json --file -
+</code></pre>
+<p>Each object may set name, email, title, team, org, manager, topics, and a source
+label. It needs no credentials.</p>
 <h2 id="slack-index----5-minutes">Slack (index)  ·  5 minutes</h2>
 <p>What you get: the strongest single source. Which channels exist, what they are
 about, and who is active on each topic.</p>
@@ -324,6 +332,17 @@ whodar index --source pagerduty --merge
 <p>Verify:</p>
 <pre><code>whodar ask &quot;who is on call for search&quot;
 </code></pre>
+<h2 id="microsoft-graph-org-chart----2-minutes">Microsoft Graph (org chart)  ·  2 minutes</h2>
+<p>What you get: the live org chart, every person and their reporting line, read from
+Microsoft Graph (Entra ID). It is the org-chart source that stays current without
+re-exporting a CSV.</p>
+<p><strong>1. Get a token.</strong> Obtain a bearer token that can read <code>User.Read.All</code>.</p>
+<p><strong>2. Connect:</strong></p>
+<pre><code>export WHODAR_GRAPH_TOKEN=your-graph-token
+whodar index --source graph --merge
+</code></pre>
+<p>For a sovereign or national cloud, point <code>WHODAR_GRAPH_URL</code> at that tenant's Graph
+root.</p>
 <h2 id="slack-bot----let-your-team-ask-from-slack">Slack bot  ·  let your team ask from Slack</h2>
 <p>Once the index is built, run the bot so teammates can ask whodar in Slack directly,
 by mentioning it, sending a direct message, or using <code>/whodar</code>. This is separate from
@@ -409,7 +428,7 @@ the web UI, MCP, and organization policy.</li>
 			<span class="foot-note">Source-available under the Business Source License 1.1, converting to Apache 2.0 on 2030-08-03. Copyright 2026 KordLoom LLC.</span>
 		</div>
 	</footer>
-	<script src="/app.js?v=11"></script>
+	<script src="/app.js?v=13"></script>
 
 </body>
 </html>

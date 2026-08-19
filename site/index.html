@@ -3,6 +3,7 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<script src="/theme.js?v=17"></script>
 	<title>whodar · know who knows</title>
 	<meta name="description" content="Someone at your company already knows the answer. whodar tells you who, and when you solved it before, it remembers how. Point it at the tools your team already uses, ask in plain words, and get the people to talk to and the channels to ask in, each with the reason and confidence behind it. Local by default, source-available.">
 	<meta property="og:title" content="whodar · know who knows">
@@ -25,11 +26,11 @@
 		"sameAs": ["https://github.com/kordloom/whodar"]
 	}
 	</script>
-	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Ccircle cx='24' cy='24' r='20' fill='none' stroke='%2314233a' stroke-width='3'/%3E%3Ccircle cx='24' cy='19.5' r='3.6' fill='%2314233a'/%3E%3Cpath d='M18 31 C18 25 30 25 30 31 Z' fill='%2314233a'/%3E%3Cline x1='37.5' y1='10.5' x2='28' y2='16.5' stroke='%2334e5c5' stroke-width='3.4' stroke-linecap='round'/%3E%3C/svg%3E">
+	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Ccircle cx='24' cy='24' r='20' fill='none' stroke='%2314233a' stroke-width='3'/%3E%3Ccircle cx='24' cy='19.5' r='3.6' fill='%2314233a'/%3E%3Cpath d='M18 31 C18 25 30 25 30 31 Z' fill='%2314233a'/%3E%3Cline x1='37.5' y1='10.5' x2='28' y2='16.5' stroke='%2334d399' stroke-width='3.4' stroke-linecap='round'/%3E%3C/svg%3E">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="/styles.css?v=12">
+	<link rel="stylesheet" href="/styles.css?v=17">
 </head>
 <body>
 	<div class="bg" aria-hidden="true"></div>
@@ -42,7 +43,7 @@
 				<circle class="ring" cx="24" cy="24" r="20" fill="none" stroke="#dbe6f2" stroke-width="3"/>
 				<circle class="person" cx="24" cy="19.5" r="3.6" fill="#dbe6f2"/>
 				<path class="person" d="M18 31 C18 25 30 25 30 31 Z" fill="#dbe6f2"/>
-				<line class="beam" x1="37.5" y1="10.5" x2="28" y2="16.5" stroke="#34e5c5" stroke-width="3.4" stroke-linecap="round"/>
+				<line class="beam" x1="37.5" y1="10.5" x2="28" y2="16.5" stroke="#34d399" stroke-width="3.4" stroke-linecap="round"/>
 			</symbol>
 		</defs>
 	</svg>
@@ -66,6 +67,7 @@
 						<svg class="mi-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
 						<span><b>Say hello</b><em>hello@whodar.dev</em></span>
 					</a>
+					<div class="menu-themes"><span class="tl">Theme</span><button data-theme-btn="radar" class="theme-sw radar" type="button" title="Radar" aria-label="Radar theme"></button><button data-theme-btn="ink" class="theme-sw ink" type="button" title="Ink" aria-label="Ink theme"></button><button data-theme-btn="loom" class="theme-sw loom" type="button" title="Loom" aria-label="Loom theme"></button></div>
 				</div>
 			</div>
 			<a class="brand" href="#top" aria-label="whodar · know who knows">
@@ -129,7 +131,7 @@
 
 		<section class="sysbar reveal">
 			<div class="in">
-				<span><b>8</b> sources</span><span class="sep">·</span>
+				<span><b>10</b> sources</span><span class="sep">·</span>
 				<span><b>1</b> graph</span><span class="sep">·</span>
 				<span><b>0</b> uploads by default</span><span class="sep">·</span>
 				<span><b>4</b> surfaces</span><span class="sep">·</span>
@@ -236,7 +238,7 @@
 		<section class="section wrap" id="how">
 			<div class="sec-head reveal">
 				<span class="sec-eyebrow"><span class="n">02 //</span> Pipeline</span>
-				<h2>Eight sources become one map of who knows what.</h2>
+				<h2>Ten sources become one map of who knows what.</h2>
 				<p>Each connector reads a tool you already use and feeds one graph of people, teams, topics, and channels. One human stays one entry: sources join by email, and an alias file joins handle-only logins.</p>
 			</div>
 			<div class="flow reveal">
@@ -264,6 +266,7 @@
 					<span class="src">Slack</span><span class="src">GitHub</span><span class="src">Jira</span>
 					<span class="src">Confluence</span><span class="src">PagerDuty</span><span class="src">git</span>
 					<span class="src">CODEOWNERS</span><span class="src">org CSV</span>
+					<span class="src">Microsoft Graph</span><span class="src">JSON</span>
 					</div>
 					<p class="note"><a href="/docs/connect" target="_blank" rel="noopener">Set up any source with <code>whodar connect</code>, or copy-paste each one →</a></p>
 			</div>
@@ -476,6 +479,19 @@ claude mcp add whodar -- whodar mcp
 			</div>
 		</section>
 
+		<section class="section wrap" id="ai">
+			<div class="ai-stance reveal">
+				<span class="sec-eyebrow">Optional layer, off by default</span>
+				<h2>AI earns its place here. <span class="pgrace">It is never the reason whodar works.</span></h2>
+				<p>Every KordLoom product is built to do its job with no model at all, because deterministic software is cheaper to run, gives the same answer every time, and never goes down. When a model genuinely adds something we open the door to it on purpose, behind guardrails you control, with the plain answer always there underneath.</p>
+				<div class="ai-principles">
+					<span>Same answer every time</span>
+					<span>Runs offline</span>
+					<span>No token bill</span>
+				</div>
+			</div>
+		</section>
+
 		<section class="cta wrap reveal">
 			<h2>Stop guessing who to ask.</h2>
 			<p>The answer is already inside the tools you use every day: who to ask, and how you solved it last time. whodar just points you at it.</p>
@@ -484,6 +500,7 @@ claude mcp add whodar -- whodar mcp
 				<a class="ghost big" href="/docs/">Read the docs</a>
 			</div>
 		</section>
+
 	</main>
 
 	<footer class="footer">
@@ -500,10 +517,11 @@ claude mcp add whodar -- whodar mcp
 				<a href="https://github.com/kordloom/whodar/releases">Releases</a>
 				<a href="mailto:hello@whodar.dev">Contact</a>
 			</nav>
+			<div class="foot-themes" role="group" aria-label="Theme"><span class="tl">Theme</span><button data-theme-btn="radar" class="theme-sw radar" type="button" title="Radar" aria-label="Radar theme"></button><button data-theme-btn="ink" class="theme-sw ink" type="button" title="Ink" aria-label="Ink theme"></button><button data-theme-btn="loom" class="theme-sw loom" type="button" title="Loom" aria-label="Loom theme"></button></div>
 			<span class="foot-note">Source-available under the Business Source License 1.1, converting to Apache 2.0 on 2030-08-03. Copyright 2026 KordLoom LLC.</span>
 		</div>
 	</footer>
 
-	<script src="/app.js?v=12"></script>
+	<script src="/app.js?v=17"></script>
 </body>
 </html>

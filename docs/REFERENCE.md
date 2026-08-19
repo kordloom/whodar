@@ -29,6 +29,8 @@ into one index with `--merge`. People join across sources by email, or by an
 | `jira`       | Issue assignees and reporters                | `WHODAR_JIRA_*`              | yes    |
 | `confluence` | Page creators and editors                    | `WHODAR_CONFLUENCE_*`        | yes    |
 | `pagerduty`  | Services and current on-calls                | `WHODAR_PAGERDUTY_TOKEN`     | no     |
+| `json`       | JSON array of records from a file or stdin   | none                         | no     |
+| `graph`      | Microsoft Graph users and reporting lines    | `WHODAR_GRAPH_TOKEN`         | no     |
 
 Dated sources decay: see [recency](#recency). Undated sources describe the
 present and keep full weight. Bot accounts (dependabot and friends) are
@@ -103,6 +105,23 @@ Pass `--full` to re-read everything and recompact, which also picks up anything
 an incremental run skipped. A source driven by an explicit `--jira-jql` or
 `--confluence-cql` always reads in full, since that query is authoritative and
 cannot be narrowed to a delta.
+
+## whodar refresh
+
+    whodar refresh
+
+Re-index every source that has been indexed at least once, reusing the flags it
+was last indexed with and merging the result. Each `index` run records its flags
+in refresh.json; a source read from stdin is not recorded, since a scheduled run
+could not supply the input.
+
+## whodar schedule
+
+    whodar schedule --install | --remove | --status
+
+Install a launchd agent that runs `whodar refresh` every Sunday at 3am, so the
+graph stays current without remembering to. macOS only; on other systems run
+`whodar refresh` from cron. Logs go to ~/Library/Logs/whodar-refresh.log.
 
 ## whodar connect
 
@@ -200,6 +219,16 @@ mention), where it answers only to the person who asked, and an MCP tool
 (`whodar_recall`). The web app serves it on localhost only: the serve token
 gates the server, not one person's history.
 
+## whodar near
+
+    whodar near PERSON [--limit N]
+
+Rank the people who work nearest PERSON by shared team and channel membership and
+shared topics. Co-membership is normalized by group size, so a small tight team
+counts for far more than a broad channel; groups that span most of the org are
+ignored as administrative; and permission tiers of one group (store-admin,
+store-write) fold together. PERSON is an email, an id, or an exact name.
+
 ## whodar archive
 
 Reports and prunes the conversations whodar keeps.
@@ -254,6 +283,49 @@ with `--feedback off|low|normal|high` on `ask`, `serve`, and `bot`: low is a
 gentle 1.1x capped at two votes, high is 1.5x capped at four, off ignores
 votes entirely. Votes live in `feedback.json` under the data directory and
 survive re-indexing.
+
+## whodar fact
+
+    whodar fact record SUBJECT RELATION OBJECT [--detail D] [--source S]
+    whodar fact list [SUBJECT] [--relation R] [--source S] [--json]
+    whodar fact forget [SUBJECT [RELATION [OBJECT]]] [--source S]
+    whodar fact import [FILE|-] [--source S]
+
+Facts state what no crawl can find: which team owns a service, who to escalate
+to, and above all what a team does not own. Each is a subject, a relation, and an
+object, labeled with the source that asserted it, and lives in facts.json next to
+the index so it survives re-indexing. Relations are `owned_by`, `not_owned_by`,
+`escalates_to`, `reports_to`, `runs_on`, and `answers_questions_about`; an unknown
+relation is refused. An `import` with `--source` replaces that source's facts, so
+it is the whole of what the source currently asserts, which makes a catalog easy
+to pipe in with `curl ... | jq ... | whodar fact import --source catalog -`.
+Recorded facts also appear alongside `whodar ask` answers when they mention a
+term from the question.
+
+## whodar directory
+
+    whodar directory
+
+List everyone in the index with their team and topics, a read-only inventory of
+what has been indexed. It answers "who is in here?" without running a query.
+
+## whodar status
+
+    whodar status
+
+Report the index: when it was last built; how many people, channels, teams, and
+topics it holds; how many records each source contributed; whether it carries
+embeddings; whether a key encrypts it at rest; and the license tier.
+
+## whodar doctor
+
+    whodar doctor
+
+Diagnose configuration and index problems and print the fix for each. It checks
+that the index loads, is non-empty, and is fresh, whether it carries vectors and
+is encrypted at rest, and which connector credentials are set. Every problem
+prints the exact command that resolves it, and `doctor` exits nonzero when
+something stops whodar from answering, so it works as a gate in a script.
 
 ## whodar serve
 
