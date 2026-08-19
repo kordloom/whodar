@@ -209,7 +209,7 @@ func pageTopics(p confluence.Page) []string {
 // confluenceUserKey returns a stable key for a user, preferring email.
 func confluenceUserKey(u confluence.User) string {
 	if u.Email != "" {
-		return strings.ToLower(u.Email)
+		return util.NormalizeEmail(u.Email)
 	}
 	if id := u.Identity(); id != "" {
 		return "confluence:" + id

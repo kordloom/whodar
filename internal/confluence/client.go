@@ -534,8 +534,26 @@ func (c *Client) pageV2(ctx context.Context, spaceIDs []string, max int) ([]v2Pa
 			break
 		}
 		next = list.Links.Next
+		// The cursor comes from the server, and getRaw appends it to baseURL, so a
+		// hostile value such as "@evil.com/x" would send the credentialed request
+		// to another host. Refuse to follow a cursor that leaves the site's host.
+		if next != "" && !c.sameHost(next) {
+			break
+		}
 	}
 	return all, nil
+}
+
+// sameHost reports whether following next, which getRaw appends to baseURL,
+// stays on the site's own host, so a server-supplied cursor cannot redirect the
+// authenticated request elsewhere.
+func (c *Client) sameHost(next string) bool {
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
+		return false
+	}
+	u, err := url.Parse(c.baseURL + next)
+	return err == nil && u.Host == base.Host
 }
 
 // labelsFor fetches each page's labels concurrently, since v2 serves them from a

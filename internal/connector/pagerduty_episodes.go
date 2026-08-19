@@ -91,10 +91,14 @@ func incidentEpisode(in pagerduty.Incident) (episode.Episode, bool) {
 	}
 	people := in.People()
 	participants := make([]model.ID, 0, len(people))
+	seen := make(map[model.ID]bool, len(people))
 	for _, u := range people {
-		if id := pagerDutyPersonID(u); id != "" {
-			participants = append(participants, model.ID(id))
+		id := model.ID(pagerDutyPersonID(u))
+		if id == "" || seen[id] {
+			continue
 		}
+		seen[id] = true
+		participants = append(participants, id)
 	}
 	if len(participants) == 0 {
 		return episode.Episode{}, false

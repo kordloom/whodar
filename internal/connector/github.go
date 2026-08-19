@@ -144,6 +144,10 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 		select {
 		case sem <- struct{}{}:
 		case <-ctx.Done():
+			// Cancelled while waiting for a slot: do not launch a worker, which
+			// would receive a semaphore token that was never sent and hang the
+			// WaitGroup. Skip the rest so wg.Wait returns.
+			continue
 		}
 		wg.Add(1)
 		go func(full, owner, name string) {

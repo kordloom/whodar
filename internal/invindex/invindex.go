@@ -115,7 +115,10 @@ func DecodePostings[K ~string](blob []byte) (map[string]map[K]float64, error) {
 	}
 	r := &reader{b: blob}
 	numKeys := int(r.u32())
-	keys := make([]K, 0, max(numKeys, 0))
+	// A key needs at least its length prefix, so it cannot exceed the blob size.
+	// Cap the preallocation at that bound so a corrupt count cannot trigger a
+	// giant allocation; append still grows to the real count.
+	keys := make([]K, 0, min(max(numKeys, 0), len(blob)))
 	for i := 0; i < numKeys && r.err == nil; i++ {
 		keys = append(keys, K(r.str()))
 	}
@@ -123,7 +126,7 @@ func DecodePostings[K ~string](blob []byte) (map[string]map[K]float64, error) {
 	for t := 0; t < numTerms && r.err == nil; t++ {
 		term := r.str()
 		count := int(r.u32())
-		weights := make(map[K]float64, max(count, 0))
+		weights := make(map[K]float64, min(max(count, 0), len(blob)))
 		for e := 0; e < count && r.err == nil; e++ {
 			idx := r.u32()
 			w := math.Float32frombits(r.u32())

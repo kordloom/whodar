@@ -296,6 +296,10 @@ func (c *Client) OnCalls(ctx context.Context) ([]OnCall, error) {
 // and who settled it.
 func (c *Client) Incidents(ctx context.Context, since time.Time, max int) ([]Incident, error) {
 	var all []Incident
+	// Fix the window end once: recomputing time.Now per page would shift the
+	// created_at-desc window mid-fetch and let a boundary incident appear on two
+	// pages and be counted twice.
+	until := time.Now().UTC().Format(time.RFC3339)
 	for page, offset := 0, 0; page < maxPages; page, offset = page+1, offset+100 {
 		params := url.Values{
 			"limit":      {"100"},
@@ -307,7 +311,7 @@ func (c *Client) Incidents(ctx context.Context, since time.Time, max int) ([]Inc
 		}
 		if !since.IsZero() {
 			params.Set("since", since.UTC().Format(time.RFC3339))
-			params.Set("until", time.Now().UTC().Format(time.RFC3339))
+			params.Set("until", until)
 		}
 		var resp incidentsResponse
 		if err := c.get(ctx, "/incidents", params, &resp); err != nil {

@@ -182,3 +182,45 @@ func equalVec(a, b []float32) bool {
 	}
 	return true
 }
+
+// TestSavedSidecarHoldsNoReadableText verifies the sources sidecar, like the
+// main index, holds stemmed terms but not readable message text. On the free
+// tier the sidecar is plain JSON on disk, so this is the load-bearing check that
+// re-reading a source for a merge never persists conversations verbatim.
+func TestSavedSidecarHoldsNoReadableText(t *testing.T) {
+	t.Parallel()
+	const phrase = "the quarterly reconciliation ledger drifted by seventeen cents"
+	ix := New()
+	ix.Build([]connector.Record{
+		{Source: "slack", Kind: connector.KindPerson, Email: "jane@x.com", Name: "Jane", Text: phrase},
+	})
+	dir := t.TempDir()
+	path := filepath.Join(dir, "index.json")
+	if err := ix.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	raw, err := os.ReadFile(sourcesPath(path))
+	if err != nil {
+		t.Fatalf("read sidecar: %v", err)
+	}
+	on := string(raw)
+	if strings.Contains(on, phrase) {
+		t.Error("the sources sidecar contains the readable message phrase verbatim")
+	}
+	for _, run := range []string{
+		"quarterly reconciliation", "reconciliation ledger", "ledger drifted", "drifted by seventeen",
+	} {
+		if strings.Contains(on, run) {
+			t.Errorf("the sources sidecar contains the readable word run %q", run)
+		}
+	}
+	// The source is still re-readable for a merge, proving the stemmed terms
+	// survived even though the prose did not.
+	reloaded := New()
+	if err := reloaded.LoadSources(path); err != nil {
+		t.Fatalf("LoadSources: %v", err)
+	}
+	if reloaded.SourceSize("slack") == 0 {
+		t.Error("the sidecar lost the source's records")
+	}
+}

@@ -48,11 +48,35 @@ func (c Config) Policy() (Policy, error) {
 		return Policy{}, err
 	}
 	p := New(mode, c.Locked)
-	if strings.EqualFold(strings.TrimSpace(c.PrivateChannels), "deny") {
+	privateOK, err := parseAllowDeny("private_channels", c.PrivateChannels)
+	if err != nil {
+		return Policy{}, err
+	}
+	if !privateOK {
 		p = p.WithoutPrivateChannels()
 	}
-	if strings.EqualFold(strings.TrimSpace(c.Archive), "deny") {
+	archiveOK, err := parseAllowDeny("archive", c.Archive)
+	if err != nil {
+		return Policy{}, err
+	}
+	if !archiveOK {
 		p = p.WithoutArchive()
 	}
 	return p, nil
+}
+
+// parseAllowDeny reads an allow-or-deny toggle from a config string. An empty
+// value keeps the default of allow; an unrecognized value is an error, so a typo
+// in a privacy control fails loudly rather than silently permitting.
+func parseAllowDeny(name, value string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return true, nil
+	case "allow", "on", "true", "yes":
+		return true, nil
+	case "deny", "off", "false", "no", "disabled":
+		return false, nil
+	default:
+		return false, fmt.Errorf("policy: %s must be allow or deny, got %q", name, value)
+	}
 }

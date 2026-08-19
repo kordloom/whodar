@@ -309,7 +309,9 @@ func recallHandler(fn RecallFunc, logw io.Writer) http.HandlerFunc {
 				writeError(w, http.StatusBadRequest, err.Error())
 				return
 			}
-			fmt.Fprintf(logw, "web: recall %q: %v\n", query, err)
+			// A recall query is personal-history search, so keep it out of the
+			// log exactly as the ask handler keeps its question out.
+			fmt.Fprintf(logw, "web: recall failed: %v\n", err)
 			writeError(w, http.StatusBadGateway, "the recall service is unavailable")
 			return
 		}

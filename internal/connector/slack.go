@@ -11,6 +11,7 @@ import (
 
 	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/slack"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // Default Slack ingest bounds. Standard depth pulls roughly six months of
@@ -369,7 +370,7 @@ func slackTime(ts string) time.Time {
 // slackPersonID resolves a stable person ID from a user, preferring email.
 func slackPersonID(u slack.User) string {
 	if u.Profile.Email != "" {
-		return strings.ToLower(u.Profile.Email)
+		return util.NormalizeEmail(u.Profile.Email)
 	}
 	return "slack:" + u.ID
 }

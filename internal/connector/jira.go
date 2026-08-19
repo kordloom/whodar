@@ -254,7 +254,7 @@ func issueTopics(is jira.Issue) []string {
 // Server and Data Center.
 func jiraUserKey(u jira.User) string {
 	if u.EmailAddress != "" {
-		return strings.ToLower(u.EmailAddress)
+		return util.NormalizeEmail(u.EmailAddress)
 	}
 	if id := u.Identity(); id != "" {
 		return "jira:" + id

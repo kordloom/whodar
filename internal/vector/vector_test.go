@@ -35,3 +35,21 @@ func TestCosine(t *testing.T) {
 		})
 	}
 }
+
+// TestQuantizeRoundTripNegative verifies quantizing then dequantizing a vector
+// with negative components preserves its direction and per-component signs. Real
+// embeddings are about half negative, and cosine ranks on direction, so a
+// sign-handling or scale regression here would corrupt every stored vector.
+func TestQuantizeRoundTripNegative(t *testing.T) {
+	t.Parallel()
+	v := []float32{0.80, -0.60, 0.10, -0.90, 0.42, -0.05, 0.31}
+	got := Dequantize(Quantize(v))
+	if c := Cosine(v, got); c < 0.999 {
+		t.Errorf("round-trip cosine = %v, want ~1 (direction preserved)", c)
+	}
+	for i := range v {
+		if v[i] != 0 && (v[i] < 0) != (got[i] < 0) {
+			t.Errorf("component %d sign flipped: %v -> %v", i, v[i], got[i])
+		}
+	}
+}

@@ -131,7 +131,7 @@ func (p *PagerDuty) Fetch(ctx context.Context) ([]Record, error) {
 // pagerdutyUserKey returns a stable key for a user, preferring email.
 func pagerdutyUserKey(u pagerduty.User) string {
 	if u.Email != "" {
-		return strings.ToLower(u.Email)
+		return util.NormalizeEmail(u.Email)
 	}
 	if u.ID != "" {
 		return "pagerduty:" + u.ID
