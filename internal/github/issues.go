@@ -37,9 +37,14 @@ func (i Issue) LabelNames() []string { return labelNames(i.Labels) }
 func (i Issue) AssigneeLogins() []string { return accountLogins(i.Assignees) }
 
 // Issues returns a repository's issues of any state, most recently updated
-// first, following pagination up to maxPages pages of 100. The result
-// includes pull requests, which the caller can filter with IsPullRequest.
-func (c *Client) Issues(ctx context.Context, owner, repo string) ([]Issue, error) {
+// first, following pagination up to maxPages pages of 100. The result includes
+// pull requests, which the caller can filter with IsPullRequest. A non-zero
+// since restricts the result to issues updated at or after it, which an
+// incremental re-index passes to fetch only what changed.
+func (c *Client) Issues(ctx context.Context, owner, repo string, since time.Time) ([]Issue, error) {
 	q := url.Values{"state": {"all"}, "per_page": {"100"}, "sort": {"updated"}, "direction": {"desc"}}
+	if !since.IsZero() {
+		q.Set("since", since.UTC().Format(time.RFC3339))
+	}
 	return getAll[Issue](ctx, c, repoPath(owner, repo, "issues"), q)
 }

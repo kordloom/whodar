@@ -46,6 +46,10 @@ type GitHubOptions struct {
 	// Episodes records merged changes, so recall can point back at the change
 	// that fixed something.
 	Episodes bool
+	// Since, when set, restricts an incremental re-index to pull requests and
+	// issues updated at or after it, and skips the whole-repo contributor and
+	// CODEOWNERS snapshots, whose weight would double if folded again.
+	Since time.Time
 	// Log receives progress lines; nil discards them.
 	Log io.Writer
 }
@@ -184,14 +188,21 @@ func (g *GitHub) indexRepo(
 	if err != nil {
 		return nil, nil, fmt.Errorf("repo: %w", err)
 	}
-	repoTokens := repoTopicSet(repo)
-
-	cons, err := g.client.Contributors(ctx, owner, name)
-	if e := g.usable(full, "contributors", len(cons), err); e != nil {
-		return nil, nil, fmt.Errorf("contributors: %w", e)
-	}
-	for _, c := range cons {
-		bump(c.Login, repoTokens, time.Time{})
+	// Contributors is a whole-repo snapshot with no since filter, so re-folding
+	// it on an incremental run would add each repo topic to every contributor
+	// again. Skip it when reading incrementally; those people are preserved from
+	// the last full run, and a periodic --full recompacts.
+	var conCount int
+	if g.opts.Since.IsZero() {
+		repoTokens := repoTopicSet(repo)
+		cons, err := g.client.Contributors(ctx, owner, name)
+		if e := g.usable(full, "contributors", len(cons), err); e != nil {
+			return nil, nil, fmt.Errorf("contributors: %w", e)
+		}
+		conCount = len(cons)
+		for _, c := range cons {
+			bump(c.Login, repoTokens, time.Time{})
+		}
 	}
 
 	var episodes []episode.Episode
@@ -200,6 +211,11 @@ func (g *GitHub) indexRepo(
 		return nil, nil, fmt.Errorf("pulls: %w", e)
 	}
 	for _, pr := range pulls {
+		// Pulls come newest-first, so on an incremental run stop at the first one
+		// older than the watermark; only changed pulls are folded again.
+		if !g.opts.Since.IsZero() && pr.UpdatedAt.Before(g.opts.Since) {
+			break
+		}
 		tokens := append(pr.LabelNames(), titleTokens(pr.Title)...)
 		bump(pr.Author(), tokens, pr.UpdatedAt)
 		for _, u := range pr.Reviewers() {
@@ -226,7 +242,7 @@ func (g *GitHub) indexRepo(
 		}
 	}
 
-	issues, err := g.client.Issues(ctx, owner, name)
+	issues, err := g.client.Issues(ctx, owner, name, g.opts.Since)
 	if e := g.usable(full, "issues", len(issues), err); e != nil {
 		// Preserve the episodes already gathered from the pull requests: they
 		// were read successfully, and a later failure should not discard them.
@@ -245,20 +261,25 @@ func (g *GitHub) indexRepo(
 		}
 	}
 
+	// CODEOWNERS is a whole-file snapshot with no since filter and rarely changes,
+	// so like contributors it is skipped on an incremental run to avoid folding
+	// its weight twice.
 	var codeOwnerRecords []Record
-	if content := g.codeOwners(ctx, owner, name); content != nil {
-		recs, err := parseCodeOwners(ctx, bytes.NewReader(content))
-		switch {
-		case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded):
-			return codeOwnerRecords, episodes, err
-		case err != nil:
-			fmt.Fprintf(g.opts.Log, "github: %s CODEOWNERS parse failed: %v\n", full, err)
-		default:
-			codeOwnerRecords = remapCodeOwners(recs)
+	if g.opts.Since.IsZero() {
+		if content := g.codeOwners(ctx, owner, name); content != nil {
+			recs, err := parseCodeOwners(ctx, bytes.NewReader(content))
+			switch {
+			case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded):
+				return codeOwnerRecords, episodes, err
+			case err != nil:
+				fmt.Fprintf(g.opts.Log, "github: %s CODEOWNERS parse failed: %v\n", full, err)
+			default:
+				codeOwnerRecords = remapCodeOwners(recs)
+			}
 		}
 	}
 	fmt.Fprintf(g.opts.Log, "github: indexed %s (%d contributors, %d pulls, %d issues)\n",
-		full, len(cons), len(pulls), issueCount)
+		full, conCount, len(pulls), issueCount)
 	return codeOwnerRecords, episodes, nil
 }
 

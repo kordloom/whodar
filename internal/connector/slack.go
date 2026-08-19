@@ -53,6 +53,10 @@ type SlackOptions struct {
 	// MaxArchiveMessages caps retained messages per conversation; zero uses
 	// the default.
 	MaxArchiveMessages int
+	// Since, when later than the SinceDays window, reads only messages posted at
+	// or after it, for an incremental re-index. Identity records (users) carry no
+	// weight, so only the message-derived topics narrow to the delta.
+	Since time.Time
 	// Log receives progress lines; nil discards them.
 	Log io.Writer
 }
@@ -161,7 +165,7 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 		}
 	}
 
-	oldest := slackOldest(s.opts.SinceDays)
+	oldest := slackOldestSince(s.opts.SinceDays, s.opts.Since)
 	skipped, read, notInChannel := 0, 0, 0
 	joined := 0
 	// maxConsecThrottle stops a run only when the whole workspace is hard rate
@@ -381,7 +385,19 @@ func slackUserRef(userID string, byID map[string]slack.User) string {
 	return "slack:" + userID
 }
 
-// slackOldest returns the Slack oldest timestamp for the history window.
-func slackOldest(days int) string {
-	return fmt.Sprintf("%d.000000", time.Now().AddDate(0, 0, -days).Unix())
+// slackOldestSince returns the Slack oldest timestamp for a read: the history
+// window by default, or the watermark when it is more recent, so an incremental
+// re-index reads only messages posted after the last run.
+func slackOldestSince(days int, since time.Time) string {
+	start := time.Now().AddDate(0, 0, -days)
+	if since.After(start) {
+		start = since
+	}
+	return slackTS(start)
+}
+
+// slackTS formats a time as a Slack message timestamp, Unix seconds with a
+// microsecond suffix.
+func slackTS(t time.Time) string {
+	return fmt.Sprintf("%d.000000", t.Unix())
 }
