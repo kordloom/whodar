@@ -506,19 +506,10 @@ func (ix *Index) Search(query string, limit int) []model.Match {
 		if p.TeamID != "" {
 			team = ix.Graph.Teams[p.TeamID]
 		}
-		reasons, evidence := ix.reasons(pid, matched[pid], resolved)
 		if net := nets[pid]; net != 0 {
 			sc *= ix.feedbackFactor(net)
-			reasons = append(reasons, feedbackReason(net))
 		}
-		coverage := float64(len(matched[pid])) / float64(len(terms))
-		matches = append(matches, model.Match{
-			Person:     p,
-			Team:       team,
-			Score:      sc,
-			Confidence: evidence * coverage,
-			Reasons:    reasons,
-		})
+		matches = append(matches, model.Match{Person: p, Team: team, Score: sc})
 	}
 	sort.Slice(matches, func(i, j int) bool {
 		if matches[i].Score != matches[j].Score {
@@ -528,6 +519,20 @@ func (ix *Index) Search(query string, limit int) []model.Match {
 	})
 	if limit > 0 && len(matches) > limit {
 		matches = matches[:limit]
+	}
+	// Build the reasons and confidence only for the people that survived the
+	// limit. Each reason stems the person's whole topic set against every query
+	// term, so doing it for every candidate before ranking was the query's cost,
+	// and only the returned people need it. Confidence does not affect the
+	// ranking, which is by score, so deferring it changes no result.
+	for i := range matches {
+		pid := matches[i].Person.ID
+		reasons, evidence := ix.reasons(pid, matched[pid], resolved)
+		if net := nets[pid]; net != 0 {
+			reasons = append(reasons, feedbackReason(net))
+		}
+		matches[i].Reasons = reasons
+		matches[i].Confidence = evidence * float64(len(matched[pid])) / float64(len(terms))
 	}
 	return matches
 }
@@ -542,9 +547,6 @@ func (ix *Index) SearchChannels(query string, limit int) []model.ChannelMatch {
 	resolved := resolveTerms(ix.channelPostings, ix.channelVocab, terms)
 	scores, matched := scoreByTerms(
 		ix.channelPostings, terms, resolved, len(ix.Graph.Channels), ix.channelLens)
-	personResolved := resolveTerms(ix.postings, ix.personVocab, terms)
-	personScores, _ := scoreByTerms(
-		ix.postings, terms, personResolved, len(ix.Graph.People), ix.personLens)
 	nets := ix.feedbackNets(terms, true)
 
 	matches := make([]model.ChannelMatch, 0, len(scores))
@@ -564,7 +566,6 @@ func (ix *Index) SearchChannels(query string, limit int) []model.ChannelMatch {
 			Score:      sc,
 			Confidence: evidence * coverage,
 			Reasons:    reasons,
-			TopMembers: ix.topMembers(ch, personScores, 3),
 		})
 	}
 	sort.Slice(matches, func(i, j int) bool {
@@ -576,24 +577,57 @@ func (ix *Index) SearchChannels(query string, limit int) []model.ChannelMatch {
 	if limit > 0 && len(matches) > limit {
 		matches = matches[:limit]
 	}
+	// Rank the members only for the channels that survived the limit. Scoring
+	// every person and sorting every channel's whole membership up front, only to
+	// keep a handful of channels, was the bulk of a query at scale.
+	if len(matches) > 0 {
+		personResolved := resolveTerms(ix.postings, ix.personVocab, terms)
+		personScores, _ := scoreByTerms(
+			ix.postings, terms, personResolved, len(ix.Graph.People), ix.personLens)
+		for i := range matches {
+			matches[i].TopMembers = ix.topMembers(matches[i].Channel, personScores, 3)
+		}
+	}
 	return matches
 }
 
 // topMembers returns up to n of a channel's members, most relevant to the query
-// first, using precomputed person scores.
+// first, using precomputed person scores. It selects the top n in a single pass
+// with one score lookup per member, rather than sorting the whole membership
+// with a lookup inside the comparator, which was the dominant cost of a query at
+// scale.
 func (ix *Index) topMembers(ch *model.Channel, scores map[model.ID]float64, n int) []*model.Person {
-	ids := append([]model.ID(nil), ch.Members...)
-	sort.SliceStable(ids, func(i, j int) bool {
-		return scores[ids[i]] > scores[ids[j]]
-	})
-	out := make([]*model.Person, 0, n)
-	for _, id := range ids {
-		if p := ix.Graph.People[id]; p != nil {
-			out = append(out, p)
-			if len(out) >= n {
-				break
-			}
+	if n <= 0 {
+		return nil
+	}
+	type scored struct {
+		person *model.Person
+		score  float64
+	}
+	best := make([]scored, 0, n+1)
+	for _, id := range ch.Members {
+		p := ix.Graph.People[id]
+		if p == nil {
+			continue
 		}
+		cand := scored{person: p, score: scores[id]}
+		pos := len(best)
+		for pos > 0 && best[pos-1].score < cand.score {
+			pos--
+		}
+		if pos >= n {
+			continue
+		}
+		best = append(best, scored{})
+		copy(best[pos+1:], best[pos:])
+		best[pos] = cand
+		if len(best) > n {
+			best = best[:n]
+		}
+	}
+	out := make([]*model.Person, len(best))
+	for i, b := range best {
+		out[i] = b.person
 	}
 	return out
 }
