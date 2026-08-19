@@ -3,6 +3,8 @@
 package index
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -917,12 +919,15 @@ func (ix *Index) channelReasons(
 type snapshot struct {
 	// Graph is the entity graph.
 	Graph *model.Graph `json:"graph"`
-	// Postings maps a token to per-person weight.
-	Postings map[string]map[model.ID]float64 `json:"postings"`
+	// Postings is the per-person inverted index packed as a compact binary blob
+	// (JSON stores a byte slice as base64), which is far smaller and faster to
+	// read than a map of maps and is the bulk of an index once the source
+	// records move to the sidecar.
+	Postings []byte `json:"postings"`
 	// Texts holds normalized per-person field text.
 	Texts map[model.ID]*personText `json:"texts"`
-	// ChannelPostings maps a token to per-channel weight.
-	ChannelPostings map[string]map[model.ID]float64 `json:"channel_postings"`
+	// ChannelPostings is the per-channel inverted index, packed the same way.
+	ChannelPostings []byte `json:"channel_postings"`
 	// ChannelTexts holds normalized per-channel field text.
 	ChannelTexts map[model.ID]*channelText `json:"channel_texts"`
 	// PersonVecs holds per-person embedding vectors.
@@ -948,6 +953,134 @@ type sourcesSnapshot struct {
 	// Sources holds the records each source contributed, so a later merge can
 	// replace one source without re-reading the others.
 	Sources map[string][]connector.Record `json:"sources,omitempty"`
+}
+
+// encodePostings packs an inverted index into a compact binary blob: an interned
+// id table in sorted order, then for each term its (id-index, float32 weight)
+// pairs. Interning the ids once and storing weights as four bytes, rather than
+// repeating id strings and printing floats in a JSON map of maps, is what makes
+// the index small and quick to read back.
+func encodePostings(postings map[string]map[model.ID]float64) []byte {
+	idSet := make(map[model.ID]struct{})
+	for _, people := range postings {
+		for id := range people {
+			idSet[id] = struct{}{}
+		}
+	}
+	ids := make([]model.ID, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	idIndex := make(map[model.ID]uint32, len(ids))
+	for i, id := range ids {
+		idIndex[id] = uint32(i)
+	}
+
+	var b bytes.Buffer
+	var scratch [4]byte
+	putU32 := func(v uint32) {
+		binary.LittleEndian.PutUint32(scratch[:], v)
+		b.Write(scratch[:])
+	}
+	putStr := func(s string) {
+		putU32(uint32(len(s)))
+		b.WriteString(s)
+	}
+	putU32(uint32(len(ids)))
+	for _, id := range ids {
+		putStr(string(id))
+	}
+	terms := make([]string, 0, len(postings))
+	for term := range postings {
+		terms = append(terms, term)
+	}
+	slices.Sort(terms)
+	putU32(uint32(len(terms)))
+	for _, term := range terms {
+		putStr(term)
+		people := postings[term]
+		putU32(uint32(len(people)))
+		idxs := make([]uint32, 0, len(people))
+		for id := range people {
+			idxs = append(idxs, idIndex[id])
+		}
+		slices.Sort(idxs)
+		for _, idx := range idxs {
+			putU32(idx)
+			putU32(math.Float32bits(float32(people[ids[idx]])))
+		}
+	}
+	return b.Bytes()
+}
+
+// postingsReader reads the encodePostings blob, tracking the first short read so
+// a truncated or corrupt file becomes an error rather than a panic.
+type postingsReader struct {
+	b   []byte
+	pos int
+	err error
+}
+
+// u32 reads a little-endian uint32.
+func (r *postingsReader) u32() uint32 {
+	if r.err != nil {
+		return 0
+	}
+	if r.pos+4 > len(r.b) {
+		r.err = fmt.Errorf("postings: unexpected end of data")
+		return 0
+	}
+	v := binary.LittleEndian.Uint32(r.b[r.pos:])
+	r.pos += 4
+	return v
+}
+
+// str reads a length-prefixed string.
+func (r *postingsReader) str() string {
+	n := int(r.u32())
+	if r.err != nil {
+		return ""
+	}
+	if n < 0 || r.pos+n > len(r.b) {
+		r.err = fmt.Errorf("postings: unexpected end of data")
+		return ""
+	}
+	s := string(r.b[r.pos : r.pos+n])
+	r.pos += n
+	return s
+}
+
+// decodePostings rebuilds the inverted index from an encodePostings blob.
+func decodePostings(blob []byte) (map[string]map[model.ID]float64, error) {
+	out := make(map[string]map[model.ID]float64)
+	if len(blob) == 0 {
+		return out, nil
+	}
+	r := &postingsReader{b: blob}
+	numIDs := int(r.u32())
+	ids := make([]model.ID, 0, max(numIDs, 0))
+	for i := 0; i < numIDs && r.err == nil; i++ {
+		ids = append(ids, model.ID(r.str()))
+	}
+	numTerms := int(r.u32())
+	for t := 0; t < numTerms && r.err == nil; t++ {
+		term := r.str()
+		count := int(r.u32())
+		people := make(map[model.ID]float64, max(count, 0))
+		for e := 0; e < count && r.err == nil; e++ {
+			idx := r.u32()
+			w := math.Float32frombits(r.u32())
+			if r.err == nil && int(idx) < len(ids) {
+				people[ids[idx]] = float64(w)
+			}
+		}
+		out[term] = people
+	}
+	if r.err != nil {
+		return nil, r.err
+	}
+	return out, nil
 }
 
 // Option configures Load and Save. With no option the index is read and written
@@ -992,9 +1125,9 @@ func (ix *Index) Save(path string, opts ...Option) error {
 	}
 	snap := snapshot{
 		Graph:           ix.Graph,
-		Postings:        ix.postings,
+		Postings:        encodePostings(ix.postings),
 		Texts:           ix.texts,
-		ChannelPostings: ix.channelPostings,
+		ChannelPostings: encodePostings(ix.channelPostings),
 		ChannelTexts:    ix.channelTexts,
 		PersonVecs:      ix.personVecs,
 		ChannelVecs:     ix.channelVecs,
@@ -1058,11 +1191,19 @@ func Load(path string, opts ...Option) (*Index, error) {
 	if err := json.Unmarshal(raw, &snap); err != nil {
 		return nil, fmt.Errorf("index: decode: %w", err)
 	}
+	postings, err := decodePostings(snap.Postings)
+	if err != nil {
+		return nil, fmt.Errorf("index: %w", err)
+	}
+	channelPostings, err := decodePostings(snap.ChannelPostings)
+	if err != nil {
+		return nil, fmt.Errorf("index: channel %w", err)
+	}
 	ix := &Index{
 		Graph:           snap.Graph,
-		postings:        snap.Postings,
+		postings:        postings,
 		texts:           snap.Texts,
-		channelPostings: snap.ChannelPostings,
+		channelPostings: channelPostings,
 		channelTexts:    snap.ChannelTexts,
 		personVecs:      snap.PersonVecs,
 		channelVecs:     snap.ChannelVecs,
