@@ -148,6 +148,11 @@ func TestReembedAfterMergeKeepsRichVectors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
+	// A merge rebuilds from every source, so the prior records come back from
+	// the sidecar first, exactly as the index command does before it merges.
+	if err := reloaded.LoadSources(path); err != nil {
+		t.Fatalf("load sources: %v", err)
+	}
 	reloaded.Add([]connector.Record{
 		{Source: "jira", Kind: connector.KindPerson, Email: "bob@x.com", Name: "Bob",
 			Text: "kafka consumer lag on the ingest topic"},

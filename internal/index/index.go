@@ -121,7 +121,14 @@ type Index struct {
 	// They are the index's source of truth: everything else here is derived
 	// from them, so re-reading a source replaces its contribution instead of
 	// piling a second copy on top of the first.
+	// sources holds the raw records per source, needed only to rebuild on a
+	// merge. It is nil in an index loaded to answer a query, since the records
+	// live in a sidecar file that queries never read. A non-nil map marks an
+	// index whose sources are in hand and safe to save back to the sidecar.
 	sources map[string][]connector.Record
+	// sourceCounts is how many records each source contributed, kept in the main
+	// index so status can report it without loading the sidecar.
+	sourceCounts map[string]int
 	// builtAt is when a loaded index was last written, empty for a fresh one.
 	builtAt time.Time
 	// personLens and channelLens cache BM25 document lengths, refreshed when
@@ -185,6 +192,7 @@ func (ix *Index) decay(t time.Time) float64 {
 // every source read before.
 func (ix *Index) Build(records []connector.Record) {
 	ix.sources = make(map[string][]connector.Record)
+	ix.sourceCounts = make(map[string]int)
 	ix.personVecs = make(map[model.ID][]float32)
 	ix.channelVecs = make(map[model.ID][]float32)
 	ix.take(records)
@@ -221,6 +229,12 @@ func (ix *Index) take(records []connector.Record) {
 			continue
 		}
 		ix.sources[name] = recs
+	}
+	if ix.sourceCounts == nil {
+		ix.sourceCounts = make(map[string]int)
+	}
+	for name := range incoming {
+		ix.sourceCounts[name] = len(ix.sources[name])
 	}
 }
 
@@ -283,10 +297,11 @@ func (ix *Index) BuiltAt() time.Time { return ix.builtAt }
 func (ix *Index) PostingCount() int { return len(ix.postings) }
 
 // SourceNames returns the names of the sources that contributed to the index,
-// sorted, so a status view can list each one with its size.
+// sorted, so a status view can list each one with its size. It reads the counts
+// kept in the main index, so it works without loading the sources sidecar.
 func (ix *Index) SourceNames() []string {
-	names := make([]string, 0, len(ix.sources))
-	for name := range ix.sources {
+	names := make([]string, 0, len(ix.sourceCounts))
+	for name := range ix.sourceCounts {
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -294,8 +309,9 @@ func (ix *Index) SourceNames() []string {
 }
 
 // SourceSize reports how many records the named source contributed to this
-// index, so a caller can tell a full read from a truncated one.
-func (ix *Index) SourceSize(name string) int { return len(ix.sources[name]) }
+// index, so a caller can tell a full read from a truncated one. It reads the
+// count kept in the main index, so it works without loading the sources sidecar.
+func (ix *Index) SourceSize(name string) int { return ix.sourceCounts[name] }
 
 // LoadAliases merges a JSON alias file into the index's identity resolver so
 // records indexed afterward key by their canonical identifier. Call
@@ -881,12 +897,23 @@ type snapshot struct {
 	ChannelVecs map[model.ID][]float32 `json:"channel_vecs,omitempty"`
 	// Aliases maps each known alias identifier to its canonical form.
 	Aliases map[model.ID]model.ID `json:"aliases,omitempty"`
-	// Sources holds the records each source contributed, so a later merge can
-	// replace one source without re-reading the others.
-	Sources map[string][]connector.Record `json:"sources,omitempty"`
+	// SourceCounts is how many records each source contributed. The records
+	// themselves live in a sidecar file so a query never loads them; only their
+	// counts stay here for status and the shrink guard.
+	SourceCounts map[string]int `json:"source_counts,omitempty"`
 	// BuiltAt is when the index was last written, so a reader can tell how stale
 	// it is without re-running an index.
 	BuiltAt time.Time `json:"built_at,omitempty"`
+}
+
+// sourcesSnapshot is the sidecar that holds the raw records per source, read
+// only when a merge needs to rebuild. Keeping it out of the main index is what
+// lets a query load a fraction of the bytes, since the records are the bulk of
+// an index and no query reads them.
+type sourcesSnapshot struct {
+	// Sources holds the records each source contributed, so a later merge can
+	// replace one source without re-reading the others.
+	Sources map[string][]connector.Record `json:"sources,omitempty"`
 }
 
 // Option configures Load and Save. With no option the index is read and written
@@ -920,8 +947,10 @@ func WithCodec(c vault.Codec) Option {
 
 // Save writes the index to path readable only by the owner (mode 0600), creating
 // parent directories as needed. It is compact JSON, or its encrypted form when
-// WithCodec is set. The write goes through a temporary file and a rename so a
-// crash cannot truncate an existing index.
+// WithCodec is set, and each write goes through a temporary file and a rename so
+// a crash cannot truncate an existing file. The raw source records, which are
+// the bulk of an index and which no query reads, go to a sidecar file next to
+// path so a query loads only the small main index.
 func (ix *Index) Save(path string, opts ...Option) error {
 	cfg := newIOConfig(opts)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -936,21 +965,46 @@ func (ix *Index) Save(path string, opts ...Option) error {
 		PersonVecs:      ix.personVecs,
 		ChannelVecs:     ix.channelVecs,
 		Aliases:         ix.identityResolver().Pairs(),
-		Sources:         redactedSources(ix.sources),
+		SourceCounts:    ix.sourceCounts,
 		BuiltAt:         ix.now(),
 	}
-	raw, err := json.Marshal(snap)
-	if err != nil {
-		return fmt.Errorf("index: encode: %w", err)
+	if err := writeEncoded(path, snap, cfg.codec); err != nil {
+		return err
 	}
-	enc, err := cfg.codec.Encode(raw)
-	if err != nil {
-		return fmt.Errorf("index: encrypt: %w", err)
-	}
-	if err := util.WriteFileAtomic(path, enc, 0o600); err != nil {
-		return fmt.Errorf("index: write: %w", err)
+	// Write the sources sidecar only when the sources are in hand. An index
+	// loaded to answer a query carries none, and overwriting the sidecar then
+	// would erase the records a later merge needs; leaving it keeps them.
+	if ix.sources != nil {
+		side := sourcesSnapshot{Sources: redactedSources(ix.sources)}
+		if err := writeEncoded(sourcesPath(path), side, cfg.codec); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// writeEncoded marshals v to JSON, encodes it with the codec, and writes it
+// atomically at mode 0600.
+func writeEncoded(path string, v any, codec vault.Codec) error {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Errorf("index: encode %s: %w", filepath.Base(path), err)
+	}
+	enc, err := codec.Encode(raw)
+	if err != nil {
+		return fmt.Errorf("index: encrypt %s: %w", filepath.Base(path), err)
+	}
+	if err := util.WriteFileAtomic(path, enc, 0o600); err != nil {
+		return fmt.Errorf("index: write %s: %w", filepath.Base(path), err)
+	}
+	return nil
+}
+
+// sourcesPath is the sidecar path for an index at path: the same name with a
+// .sources segment inserted, so the two files travel together.
+func sourcesPath(path string) string {
+	ext := filepath.Ext(path)
+	return strings.TrimSuffix(path, ext) + ".sources" + ext
 }
 
 // Load reads an index previously written by Save, decrypting it when WithCodec
@@ -978,11 +1032,14 @@ func Load(path string, opts ...Option) (*Index, error) {
 		channelTexts:    snap.ChannelTexts,
 		personVecs:      snap.PersonVecs,
 		channelVecs:     snap.ChannelVecs,
-		sources:         snap.Sources,
-		builtAt:         snap.BuiltAt,
-		resolver:        identity.NewResolver(),
-		halfLife:        DefaultHalfLife,
-		now:             time.Now,
+		// sources stays nil: a loaded index answers queries, which never read
+		// the records. A merge calls LoadSources to bring them in from the
+		// sidecar before rebuilding.
+		sourceCounts: snap.SourceCounts,
+		builtAt:      snap.BuiltAt,
+		resolver:     identity.NewResolver(),
+		halfLife:     DefaultHalfLife,
+		now:          time.Now,
 	}
 	ix.resolver.Restore(snap.Aliases)
 	if ix.Graph == nil {
@@ -1023,6 +1080,38 @@ func Load(path string, opts ...Option) (*Index, error) {
 	}
 	ix.refreshStats()
 	return ix, nil
+}
+
+// LoadSources reads the sources sidecar for the index at path into the index, so
+// a merge can rebuild from every source and not just the one it is adding.
+// Merging into a loaded index must call this first: without the records a
+// rebuild would drop every source read before. A missing sidecar is an error
+// rather than an empty set, since a silent shrink is exactly what this guards.
+func (ix *Index) LoadSources(path string, opts ...Option) error {
+	cfg := newIOConfig(opts)
+	stored, err := os.ReadFile(sourcesPath(path))
+	if err != nil {
+		return fmt.Errorf("index: open sources: %w", err)
+	}
+	raw, err := cfg.codec.Decode(stored)
+	if err != nil {
+		return fmt.Errorf("index: sources: %w", err)
+	}
+	var side sourcesSnapshot
+	if err := json.Unmarshal(raw, &side); err != nil {
+		return fmt.Errorf("index: decode sources: %w", err)
+	}
+	ix.sources = side.Sources
+	if ix.sources == nil {
+		ix.sources = make(map[string][]connector.Record)
+	}
+	if ix.sourceCounts == nil {
+		ix.sourceCounts = make(map[string]int)
+	}
+	for name, recs := range ix.sources {
+		ix.sourceCounts[name] = len(recs)
+	}
+	return nil
 }
 
 // personID resolves a stable identifier for a record, preferring an explicit
