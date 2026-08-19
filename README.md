@@ -41,6 +41,24 @@ whole graph: people, channels, teams, and topics:
 Or `go install github.com/kordloom/whodar@latest`, or grab a prebuilt binary
 from the releases page.
 
+## Verifying a download
+
+Every release ships a `checksums.txt` signed with [cosign](https://docs.sigstore.dev).
+The signature is `checksums.txt.bundle` and the public key is
+[`cosign.pub`](cosign.pub) in this repo. Download all three alongside your
+archive, then:
+
+    cosign verify-blob \
+      --key cosign.pub \
+      --bundle checksums.txt.bundle \
+      --new-bundle-format \
+      checksums.txt
+
+    shasum -a 256 -c checksums.txt --ignore-missing
+
+The first command proves the checksum file is the one we signed; the second
+proves your archive matches it.
+
 ## Quickstart
 
 No data yet? Explore a simulated company across all eight sources, no

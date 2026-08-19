@@ -29,6 +29,26 @@ archives:
 checksum:
   name_template: checksums.txt
 
+# Sign the checksums file with cosign (Sigstore bundle format) so a download can
+# be verified against the committed public key. Signing the checksum file rather
+# than each archive keeps one signature covering every artifact. The private key
+# is read from COSIGN_PRIVATE_KEY, never a file on disk; the password from
+# COSIGN_PASSWORD. The signature is a .bundle recorded in the public transparency
+# log, which is independent of GitHub, so a local release still signs.
+signs:
+  - cmd: cosign
+    stdin: "{{ .Env.COSIGN_PASSWORD }}"
+    args:
+      - "sign-blob"
+      - "--key=env://COSIGN_PRIVATE_KEY"
+      - "--bundle=${signature}"
+      - "--new-bundle-format"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    signature: "${artifact}.bundle"
+    output: true
+
 dockers:
   - image_templates:
       - "ghcr.io/kordloom/whodar:{{ .Version }}-amd64"
