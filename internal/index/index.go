@@ -247,20 +247,143 @@ func redactedSources(sources map[string][]connector.Record) map[string][]connect
 	for name, recs := range sources {
 		clean := make([]connector.Record, len(recs))
 		for i, rec := range recs {
-			if rec.Text != "" {
-				// Sort the stemmed terms so word order is destroyed: the stored
-				// set reveals no more than the inverted index already does, and
-				// cannot be read back as a sentence.
-				terms := text.Terms(rec.Text)
-				sort.Strings(terms)
-				rec.Terms = terms
-				rec.Text = ""
-			}
-			clean[i] = rec
+			clean[i] = redactRecord(rec)
 		}
 		out[name] = clean
 	}
 	return out
+}
+
+// redactRecord replaces a record's readable Text with its sorted stemmed Terms,
+// so a stored or merged record holds a search index rather than the message
+// text. A record already carrying only Terms is returned unchanged.
+func redactRecord(rec connector.Record) connector.Record {
+	if rec.Text != "" {
+		// Sort the stemmed terms so word order is destroyed: the stored set
+		// reveals no more than the inverted index already does, and cannot be
+		// read back as a sentence.
+		terms := text.Terms(rec.Text)
+		sort.Strings(terms)
+		rec.Terms = terms
+		rec.Text = ""
+	}
+	return rec
+}
+
+// MergeIncremental folds records from an incremental fetch into a source's
+// existing records instead of replacing them, so a fetch that returns only what
+// changed since the last run updates the graph without dropping the people and
+// topics it did not re-read. A record for an identity already held is summed
+// into it; an identity not in the fetch is left untouched. Call LoadSources
+// first so the prior records are present to fold into. Both the held and the
+// incoming records are reduced to stemmed Terms, so no readable message text is
+// kept, and the folded set stays one record per identity, bounded across runs.
+//
+// Folding matches what a full read produces: a connector's full run already
+// emits one record per person carrying that person's whole activity at their
+// most recent time, which is exactly what summing the batches and taking the
+// latest time yields here. An item edited after the watermark is counted in both
+// the held record and the delta; the double count is bounded harmless because
+// topic and term weight saturate, and a periodic full re-index recompacts.
+func (ix *Index) MergeIncremental(records []connector.Record) {
+	if ix.sources == nil {
+		ix.sources = make(map[string][]connector.Record)
+	}
+	incoming := make(map[string][]connector.Record)
+	for _, rec := range records {
+		incoming[rec.Source] = append(incoming[rec.Source], redactRecord(rec))
+	}
+	if ix.sourceCounts == nil {
+		ix.sourceCounts = make(map[string]int)
+	}
+	for name, recs := range incoming {
+		if name == "" {
+			// A record that names no source cannot be matched to prior held
+			// records, so it accumulates rather than risk erasing another set,
+			// exactly as take treats the same case.
+			ix.sources[name] = append(ix.sources[name], recs...)
+		} else {
+			ix.sources[name] = foldRecords(redactSlice(ix.sources[name]), recs)
+		}
+		ix.sourceCounts[name] = len(ix.sources[name])
+	}
+	ix.rebuild()
+}
+
+// redactSlice reduces every record in recs to stemmed Terms, so a held set
+// loaded with readable Text still folds without keeping that text.
+func redactSlice(recs []connector.Record) []connector.Record {
+	out := make([]connector.Record, len(recs))
+	for i, rec := range recs {
+		out[i] = redactRecord(rec)
+	}
+	return out
+}
+
+// foldRecords folds delta records into base by identity, summing the affinity of
+// an identity already present and appending a genuinely new one. It keeps one
+// record per identity so a source stays bounded across incremental runs.
+func foldRecords(base, delta []connector.Record) []connector.Record {
+	at := make(map[string]int, len(base))
+	out := make([]connector.Record, len(base))
+	copy(out, base)
+	for i, rec := range out {
+		at[foldKey(rec)] = i
+	}
+	for _, rec := range delta {
+		key := foldKey(rec)
+		if i, ok := at[key]; ok {
+			out[i] = foldRecord(out[i], rec)
+			continue
+		}
+		at[key] = len(out)
+		out = append(out, rec)
+	}
+	return out
+}
+
+// foldKey identifies the record a later record accumulates into: a person by
+// their per-source id, a channel by its slug.
+func foldKey(rec connector.Record) string {
+	if rec.Kind == connector.KindChannel {
+		return "c\x00" + slug(rec.Name)
+	}
+	return "p\x00" + string(personID(rec))
+}
+
+// foldRecord sums add into base: it concatenates the topic and term lists that
+// rebuild turns into weight, unions channel members, advances the time to the
+// most recent activity, and fills any identity field base is missing.
+func foldRecord(base, add connector.Record) connector.Record {
+	base.Topics = append(base.Topics, add.Topics...)
+	base.Terms = append(base.Terms, add.Terms...)
+	for _, m := range add.Members {
+		if !slices.Contains(base.Members, m) {
+			base.Members = append(base.Members, m)
+		}
+	}
+	if add.Time.After(base.Time) {
+		base.Time = add.Time
+	}
+	base.Name = firstNonEmpty(add.Name, base.Name)
+	base.Email = firstNonEmpty(base.Email, add.Email)
+	base.Title = firstNonEmpty(add.Title, base.Title)
+	base.Team = firstNonEmpty(add.Team, base.Team)
+	base.Org = firstNonEmpty(add.Org, base.Org)
+	base.Manager = firstNonEmpty(add.Manager, base.Manager)
+	base.PersonID = firstNonEmpty(base.PersonID, add.PersonID)
+	if add.Weight > base.Weight {
+		base.Weight = add.Weight
+	}
+	return base
+}
+
+// firstNonEmpty returns a when it is non-empty, otherwise b.
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 // rebuild derives the graph, postings, and texts from every retained record.

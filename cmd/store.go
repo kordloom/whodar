@@ -11,8 +11,20 @@ import (
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/keyring"
 	"github.com/kordloom/whodar/internal/prompt"
+	"github.com/kordloom/whodar/internal/state"
 	"github.com/kordloom/whodar/internal/vault"
 )
+
+// loadState reads the incremental watermark state, returning an empty state when
+// the file is absent so a first run is a full index rather than an error.
+func (o *options) loadState() (*state.State, error) {
+	return state.Load(o.statePath())
+}
+
+// saveState writes the incremental watermark state.
+func (o *options) saveState(st *state.State) error {
+	return st.Save(o.statePath())
+}
 
 // codec resolves the at-rest codec from the environment once and caches it on
 // the options. A nil codec means the index is stored as plain JSON.

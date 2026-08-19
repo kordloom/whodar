@@ -57,6 +57,13 @@ func (o *options) episodePath() string {
 	return filepath.Join(o.dataDir, "episodes.json")
 }
 
+// statePath returns the incremental watermark file under the data directory. It
+// is a plain sidecar holding only per-source timestamps and scope names, so it
+// is never encrypted.
+func (o *options) statePath() string {
+	return filepath.Join(o.dataDir, "index.state.json")
+}
+
 // newRootCmd builds the root command, wires shared flags, and adds subcommands.
 func newRootCmd() *cobra.Command {
 	opts := &options{

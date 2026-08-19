@@ -27,6 +27,10 @@ type JiraOptions struct {
 	// speaks the v2 API and authenticates with a bearer token or not at all,
 	// rather than Cloud's v3 API and email-plus-token.
 	Server bool
+	// Since, when set, limits the search to issues updated at or after it, read
+	// oldest first, for an incremental re-index. It is ignored when JQL overrides
+	// the query, since that query is authoritative.
+	Since time.Time
 	// Log receives progress lines; nil discards them.
 	Log io.Writer
 }
@@ -55,6 +59,11 @@ type Jira struct {
 	opts JiraOptions
 	// episodes holds the resolved issues seen by the last Fetch.
 	episodes []episode.Episode
+	// watermark is the newest issue update time seen by the last Fetch.
+	watermark time.Time
+	// complete reports whether the last Fetch read every matching issue rather
+	// than stopping at the issue cap.
+	complete bool
 }
 
 // NewJira returns a Jira connector for the site, authenticating with an email
@@ -91,6 +100,8 @@ func (j *Jira) Ping(ctx context.Context) error {
 // Fetch searches issues and returns one record per person, weighted by topic.
 func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 	j.episodes = nil
+	j.watermark = time.Time{}
+	j.complete = false
 	query := j.jql()
 	issues, err := j.client.Search(ctx, query, j.opts.MaxIssues)
 	if err != nil {
@@ -125,6 +136,7 @@ func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 		users[key] = *u
 	}
 
+	var maxUpdated time.Time
 	for _, is := range issues {
 		if j.opts.Episodes {
 			if ep, ok := issueEpisode(j.client.BaseURL(), is); ok {
@@ -133,9 +145,17 @@ func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 		}
 		tokens := issueTopics(is)
 		updated := jiraTime(is.Fields.Updated)
+		if updated.After(maxUpdated) {
+			maxUpdated = updated
+		}
 		bump(is.Fields.Assignee, tokens, updated)
 		bump(is.Fields.Reporter, tokens, updated)
 	}
+	// Report how far this read reached so an incremental re-index can resume. A
+	// read that hit the issue cap did not reach every match, so it is incomplete
+	// and should be run again soon.
+	j.watermark = maxUpdated
+	j.complete = len(issues) < j.opts.MaxIssues
 
 	records := make([]Record, 0, len(counts))
 	for key, c := range counts {
@@ -163,19 +183,50 @@ func jiraTime(s string) time.Time {
 	return time.Time{}
 }
 
-// jql returns the query: an explicit JQL, or a project scope, or all issues.
+// jql returns the query: an explicit JQL, or a project scope, or all issues. An
+// incremental read (Since set) restricts to issues updated at or after the
+// watermark and orders them oldest first, so a capped read leaves the newest
+// issues for the next run and never skips a gap; a full read keeps the
+// newest-first order that best fills a fresh index up to the cap.
 func (j *Jira) jql() string {
 	if strings.TrimSpace(j.opts.JQL) != "" {
 		return j.opts.JQL
 	}
+	var scope string
 	if len(j.opts.Projects) > 0 {
 		quoted := make([]string, len(j.opts.Projects))
 		for i, p := range j.opts.Projects {
 			quoted[i] = `"` + p + `"`
 		}
-		return "project in (" + strings.Join(quoted, ",") + ") ORDER BY updated DESC"
+		scope = "project in (" + strings.Join(quoted, ",") + ")"
+	}
+	if !j.opts.Since.IsZero() {
+		clause := fmt.Sprintf(`updated >= "%s"`, jiraJQLTime(j.opts.Since))
+		if scope != "" {
+			scope += " AND " + clause
+		} else {
+			scope = clause
+		}
+		return scope + " ORDER BY updated ASC"
+	}
+	if scope != "" {
+		return scope + " ORDER BY updated DESC"
 	}
 	return "ORDER BY updated DESC"
+}
+
+// jiraJQLTime formats t as a JQL absolute timestamp, backed off by a small
+// margin so minor clock or timezone skew re-reads a little rather than skips.
+func jiraJQLTime(t time.Time) string {
+	return t.Add(-2 * time.Minute).Format("2006/01/02 15:04")
+}
+
+// Watermark reports the newest issue update time the last Fetch read, and
+// whether that read reached every matching issue rather than stopping at the
+// cap. An incremental index persists the time and asks only for newer issues
+// next time; an incomplete read signals that more remains.
+func (j *Jira) Watermark() (time.Time, bool) {
+	return j.watermark, j.complete
 }
 
 // issueTopics derives topic tokens from an issue's components, labels, summary,

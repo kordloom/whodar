@@ -80,6 +80,17 @@ type EpisodeSource interface {
 	Episodes() []episode.Episode
 }
 
+// Watermarker is implemented by sources that support an incremental fetch.
+// After a Fetch it reports how far the source was read, so the caller can
+// persist a watermark and ask only for newer items next time. A source that
+// does not implement it is always read in full.
+type Watermarker interface {
+	// Watermark returns the newest activity time read and whether the read
+	// reached everything available. The caller passes the cursor back as the
+	// next since bound; complete being false means more remains to read.
+	Watermark() (cursor time.Time, complete bool)
+}
+
 // SourceFunc adapts a function to the Source interface.
 type SourceFunc func(ctx context.Context) ([]Record, error)
 
