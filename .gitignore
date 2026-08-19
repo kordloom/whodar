@@ -2,6 +2,9 @@
 /whodar
 /bin/
 /dist/
+# The cosign signing private key never belongs in the repo; only cosign.pub is
+# committed, for verifying releases.
+cosign.key
 # Compiled site docs generator, built by `go -C site/gen build`.
 /site/gen/gen
 
