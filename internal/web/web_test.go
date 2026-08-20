@@ -466,3 +466,40 @@ func TestAskAPIModelDown(t *testing.T) {
 		t.Errorf("body = %s, want Ollama guidance", rec.Body.String())
 	}
 }
+
+// TestHealthAndReady checks the liveness and readiness probes: /healthz is
+// always 200 even behind a token, and /readyz reflects the readiness check
+// while also bypassing the token.
+func TestHealthAndReady(t *testing.T) {
+	t.Parallel()
+	ask := func(_ context.Context, _, _, _ string, _ int) (resolve.Answer, error) {
+		return resolve.Answer{}, nil
+	}
+	get := func(h http.Handler, path string) int {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		return rec.Code
+	}
+
+	// Liveness is 200 even behind a token and with no readiness check.
+	tokened, err := Handler(Config{Ask: ask, AuthToken: "sekret"})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if got := get(tokened, "/healthz"); got != http.StatusOK {
+		t.Errorf("/healthz behind a token = %d, want 200", got)
+	}
+	if got := get(tokened, "/readyz"); got != http.StatusOK {
+		t.Errorf("/readyz with no check = %d, want 200", got)
+	}
+
+	// Readiness reflects the check.
+	notReady, _ := Handler(Config{Ask: ask, Ready: func() bool { return false }})
+	if got := get(notReady, "/readyz"); got != http.StatusServiceUnavailable {
+		t.Errorf("/readyz not ready = %d, want 503", got)
+	}
+	ready, _ := Handler(Config{Ask: ask, Ready: func() bool { return true }})
+	if got := get(ready, "/readyz"); got != http.StatusOK {
+		t.Errorf("/readyz ready = %d, want 200", got)
+	}
+}

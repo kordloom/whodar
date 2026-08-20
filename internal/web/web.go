@@ -99,6 +99,10 @@ type Config struct {
 	// Log receives server-side error detail kept out of client responses; nil
 	// discards it.
 	Log io.Writer
+	// Ready reports whether the server can serve real work, backing /readyz;
+	// nil means always ready. /healthz is a pure liveness check independent of
+	// it.
+	Ready func() bool
 }
 
 // Handler returns the whodar web handler: an index page, embedded assets, and a
@@ -150,7 +154,39 @@ func Handler(cfg Config) (http.Handler, error) {
 	if cfg.AuthToken != "" {
 		h = requireToken(cfg.AuthToken, h)
 	}
-	return securityHeaders(h), nil
+	// Liveness and readiness bypass the token so a load balancer can probe a
+	// server it holds no credential for. They still sit under securityHeaders.
+	probed := http.NewServeMux()
+	probed.HandleFunc("/healthz", healthHandler())
+	probed.HandleFunc("/readyz", readyHandler(cfg.Ready))
+	probed.Handle("/", h)
+	return securityHeaders(probed), nil
+}
+
+// healthHandler answers a pure liveness probe. It reports the process is up
+// without touching any data, so it stays 200 even when the index is empty.
+func healthHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}
+}
+
+// readyHandler answers a readiness probe: whether the server can serve real
+// work, not just that its process is up, so a load balancer holds traffic off
+// until the index is loaded. A nil check is always ready.
+func readyHandler(ready func() bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if ready != nil && !ready() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]bool{"ready": false})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]bool{"ready": true})
+	}
 }
 
 // securityHeaders sets response headers that harden every page and API reply.
