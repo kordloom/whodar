@@ -215,16 +215,25 @@
 	function zoomButton(factor) { var r = el.stage.getBoundingClientRect(); zoomAround(r.width / 2, r.height / 2, factor); }
 
 	// --- filters ---
+	// nodeMatches reports whether a node matches the free-text query. People match
+	// on name, email, title, team, and topics so a search finds a person by any of
+	// them, not just their name; team nodes match on their name.
+	function nodeMatches(n, q) {
+		if (!q) return true;
+		var t = n.name;
+		if (n.kind === "person") t += " " + (n.email || "") + " " + (n.title || "") + " " + (n.team || "") + " " + (n.topics || []).join(" ");
+		return t.toLowerCase().indexOf(q) >= 0;
+	}
 	function applyFilters() {
 		var q = el.search.value.trim().toLowerCase(), team = el.team.value, topic = el.topic.value;
 		var any = q || team || topic;
 		if (q) nodes.forEach(function (n, id) {
-			if (n.kind === "person" && n.name.toLowerCase().indexOf(q) >= 0)
+			if (n.kind === "person" && nodeMatches(n, q))
 				for (var p = parentOf(id); p != null; p = parentOf(p)) collapsed.delete(p);
 		});
 		domNodes.forEach(function (d, id) {
 			var n = nodes.get(id);
-			var ok = (!q || n.name.toLowerCase().indexOf(q) >= 0) && (!team || n.team === team) && (!topic || (n.topics || []).indexOf(topic) >= 0);
+			var ok = nodeMatches(n, q) && (!team || n.team === team) && (!topic || (n.topics || []).indexOf(topic) >= 0);
 			d.classList.toggle("dim", any && !ok);
 			d.classList.toggle("match", !!q && ok && n.kind === "person");
 		});
@@ -436,15 +445,17 @@
 			e.preventDefault();
 			var q = el.search.value.trim().toLowerCase();
 			if (!q) return;
-			var starts = null, contains = null;
+			var starts = null, contains = null, count = 0;
 			nodes.forEach(function (n, id) {
-				if (n.kind !== "person") return;
-				var nm = n.name.toLowerCase();
-				if (nm.indexOf(q) === 0) { if (!starts) starts = id; }
-				else if (nm.indexOf(q) >= 0) { if (!contains) contains = id; }
+				if (n.kind !== "person" || !nodeMatches(n, q)) return;
+				count++;
+				if (n.name.toLowerCase().indexOf(q) === 0) { if (!starts) starts = id; }
+				else if (!contains) contains = id;
 			});
 			var hit = starts || contains;
-			if (hit) focusNode(hit);
+			if (!hit) { toast("No one matches \u201c" + el.search.value.trim() + "\u201d"); return; }
+			focusNode(hit);
+			if (count > 1) toast(count + " people match \u2014 showing the first");
 		});
 		el.team.addEventListener("change", applyFilters);
 		el.topic.addEventListener("change", applyFilters);
