@@ -143,7 +143,16 @@ func scoreChannel(ch *model.Channel, q string) (float64, []string) {
 	case strings.Contains(nm, q):
 		hit(38, "channel")
 	}
-	if ch.Topic != "" && strings.Contains(strings.ToLower(ch.Topic), q) {
+	topicHit := ch.Topic != "" && strings.Contains(strings.ToLower(ch.Topic), q)
+	if !topicHit {
+		for tid := range ch.Topics {
+			if strings.Contains(strings.ToLower(string(tid)), q) {
+				topicHit = true
+				break
+			}
+		}
+	}
+	if topicHit {
 		hit(10, "topic")
 	}
 	return best, matched

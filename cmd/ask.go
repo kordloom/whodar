@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -124,7 +125,7 @@ func warnEmptyAsk(cmd *cobra.Command, ix *index.Index, query string, ans resolve
 	// Ask ranks by who knows a subject, so a name or a team returns nothing even
 	// when the person is indexed. Offer the closest entities by name before the
 	// generic hint, so a misdirected question still points somewhere useful.
-	if hits := resolve.Search(ix, query, 5); len(hits) > 0 {
+	if hits := suggestFromSearch(ix, query, 5); len(hits) > 0 {
 		fmt.Fprintln(w, "No expertise match for that. Closest by name:")
 		for _, h := range hits {
 			label := h.Name
@@ -152,6 +153,39 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// suggestFromSearch finds the closest entities for an ask that had no expertise
+// match. It searches each meaningful word of the question, not the whole phrase,
+// since a natural-language question is never a substring of one short field, then
+// merges the hits by score. It falls back to the whole query when the question
+// has no searchable words.
+func suggestFromSearch(ix *index.Index, query string, limit int) []resolve.SearchResult {
+	terms := queryTerms(query)
+	if len(terms) == 0 {
+		return resolve.Search(ix, query, limit)
+	}
+	seen := make(map[string]bool)
+	var all []resolve.SearchResult
+	for _, t := range terms {
+		for _, r := range resolve.Search(ix, t, limit) {
+			if seen[r.ID] {
+				continue
+			}
+			seen[r.ID] = true
+			all = append(all, r)
+		}
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].Score != all[j].Score {
+			return all[i].Score > all[j].Score
+		}
+		return all[i].Name < all[j].Name
+	})
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	return all
 }
 
 // showRelatedFacts prints any recorded facts whose subject, object, or detail

@@ -152,4 +152,11 @@ func TestWarnEmptyAskSuggests(t *testing.T) {
 	if buf.Len() != 0 {
 		t.Errorf("warned on a non-empty answer: %q", buf.String())
 	}
+
+	// A multi-word question still suggests, via per-word search of the phrase.
+	buf.Reset()
+	warnEmptyAsk(cmd, ix, "who on the payments team can help", resolve.Answer{})
+	if out := buf.String(); !strings.Contains(out, "Kevin Novak") {
+		t.Errorf("multi-word question gave no suggestion: %q", out)
+	}
 }

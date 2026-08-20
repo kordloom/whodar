@@ -85,3 +85,23 @@ func TestProfileViewJoins(t *testing.T) {
 		t.Errorf("view.Joins = %+v, want the github join at 0.9", view.Joins)
 	}
 }
+
+// TestSearchChannelByTopicTag checks a channel matches on a derived topic tag,
+// not only its stated topic, so channel and people topic search stay consistent.
+func TestSearchChannelByTopicTag(t *testing.T) {
+	t.Parallel()
+	ix := index.New()
+	ix.Build([]connector.Record{
+		{Kind: connector.KindChannel, Name: "eng-help", Topics: []string{"kafka"}, Source: "t"},
+	})
+	ix.Canonicalize()
+	found := false
+	for _, r := range Search(ix, "kafka", 0) {
+		if r.Kind == "channel" && r.ID == "eng-help" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("channel not found by topic tag; results: %+v", Search(ix, "kafka", 0))
+	}
+}
