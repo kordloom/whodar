@@ -409,6 +409,13 @@ function channelCard(c, query, i) {
     });
     card.appendChild(sub);
   }
+  if (c.url) {
+    const link = el("a", "card-open", "Open in Slack");
+    link.href = c.url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    card.appendChild(link);
+  }
   chips(card, c.reasons);
   if (query && c.name) card.appendChild(voteButtons(query, { channel: c.name }));
   return card;

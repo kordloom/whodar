@@ -301,3 +301,13 @@ func TestSlackNoJoinWhenDisabled(t *testing.T) {
 		t.Error("the bot joined a channel with the join option off")
 	}
 }
+
+// TestChannelRecordLink verifies a channel record carries a web URL built from
+// the workspace URL and channel id, so an answer can open it in Slack.
+func TestChannelRecordLink(t *testing.T) {
+	t.Parallel()
+	rec, _, _ := channelRecord(slack.Channel{ID: "C123", Name: "billing"}, nil, nil, "https://acme.slack.com/")
+	if want := "https://acme.slack.com/archives/C123"; rec.Link != want {
+		t.Errorf("channel Link = %q, want %q", rec.Link, want)
+	}
+}

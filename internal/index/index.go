@@ -365,6 +365,9 @@ func foldRecord(base, add connector.Record) connector.Record {
 	if add.Time.After(base.Time) {
 		base.Time = add.Time
 	}
+	if base.Link == "" {
+		base.Link = add.Link
+	}
 	// Keep the better display name rather than always taking the delta's, so an
 	// incremental record carrying a handle placeholder never overwrites a real
 	// name already held, matching how a full read resolves identity.
@@ -556,6 +559,9 @@ func (ix *Index) buildChannel(rec connector.Record) {
 	if ch == nil {
 		ch = &model.Channel{ID: cid, Name: rec.Name, Topics: make(map[model.ID]float64)}
 		g.Channels[cid] = ch
+	}
+	if rec.Link != "" && ch.URL == "" {
+		ch.URL = rec.Link
 	}
 	if rec.Title != "" {
 		ch.Topic = rec.Title

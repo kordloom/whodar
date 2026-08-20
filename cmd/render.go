@@ -62,6 +62,9 @@ func renderAsk(w io.Writer, query string, view resolve.JSONAnswer, s style) {
 			fmt.Fprintf(w, "  %s  %s\n", s.dim(rank(i+1)), s.bold("#"+ch.Name))
 			fmt.Fprintf(w, "      %s %s   %s\n",
 				s.confBar(ch.Confidence), s.accent(pct(ch.Confidence)), s.dim(strings.Join(ch.Reasons, " · ")))
+			if ch.URL != "" {
+				fmt.Fprintf(w, "      %s %s\n", s.accent("\u2192"), s.dim(ch.URL))
+			}
 			fmt.Fprintln(w)
 		}
 	}

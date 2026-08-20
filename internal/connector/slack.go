@@ -152,18 +152,17 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 	}
 	fmt.Fprintf(s.opts.Log, "slack: %d users, %d channels\n", len(users), len(channels))
 
-	// The workspace URL turns a channel and a timestamp into a permalink with
-	// no further calls. Losing it costs links, not episodes, so a failure here
-	// is logged rather than fatal.
-	workspaceURL := ""
 	if s.opts.Episodes {
 		s.episodes = nil
-		auth, err := s.client.AuthTest(ctx)
-		if err != nil {
-			fmt.Fprintf(s.opts.Log, "slack: no workspace url, episodes will have no links: %v\n", err)
-		} else {
-			workspaceURL = auth.URL
-		}
+	}
+	// The workspace URL turns a channel id into a link, and a message timestamp
+	// into a permalink, with no further calls. Fetch it whether or not episodes
+	// are on; losing it costs links, not data, so a failure here is logged.
+	workspaceURL := ""
+	if auth, err := s.client.AuthTest(ctx); err != nil {
+		fmt.Fprintf(s.opts.Log, "slack: no workspace url, channel and episode links unavailable: %v\n", err)
+	} else {
+		workspaceURL = auth.URL
 	}
 
 	oldest := slackOldestSince(s.opts.SinceDays, s.opts.Since)
@@ -228,7 +227,7 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 				"slack: #%s hit the %d message cap; older messages skipped\n", ch.Name, s.opts.MaxMessages)
 		}
 
-		chRec, authorText, authorLatest := channelRecord(ch, msgs, byID)
+		chRec, authorText, authorLatest := channelRecord(ch, msgs, byID, workspaceURL)
 		records = append(records, chRec)
 		for pid, text := range authorText {
 			records = append(records, Record{
@@ -306,7 +305,7 @@ func personRecord(u slack.User) Record {
 // for personal affinity, and each author's latest message time. System and
 // bot messages are skipped.
 func channelRecord(
-	ch slack.Channel, msgs []slack.Message, byID map[string]slack.User,
+	ch slack.Channel, msgs []slack.Message, byID map[string]slack.User, workspaceURL string,
 ) (Record, map[string]string, map[string]time.Time) {
 	var members []string
 	seen := make(map[string]bool)
@@ -344,11 +343,16 @@ func channelRecord(
 		}
 	}
 
+	link := ""
+	if workspaceURL != "" && ch.ID != "" {
+		link = strings.TrimSuffix(workspaceURL, "/") + "/archives/" + ch.ID
+	}
 	rec := Record{
 		Kind:    KindChannel,
 		Source:  "slack",
 		Weight:  1,
 		Name:    ch.Name,
+		Link:    link,
 		Title:   ch.Topic.Value,
 		Text:    strings.TrimSpace(ch.Purpose.Value + " " + sample.String()),
 		Members: members,

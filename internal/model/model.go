@@ -64,6 +64,8 @@ type Channel struct {
 	Name string
 	// Topic is the channel's stated topic, shown to users.
 	Topic string
+	// URL opens the channel in its source tool, empty when unknown.
+	URL string
 	// Members lists the people active in the channel, by person ID.
 	Members []ID
 	// Topics maps a topic ID to the channel's affinity weight for it.

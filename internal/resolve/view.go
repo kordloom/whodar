@@ -105,6 +105,8 @@ type JSONChannel struct {
 	Name string `json:"name"`
 	// Topic is the channel's stated topic.
 	Topic string `json:"topic,omitempty"`
+	// URL opens the channel in its source tool.
+	URL string `json:"url,omitempty"`
 	// Score is the relevance score.
 	Score float64 `json:"score"`
 	// Confidence estimates how trustworthy the match is, from zero to one.
@@ -205,6 +207,7 @@ func (a Answer) View(query string) JSONAnswer {
 		jc := JSONChannel{
 			Name:       c.Channel.Name,
 			Topic:      c.Channel.Topic,
+			URL:        c.Channel.URL,
 			Score:      c.Score,
 			Confidence: roundConfidence(c.Confidence),
 			Reasons:    c.Reasons,
