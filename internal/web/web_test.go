@@ -503,3 +503,37 @@ func TestHealthAndReady(t *testing.T) {
 		t.Errorf("/readyz ready = %d, want 200", got)
 	}
 }
+
+// TestSearchAPI checks /api/search returns ranked results and rejects a missing
+// query.
+func TestSearchAPI(t *testing.T) {
+	t.Parallel()
+	ask := func(_ context.Context, _, _, _ string, _ int) (resolve.Answer, error) {
+		return resolve.Answer{}, nil
+	}
+	search := func(q string, _ int) []resolve.SearchResult {
+		if q != "ada" {
+			return nil
+		}
+		return []resolve.SearchResult{{Kind: "person", ID: "ada@x.io", Name: "Ada", Score: 40, Matched: []string{"name"}}}
+	}
+	h, err := Handler(Config{Ask: ask, Search: search})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/search?q=ada", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/api/search?q=ada = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "ada@x.io") {
+		t.Errorf("body missing the result: %s", rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/search", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("/api/search with no q = %d, want 400", rec.Code)
+	}
+}

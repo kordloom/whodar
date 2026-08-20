@@ -189,8 +189,9 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 	handler, err := web.Handler(web.Config{
 		Ask: ask, Feedback: vote, Person: person, Version: version, AuthToken: token,
 		Directory: &dir, Modes: modes, Recall: recallFn(ix, cfg, token), RecallMe: cfg.recallMe,
-		Log:   cmd.ErrOrStderr(),
-		Ready: func() bool { return ix != nil && len(ix.Graph.People) > 0 },
+		Search: func(q string, limit int) []resolve.SearchResult { return resolve.Search(ix, q, limit) },
+		Log:    cmd.ErrOrStderr(),
+		Ready:  func() bool { return ix != nil && len(ix.Graph.People) > 0 },
 	})
 	if err != nil {
 		return err

@@ -33,6 +33,10 @@ var assets embed.FS
 // answer. Empty mode and provider mean the server defaults.
 type AskFunc func(ctx context.Context, query, mode, provider string, limit int) (resolve.Answer, error)
 
+// SearchFunc finds people and channels matching a free-text query, ranked by
+// how directly they match.
+type SearchFunc func(query string, limit int) []resolve.SearchResult
+
 // FeedbackFunc records a user's vote on one result.
 type FeedbackFunc func(feedback.Entry) error
 
@@ -84,6 +88,9 @@ type Config struct {
 	// Directory is the browsable inventory served at /api/directory; nil
 	// disables the directory API.
 	Directory *resolve.Directory
+	// Search finds people and channels by name and fields at /api/search; nil
+	// disables the search API.
+	Search SearchFunc
 	// Modes reports answer-mode readiness at /api/modes; nil disables it.
 	Modes ModesFunc
 	// Recall answers what one person worked through before, at /api/recall;
@@ -136,6 +143,9 @@ func Handler(cfg Config) (http.Handler, error) {
 	}
 	if cfg.Directory != nil {
 		mux.HandleFunc("/api/directory", directoryHandler(cfg.Directory))
+	}
+	if cfg.Search != nil {
+		mux.HandleFunc("/api/search", searchHandler(cfg.Search))
 	}
 	if cfg.Modes != nil {
 		mux.HandleFunc("/api/modes", modesHandler(cfg.Modes))
@@ -421,6 +431,27 @@ func directoryHandler(dir *resolve.Directory) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(dir)
+	}
+}
+
+// searchHandler answers /api/search: a ranked list of people and channels
+// matching the q parameter, capped by an optional limit.
+func searchHandler(search SearchFunc) http.HandlerFunc {
+	if search == nil {
+		panic("web: searchHandler requires a SearchFunc")
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		if q == "" {
+			writeError(w, http.StatusBadRequest, "name what to search for with ?q=")
+			return
+		}
+		limit := 20
+		if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 {
+			limit = n
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"query": q, "results": search(q, limit)})
 	}
 }
 

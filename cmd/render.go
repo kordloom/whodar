@@ -414,3 +414,69 @@ func handleSource(id string) string {
 	}
 	return ""
 }
+
+// renderSearch prints ranked search results: people in bold, channels prefixed
+// with a hash, each with a context line and the fields the query matched.
+func renderSearch(w io.Writer, query string, results []resolve.SearchResult, s style) {
+	if len(results) == 0 {
+		fmt.Fprintln(w, s.dim(
+			"No people or channels match “"+query+"”. Try `whodar directory` to see what is indexed."))
+		return
+	}
+	fmt.Fprintln(w, s.bold(fmt.Sprintf("%d result%s for “%s”", len(results), plural(len(results)), query)))
+	width := searchNameWidth(results)
+	for i, r := range results {
+		raw, label := r.Name, s.bold(r.Name)
+		if r.Kind == "channel" {
+			raw = "#" + r.Name
+			label = s.color256(197, raw)
+		}
+		fmt.Fprintf(w, "  %s  %s  %s", s.dim(rank(i+1)), pad(label, raw, width), s.dim(searchContext(r)))
+		if len(r.Matched) > 0 {
+			fmt.Fprintf(w, "  %s", s.dim("· "+strings.Join(r.Matched, ", ")))
+		}
+		fmt.Fprintln(w)
+	}
+}
+
+// searchContext is the muted line after a result's name: a person's role or
+// email, or a channel's topic.
+func searchContext(r resolve.SearchResult) string {
+	if r.Kind == "channel" {
+		if r.Team != "" {
+			return "channel · " + r.Team
+		}
+		return "channel"
+	}
+	if role := joinRole(r.Title, r.Team); role != "" {
+		return role
+	}
+	return r.Email
+}
+
+// searchNameWidth is the column width to pad result names to, capped so one long
+// name does not push every row far right.
+func searchNameWidth(results []resolve.SearchResult) int {
+	width := 0
+	for _, r := range results {
+		n := len([]rune(r.Name))
+		if r.Kind == "channel" {
+			n++
+		}
+		if n > width {
+			width = n
+		}
+	}
+	if width > 32 {
+		width = 32
+	}
+	return width
+}
+
+// plural returns "s" unless n is one.
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
