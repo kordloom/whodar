@@ -474,7 +474,8 @@ h1 .sig { color: var(--signal); text-shadow: 0 0 28px rgba(var(--signal-rgb), 0.
 /* Blocks share the section's left edge rather than each centering on its own
    measure, so the page keeps one vertical rhythm as it scrolls. Only the
    closing call to action and the footer center. */
-.tiers { grid-template-columns: repeat(2, 1fr); max-width: 900px; }
+.tiers { grid-template-columns: repeat(3, 1fr); max-width: 1080px; }
+@media (max-width: 880px) { .cards.tiers { grid-template-columns: 1fr; max-width: 460px; } }
 .tier { gap: 8px; }
 .tier-name { font-family: var(--disp); font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .tier-for { color: var(--muted); font-size: 15px; margin: 0; }
