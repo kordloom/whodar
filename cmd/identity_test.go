@@ -63,3 +63,17 @@ func TestRenderIdentity(t *testing.T) {
 		t.Errorf("empty output = %q, want the no-merges message", empty.String())
 	}
 }
+
+// TestFilterIdentityView checks the person filter narrows to the matching person
+// and returns an empty view when nothing matches.
+func TestFilterIdentityView(t *testing.T) {
+	t.Parallel()
+	v := buildIdentityView(joinFixture(t))
+	got := filterIdentityView(v, "kevin")
+	if len(got.People) != 1 || got.People[0].Name != "Kevin Novak" || got.Merges != 1 {
+		t.Errorf("filter kevin = %+v (merges %d), want just Kevin with 1 merge", got.People, got.Merges)
+	}
+	if none := filterIdentityView(v, "zzz"); len(none.People) != 0 || none.Merges != 0 {
+		t.Errorf("filter zzz = %+v, want empty", none)
+	}
+}
