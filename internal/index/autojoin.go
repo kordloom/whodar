@@ -217,6 +217,12 @@ func (ix *Index) JoinsFor(canonical model.ID) []Join {
 	return out
 }
 
+// CanonicalID returns the canonical identifier id resolves to, so a caller
+// outside the package can group aliases under the person they belong to.
+func (ix *Index) CanonicalID(id model.ID) model.ID {
+	return ix.identityResolver().Canonical(id)
+}
+
 // altKeyPart returns the flattenable part of an alternate identity: the email
 // local-part, the handle after a source prefix, or the whole slug.
 func altKeyPart(alt model.ID) string {

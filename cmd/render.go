@@ -364,3 +364,53 @@ func renderFeedback(w io.Writer, entries []feedback.Entry, s style) {
 	}
 	fmt.Fprintln(w)
 }
+
+// renderIdentity prints the inferred identity merges grouped by person, each
+// alias with a confidence bar, the confidence, and the evidence.
+func renderIdentity(w io.Writer, v identityView, s style) {
+	if v.Merges == 0 {
+		fmt.Fprintln(w, s.dim(
+			"No inferred identity merges. Joins by email or provider id are certain and are not shown here."))
+		return
+	}
+	fmt.Fprintln(w, s.bold(fmt.Sprintf("Identity joins  %d inferred across %d people", v.Merges, len(v.People))))
+	width := aliasWidth(v.People)
+	for _, p := range v.People {
+		who := s.bold(p.Name)
+		if p.Name == "" {
+			who = s.bold(p.ID)
+		}
+		if p.Email != "" {
+			who += "  " + s.dim(p.Email)
+		}
+		fmt.Fprintf(w, "\n  %s\n", who)
+		for _, j := range p.Joins {
+			_, code := sourceColor(handleSource(j.Alias))
+			alias := pad(s.color256(code, j.Alias), j.Alias, width)
+			fmt.Fprintf(w, "    %s %s  %s  %s\n",
+				s.confBar(j.Confidence), pct(j.Confidence), alias, s.dim(j.Reason))
+		}
+	}
+}
+
+// aliasWidth is the longest alias across all joins, for column alignment.
+func aliasWidth(people []identityPerson) int {
+	w := 0
+	for _, p := range people {
+		for _, j := range p.Joins {
+			if n := len([]rune(j.Alias)); n > w {
+				w = n
+			}
+		}
+	}
+	return w
+}
+
+// handleSource returns the source prefix of an id like "github:kim-doe", or the
+// empty string when there is no prefix.
+func handleSource(id string) string {
+	if i := strings.IndexByte(id, ':'); i > 0 {
+		return id[:i]
+	}
+	return ""
+}
