@@ -36,7 +36,9 @@ the network and no credentials are needed. Sample data only; it is discarded
 when the demo stops.
 
 To try cloud AI on the sample data, export a provider key (such as
-WHODAR_ANTHROPIC_KEY) and add --policy redacted.`,
+WHODAR_ANTHROPIC_KEY) and add --policy redacted. Only do this for a demo you keep
+to yourself: the demo serves with no token, so a publicly reachable one with a key
+set becomes an open relay to your paid account.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, err := os.MkdirTemp("", "whodar-demo-*")
 			if err != nil {
