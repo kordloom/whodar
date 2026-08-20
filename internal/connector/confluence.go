@@ -48,11 +48,6 @@ type Confluence struct {
 	client *confluence.Client
 	// opts holds the resolved options.
 	opts ConfluenceOptions
-	// watermark is the newest page modification time seen by the last Fetch.
-	watermark time.Time
-	// complete reports whether the last Fetch read every matching page rather
-	// than stopping at the page cap.
-	complete bool
 }
 
 // confluenceProgressEvery reports progress each time this many more pages
@@ -91,8 +86,6 @@ func (c *Confluence) Ping(ctx context.Context) error {
 
 // Fetch searches pages and returns one record per person, weighted by topic.
 func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
-	c.watermark = time.Time{}
-	c.complete = false
 	q := confluence.Query{Spaces: c.opts.Spaces, CQL: c.opts.CQL, Max: c.opts.MaxPages, Since: c.opts.Since}
 	pages, err := c.client.Pages(ctx, q)
 	if err != nil {
@@ -127,11 +120,7 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 		users[key] = *u
 	}
 
-	var maxMod time.Time
 	for _, page := range pages {
-		if page.Version.When.After(maxMod) {
-			maxMod = page.Version.When
-		}
 		tokens := pageTopics(page)
 		creator, editor := page.History.CreatedBy, page.Version.By
 		// Credit the creator at creation time and the last editor at edit time,
@@ -151,11 +140,6 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 		}
 	}
 
-	// Report how far this read reached so an incremental re-index can resume; a
-	// read that hit the page cap did not reach every match and is incomplete.
-	c.watermark = maxMod
-	c.complete = len(pages) < c.opts.MaxPages
-
 	records := make([]Record, 0, len(counts))
 	for key, m := range counts {
 		rec := confluencePersonRecord(users[key], expandTopics(m))
@@ -163,14 +147,6 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 		records = append(records, rec)
 	}
 	return records, nil
-}
-
-// Watermark reports the newest page modification time the last Fetch read, and
-// whether that read reached every matching page rather than stopping at the cap.
-// An incremental index persists the time and asks only for newer pages next
-// time.
-func (c *Confluence) Watermark() (time.Time, bool) {
-	return c.watermark, c.complete
 }
 
 // confluenceQueryLabel describes a query for a progress line: the raw CQL, the
