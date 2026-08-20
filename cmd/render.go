@@ -480,3 +480,87 @@ func plural(n int) string {
 	}
 	return "s"
 }
+
+// renderRisk prints the knowledge-concentration report, most at-risk first, with
+// each topic's bus factor and the people who hold it.
+func renderRisk(w io.Writer, topics []resolve.TopicRisk, s style) {
+	if len(topics) == 0 {
+		fmt.Fprintln(w, s.dim("No topics scored yet. Index a source with expertise signal first."))
+		return
+	}
+	crit := 0
+	for _, t := range topics {
+		if t.Level == "critical" {
+			crit++
+		}
+	}
+	fmt.Fprintln(w, s.bold(fmt.Sprintf("Knowledge risk  %d topics scored, %d critical", len(topics), crit)))
+	width := riskTopicWidth(topics)
+	last := ""
+	for _, t := range topics {
+		if t.Level != last {
+			fmt.Fprintf(w, "\n%s\n", riskLevelLabel(t.Level, s))
+			last = t.Level
+		}
+		fmt.Fprintf(w, "  %s  %s  %s\n",
+			pad(s.bold(t.Topic), t.Topic, width), pct(t.Concentration), s.dim(fmt.Sprintf("bus factor %d", t.BusFactor)))
+		for _, e := range t.Experts {
+			fmt.Fprintf(w, "      %s %s\n", pct(e.Share), s.dim(e.Name))
+		}
+	}
+}
+
+// riskLevelLabel colors a risk level for its section header.
+func riskLevelLabel(level string, s style) string {
+	switch level {
+	case "critical":
+		return s.bad("CRITICAL")
+	case "elevated":
+		return s.warn("ELEVATED")
+	default:
+		return s.dim("OK")
+	}
+}
+
+// riskTopicWidth is the column width for topic names, capped.
+func riskTopicWidth(topics []resolve.TopicRisk) int {
+	w := 0
+	for _, t := range topics {
+		if n := len([]rune(t.Topic)); n > w {
+			w = n
+		}
+	}
+	if w > 28 {
+		w = 28
+	}
+	return w
+}
+
+// renderDeparture prints the knowledge that would leave with a person.
+func renderDeparture(w io.Writer, query string, imp resolve.DepartureImpact, s style) {
+	if imp.Person == "" {
+		fmt.Fprintln(w, s.dim("No one matches “"+query+"”."))
+		return
+	}
+	name := imp.Name
+	if name == "" {
+		name = imp.Person
+	}
+	fmt.Fprintln(w, s.bold("If "+name+" leaves"))
+	if len(imp.Sole) == 0 && len(imp.Top) == 0 {
+		fmt.Fprintln(w, s.dim("  No topic depends on them as the top expert."))
+		return
+	}
+	if len(imp.Sole) > 0 {
+		fmt.Fprintf(w, "\n  %s\n", s.bad(fmt.Sprintf("Sole expert, nobody else knows (%d)", len(imp.Sole))))
+		for _, t := range imp.Sole {
+			fmt.Fprintf(w, "    %s %s\n", s.bad("•"), t)
+		}
+	}
+	if len(imp.Top) > 0 {
+		fmt.Fprintf(w, "\n  %s\n", s.warn(fmt.Sprintf("Strongest expert, others remain (%d)", len(imp.Top))))
+		for _, t := range imp.Top {
+			fmt.Fprintf(w, "    %s %s\n", s.warn("•"), t)
+		}
+	}
+}

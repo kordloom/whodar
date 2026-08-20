@@ -1,0 +1,196 @@
+package resolve
+
+import (
+	"sort"
+	"strings"
+
+	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/model"
+)
+
+// concentrationCut is the share of expertise the bus factor must cover: the
+// fewest people who together hold this much of a topic.
+const concentrationCut = 0.8
+
+// RiskExpert is one person's share of the expertise for a topic.
+type RiskExpert struct {
+	// ID is the person's canonical identifier.
+	ID string `json:"id"`
+	// Name is the person's display name.
+	Name string `json:"name"`
+	// Share is the fraction of the topic's expertise this person holds, 0 to 1.
+	Share float64 `json:"share"`
+}
+
+// TopicRisk is the knowledge-concentration risk for one topic: how few people
+// hold most of the expertise, so a single departure is visible before it hurts.
+type TopicRisk struct {
+	// Topic is the area of expertise.
+	Topic string `json:"topic"`
+	// Level is critical, elevated, or ok.
+	Level string `json:"level"`
+	// Concentration is the top expert's share of the topic, 0 to 1.
+	Concentration float64 `json:"concentration"`
+	// BusFactor is how few people together hold most of the topic.
+	BusFactor int `json:"busFactor"`
+	// Experts are the strongest people for the topic, strongest first.
+	Experts []RiskExpert `json:"experts"`
+}
+
+// Risk scores knowledge concentration for every topic across the graph: it is
+// deterministic arithmetic over per-person topic affinity, no model required.
+// Results are risk-first; limit caps them, and a limit of zero or less returns
+// all of them.
+func Risk(ix *index.Index, limit int) []TopicRisk {
+	byTopic := make(map[string]map[model.ID]float64)
+	for id, p := range ix.Graph.People {
+		for tid, w := range p.Topics {
+			if w <= 0 {
+				continue
+			}
+			m := byTopic[string(tid)]
+			if m == nil {
+				m = make(map[model.ID]float64)
+				byTopic[string(tid)] = m
+			}
+			m[id] += w
+		}
+	}
+	var out []TopicRisk
+	for topic, people := range byTopic {
+		var total float64
+		experts := make([]RiskExpert, 0, len(people))
+		for id, w := range people {
+			total += w
+			experts = append(experts, RiskExpert{ID: string(id), Name: personName(ix, id), Share: w})
+		}
+		if total <= 0 {
+			continue
+		}
+		sort.Slice(experts, func(i, j int) bool {
+			if experts[i].Share != experts[j].Share {
+				return experts[i].Share > experts[j].Share
+			}
+			return experts[i].Name < experts[j].Name
+		})
+		var cum float64
+		bus := 0
+		for i := range experts {
+			experts[i].Share /= total
+			if cum < concentrationCut {
+				cum += experts[i].Share
+				bus++
+			}
+		}
+		level := "ok"
+		switch {
+		case len(experts) == 1 || bus <= 1:
+			level = "critical"
+		case bus == 2:
+			level = "elevated"
+		}
+		if len(experts) > 5 {
+			experts = experts[:5]
+		}
+		out = append(out, TopicRisk{
+			Topic: topic, Level: level, Concentration: experts[0].Share, BusFactor: bus, Experts: experts,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if li, lj := levelRank(out[i].Level), levelRank(out[j].Level); li != lj {
+			return li < lj
+		}
+		if out[i].Concentration != out[j].Concentration {
+			return out[i].Concentration > out[j].Concentration
+		}
+		return out[i].Topic < out[j].Topic
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out
+}
+
+// DepartureImpact is the knowledge that would leave with a person: the topics
+// where they are the only expert, and the topics where they rank first but
+// others remain.
+type DepartureImpact struct {
+	// Person is the canonical id the query resolved to, empty when unmatched.
+	Person string `json:"person"`
+	// Name is the person's display name.
+	Name string `json:"name"`
+	// Sole are topics nobody else has any expertise in.
+	Sole []string `json:"sole"`
+	// Top are topics where the person ranks first but others remain.
+	Top []string `json:"top"`
+}
+
+// Departure reports what leaves with the person matching query: the offboarding
+// view of Risk. It resolves the query by canonical id, then email, then a name
+// or id substring.
+func Departure(ix *index.Index, query string) DepartureImpact {
+	pid := findPerson(ix, query)
+	imp := DepartureImpact{Person: string(pid)}
+	if pid == "" {
+		return imp
+	}
+	if p := ix.Graph.People[pid]; p != nil {
+		imp.Name = p.Name
+	}
+	for _, tr := range Risk(ix, 0) {
+		if len(tr.Experts) == 0 || model.ID(tr.Experts[0].ID) != pid {
+			continue
+		}
+		if len(tr.Experts) == 1 {
+			imp.Sole = append(imp.Sole, tr.Topic)
+		} else {
+			imp.Top = append(imp.Top, tr.Topic)
+		}
+	}
+	sort.Strings(imp.Sole)
+	sort.Strings(imp.Top)
+	return imp
+}
+
+// levelRank orders the risk levels for sorting, most severe first.
+func levelRank(level string) int {
+	switch level {
+	case "critical":
+		return 0
+	case "elevated":
+		return 1
+	default:
+		return 2
+	}
+}
+
+// personName returns a person's display name, or their id when unnamed.
+func personName(ix *index.Index, id model.ID) string {
+	if p := ix.Graph.People[id]; p != nil && p.Name != "" {
+		return p.Name
+	}
+	return string(id)
+}
+
+// findPerson resolves a query to a canonical person id: an exact id or email
+// first, then the first person whose id, email, or name contains it.
+func findPerson(ix *index.Index, query string) model.ID {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return ""
+	}
+	if _, ok := ix.Graph.People[model.ID(q)]; ok {
+		return model.ID(q)
+	}
+	var best model.ID
+	for id, p := range ix.Graph.People {
+		if strings.Contains(strings.ToLower(string(id)), q) ||
+			strings.Contains(strings.ToLower(p.Email), q) ||
+			strings.Contains(strings.ToLower(p.Name), q) {
+			if best == "" || id < best {
+				best = id
+			}
+		}
+	}
+	return best
+}
