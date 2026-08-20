@@ -12,7 +12,12 @@ services:
     profiles: ["demo", "tunnel"]
     command: ["demo", "--addr", ":8765"]
     ports:
-      - "${WHODAR_PORT:-8765}:8765"
+      # Bind the host port to loopback only. Under the tunnel profile the demo is
+      # reached through Cloudflare over the compose network at http://demo:8765,
+      # so publishing it on the box's public interface would let anyone reach it
+      # directly, bypassing the tunnel. Loopback keeps it local for a browser on
+      # the host. Set WHODAR_PORT to move the local port.
+      - "127.0.0.1:${WHODAR_PORT:-8765}:8765"
 
   # A Cloudflare Tunnel that publishes the demo with TLS and no open ports or
   # hand-managed DNS. One-time setup in the Cloudflare Zero Trust dashboard:

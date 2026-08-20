@@ -27,9 +27,6 @@ func (s style) dim(v string) string { return s.wrap("2", v) }
 // accent renders v in the signal color at a terminal, plain otherwise.
 func (s style) accent(v string) string { return s.wrap("38;5;42", v) }
 
-// warn renders v in a warning color at a terminal, plain otherwise.
-func (s style) warn(v string) string { return s.wrap("33", v) }
-
 // bad renders v in a red at a terminal, plain otherwise.
 func (s style) bad(v string) string { return s.wrap("31", v) }
 
