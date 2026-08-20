@@ -29,6 +29,7 @@
 	var positions = new Map();
 	var rootSet = new Set();
 	var selected = null;
+	var searchMatches = [], searchIdx = -1;
 	var selection = new Set();
 	var view = { tx: 40, ty: 30, scale: 1 };
 
@@ -231,12 +232,44 @@
 			if (n.kind === "person" && nodeMatches(n, q))
 				for (var p = parentOf(id); p != null; p = parentOf(p)) collapsed.delete(p);
 		});
+		var matches = [];
 		domNodes.forEach(function (d, id) {
 			var n = nodes.get(id);
 			var ok = nodeMatches(n, q) && (!team || n.team === team) && (!topic || (n.topics || []).indexOf(topic) >= 0);
 			d.classList.toggle("dim", any && !ok);
-			d.classList.toggle("match", !!q && ok && n.kind === "person");
+			var isMatch = !!q && ok && n.kind === "person";
+			d.classList.toggle("match", isMatch);
+			if (isMatch) matches.push(id);
 		});
+		matches.sort(function (a, b) { return nodes.get(a).name.localeCompare(nodes.get(b).name); });
+		searchMatches = matches;
+		if (searchIdx >= matches.length) searchIdx = -1;
+		markCurrent();
+		updateSearchCount(q);
+	}
+	// updateSearchCount shows how many people match, and the position while
+	// stepping through them, in the badge beside the search box.
+	function updateSearchCount(q) {
+		var c = document.getElementById("oc-searchcount");
+		if (!c) return;
+		if (!q) { c.textContent = ""; return; }
+		if (!searchMatches.length) { c.textContent = "no matches"; return; }
+		c.textContent = (searchIdx >= 0 ? (searchIdx + 1) + "/" : "") + searchMatches.length + " match" + (searchMatches.length === 1 ? "" : "es");
+	}
+	// markCurrent rings the person the search is centered on while stepping.
+	function markCurrent() {
+		domNodes.forEach(function (d) { d.classList.remove("current"); });
+		if (searchIdx >= 0 && searchIdx < searchMatches.length) {
+			var d = domNodes.get(searchMatches[searchIdx]);
+			if (d) d.classList.add("current");
+		}
+	}
+	// stepSearch advances to the next match, cycling, and centers on it.
+	function stepSearch() {
+		if (!searchMatches.length) return false;
+		searchIdx = (searchIdx + 1) % searchMatches.length;
+		focusNode(searchMatches[searchIdx]);
+		return true;
 	}
 	function populateFilters(dir) {
 		(dir.teams || []).forEach(function (t) { addOption(el.team, t.name, t.name + " · " + t.people); });
@@ -439,23 +472,13 @@
 			}
 			openDetail(id);
 		});
-		el.search.addEventListener("input", render);
+		el.search.addEventListener("input", function () { searchIdx = -1; render(); });
 		el.search.addEventListener("keydown", function (e) {
 			if (e.key !== "Enter") return;
 			e.preventDefault();
-			var q = el.search.value.trim().toLowerCase();
+			var q = el.search.value.trim();
 			if (!q) return;
-			var starts = null, contains = null, count = 0;
-			nodes.forEach(function (n, id) {
-				if (n.kind !== "person" || !nodeMatches(n, q)) return;
-				count++;
-				if (n.name.toLowerCase().indexOf(q) === 0) { if (!starts) starts = id; }
-				else if (!contains) contains = id;
-			});
-			var hit = starts || contains;
-			if (!hit) { toast("No one matches \u201c" + el.search.value.trim() + "\u201d"); return; }
-			focusNode(hit);
-			if (count > 1) toast(count + " people match \u2014 showing the first");
+			if (!stepSearch()) toast("No one matches \u201c" + q + "\u201d");
 		});
 		el.team.addEventListener("change", applyFilters);
 		el.topic.addEventListener("change", applyFilters);
