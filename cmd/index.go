@@ -594,6 +594,13 @@ func updateWatermark(opts *options, source, scope string, full bool, recs []conn
 	if cursor.IsZero() {
 		return nil
 	}
+	// Serialize the read-modify-write on the state file, so two concurrent
+	// index runs against different sources cannot drop each other's cursor.
+	unlock, err := util.LockFile(opts.statePath() + util.LockSuffix)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	st, err := opts.loadState()
 	if err != nil {
 		return err
