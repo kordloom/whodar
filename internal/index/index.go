@@ -104,6 +104,9 @@ type Index struct {
 	// resolver maps the identifiers a person accumulates across sources to one
 	// canonical identifier.
 	resolver *identity.Resolver
+	// joins records the inferred identity merges AutoJoin made, with the
+	// confidence and evidence for each.
+	joins []Join
 	// halfLife is the age at which a dated record's weight halves; zero or
 	// negative disables recency decay.
 	halfLife time.Duration

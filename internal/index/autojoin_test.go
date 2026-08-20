@@ -141,3 +141,44 @@ func TestAutoJoinAmbiguousNoCorroboration(t *testing.T) {
 		t.Errorf("ambiguous = %v, want exactly the blocked handle", res.Ambiguous)
 	}
 }
+
+// TestAutoJoinConfidence checks that each inferred join carries a confidence and
+// evidence: a unique name match is strong, a team-corroborated ambiguous match
+// is weaker, and JoinsFor surfaces the join under the person it merged into.
+func TestAutoJoinConfidence(t *testing.T) {
+	t.Parallel()
+
+	// A unique name match scores confUniqueName.
+	ix := New()
+	ix.Build([]connector.Record{
+		{Kind: connector.KindPerson, Email: "kim.doe@x.com", Name: "Kim Doe", Source: "t"},
+		{Kind: connector.KindPerson, PersonID: "github:kimdoe", Name: "@kimdoe", Source: "t"},
+	})
+	res := ix.AutoJoin()
+	ix.Canonicalize()
+	if len(res.Joins) != 1 {
+		t.Fatalf("joins = %d, want 1", len(res.Joins))
+	}
+	if got := res.Joins[0]; got.Confidence != confUniqueName || got.Reason != "unique name match" {
+		t.Errorf("join = %+v, want confidence %v reason %q", got, confUniqueName, "unique name match")
+	}
+	if fr := ix.JoinsFor("kim.doe@x.com"); len(fr) != 1 || fr[0].Alias != "github:kimdoe" {
+		t.Errorf("JoinsFor = %+v, want the github alias", fr)
+	}
+
+	// A team-corroborated ambiguous match scores confSharedTeam with team evidence.
+	ix2 := New()
+	ix2.Build([]connector.Record{
+		{Kind: connector.KindPerson, Email: "alice@x.com", Name: "Alice Smith", Team: "Payments", Source: "t"},
+		{Kind: connector.KindPerson, Email: "alice@y.com", Name: "Alice Smith", Team: "Sales", Source: "t"},
+		{Kind: connector.KindPerson, PersonID: "github:alice-smith", Name: "@alice-smith", Team: "Payments", Source: "t"},
+	})
+	res2 := ix2.AutoJoin()
+	ix2.Canonicalize()
+	if len(res2.Joins) != 1 {
+		t.Fatalf("joins = %d, want 1", len(res2.Joins))
+	}
+	if got := res2.Joins[0]; got.Confidence != confSharedTeam || got.Reason != "name and shared team" {
+		t.Errorf("join = %+v, want confidence %v reason %q", got, confSharedTeam, "name and shared team")
+	}
+}

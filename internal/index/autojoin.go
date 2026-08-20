@@ -16,10 +16,36 @@ const minHandleLen = 3
 type JoinResult struct {
 	// Joined is how many handle-only people were unioned to a canonical person.
 	Joined int
+	// Joins records each merge with its confidence and evidence.
+	Joins []Join
 	// Ambiguous lists the handle ids left unresolved because they matched more
 	// than one person, so a reader can add them to the alias file.
 	Ambiguous []string
 }
+
+// Join records one inferred identity merge: a handle-only id folded into a
+// canonical person, with how sure the merge is and the evidence for it. Joins
+// by shared email or provider id are not inferences and are not recorded here.
+type Join struct {
+	// Alias is the handle-only id that was folded in, such as "github:kim-doe".
+	Alias model.ID
+	// Canonical is the person the alias was folded into.
+	Canonical model.ID
+	// Confidence is how sure the merge is, from 0 to 1. It is a heuristic prior
+	// on the evidence, not a calibrated probability.
+	Confidence float64
+	// Reason names the evidence, such as "unique name match".
+	Reason string
+}
+
+// Confidence priors for each kind of inferred join. A name that points at one
+// person is strong; a colliding name rescued by corroboration is weaker, and a
+// shared team corroborates more firmly than a couple of shared topics.
+const (
+	confUniqueName   = 0.9
+	confSharedTeam   = 0.8
+	confSharedTopics = 0.7
+)
 
 // AutoJoin unions each handle-only person, such as github:kim-doe or
 // codeowners:kim-doe, with the one canonical person whose flattened name or
@@ -79,7 +105,7 @@ func (ix *Index) AutoJoin() JoinResult {
 		return out
 	}
 
-	joined := 0
+	var joins []Join
 	var blocked []string
 	for id, hp := range g.People {
 		if !handleOnly(id) {
@@ -94,19 +120,24 @@ func (ix *Index) AutoJoin() JoinResult {
 			continue
 		}
 		target, ok := cands[0], true
+		conf, reason := confUniqueName, "unique name match"
 		if len(cands) > 1 {
 			// Ambiguous: an ambiguous name must never silently collapse two
 			// people, so merge only when exactly one candidate corroborates by
 			// a shared team or two shared topics.
 			ok = false
 			var matches []model.ID
+			var mConf float64
+			var mReason string
 			for _, c := range cands {
-				if corroborate(hp, g.People[c]) {
+				if cf, why := corroboration(hp, g.People[c]); cf > 0 {
 					matches = append(matches, c)
+					mConf, mReason = cf, why
 				}
 			}
 			if len(matches) == 1 {
 				target, ok = matches[0], true
+				conf, reason = mConf, "name and "+mReason
 			}
 		}
 		if !ok {
@@ -114,32 +145,53 @@ func (ix *Index) AutoJoin() JoinResult {
 			continue
 		}
 		r.Union(target, id)
-		joined++
+		joins = append(joins, Join{Alias: id, Canonical: target, Confidence: conf, Reason: reason})
 	}
+	sort.Slice(joins, func(i, j int) bool { return joins[i].Alias < joins[j].Alias })
 	sort.Strings(blocked)
-	return JoinResult{Joined: joined, Ambiguous: blocked}
+	ix.joins = joins
+	return JoinResult{Joined: len(joins), Joins: joins, Ambiguous: blocked}
 }
 
-// corroborate reports whether two people share enough signal (the same team, or
-// at least two topics) to treat an otherwise ambiguous handle match as one
-// person rather than a coincidence of names.
-func corroborate(a, b *model.Person) bool {
+// corroboration reports how firmly two people are the same despite an ambiguous
+// name match, returning the confidence prior and the evidence, or (0, "") when
+// nothing corroborates. A shared team counts for more than shared topics.
+func corroboration(a, b *model.Person) (float64, string) {
 	if a == nil || b == nil {
-		return false
+		return 0, ""
 	}
 	if a.TeamID != "" && a.TeamID == b.TeamID {
-		return true
+		return confSharedTeam, "shared team"
 	}
 	shared := 0
 	for tid := range a.Topics {
 		if _, ok := b.Topics[tid]; ok {
 			shared++
 			if shared >= 2 {
-				return true
+				return confSharedTopics, "shared topics"
 			}
 		}
 	}
-	return false
+	return 0, ""
+}
+
+// Joins returns the inferred identity merges from the last AutoJoin, each with
+// its confidence and evidence. Joins by shared email or provider id are not
+// listed: they are identity, not inference.
+func (ix *Index) Joins() []Join { return ix.joins }
+
+// JoinsFor returns the inferred joins that resolve into the person canonical,
+// so a caller can show how that person's identities were merged.
+func (ix *Index) JoinsFor(canonical model.ID) []Join {
+	r := ix.identityResolver()
+	want := r.Canonical(canonical)
+	var out []Join
+	for _, j := range ix.joins {
+		if r.Canonical(j.Alias) == want {
+			out = append(out, j)
+		}
+	}
+	return out
 }
 
 // altKeyPart returns the flattenable part of an alternate identity: the email
