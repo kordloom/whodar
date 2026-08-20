@@ -1,13 +1,19 @@
 package cmd
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
+	"github.com/kordloom/whodar/internal/connector"
 	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/policy"
+	"github.com/kordloom/whodar/internal/resolve"
 )
 
 // TestGuardLLMHost verifies the non-redacting model paths (semantic and Ollama)
@@ -119,5 +125,31 @@ func TestAskEmptyResultWarns(t *testing.T) {
 	}
 	if !strings.Contains(string(stderr), "No match") {
 		t.Errorf("no explanation for an empty answer:\n%s", stderr)
+	}
+}
+
+// TestWarnEmptyAskSuggests checks that an ask with no expertise match falls back
+// to the closest entities by name, and that a non-empty answer warns nothing.
+func TestWarnEmptyAskSuggests(t *testing.T) {
+	t.Parallel()
+	ix := index.New()
+	ix.Build([]connector.Record{
+		{Kind: connector.KindPerson, Name: "Kevin Novak", Email: "kevin@corp.com", Team: "Payments", Source: "t"},
+	})
+	ix.Canonicalize()
+
+	var buf bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetErr(&buf)
+
+	warnEmptyAsk(cmd, ix, "kevin", resolve.Answer{})
+	if out := buf.String(); !strings.Contains(out, "Kevin Novak") || !strings.Contains(out, "Closest by name") {
+		t.Errorf("expected a name suggestion, got: %q", out)
+	}
+
+	buf.Reset()
+	warnEmptyAsk(cmd, ix, "kevin", resolve.Answer{People: []model.Match{{}}})
+	if buf.Len() != 0 {
+		t.Errorf("warned on a non-empty answer: %q", buf.String())
 	}
 }

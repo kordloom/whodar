@@ -82,7 +82,7 @@ Examples:
 			if err != nil {
 				return err
 			}
-			warnEmptyAsk(cmd, ix, ans)
+			warnEmptyAsk(cmd, ix, query, ans)
 			view := ans.View(query)
 			if err := opts.render(cmd.OutOrStdout(), view, func(w io.Writer, s style) {
 				renderAsk(w, query, view, s)
@@ -112,7 +112,7 @@ Examples:
 // silent success. An empty index, a query with no term the index knows, and a
 // genuine miss are different problems with different fixes, and the JSON on
 // stdout cannot tell them apart.
-func warnEmptyAsk(cmd *cobra.Command, ix *index.Index, ans resolve.Answer) {
+func warnEmptyAsk(cmd *cobra.Command, ix *index.Index, query string, ans resolve.Answer) {
 	if len(ans.People) > 0 || len(ans.Channels) > 0 {
 		return
 	}
@@ -121,9 +121,37 @@ func warnEmptyAsk(cmd *cobra.Command, ix *index.Index, ans resolve.Answer) {
 		fmt.Fprintln(w, "No one is indexed yet: run `whodar index` against a source first.")
 		return
 	}
+	// Ask ranks by who knows a subject, so a name or a team returns nothing even
+	// when the person is indexed. Offer the closest entities by name before the
+	// generic hint, so a misdirected question still points somewhere useful.
+	if hits := resolve.Search(ix, query, 5); len(hits) > 0 {
+		fmt.Fprintln(w, "No expertise match for that. Closest by name:")
+		for _, h := range hits {
+			label := h.Name
+			if h.Kind == "channel" {
+				label = "#" + h.Name
+			}
+			if ctx := firstNonEmpty(h.Title, h.Team); ctx != "" {
+				label += " (" + ctx + ")"
+			}
+			fmt.Fprintln(w, "  "+label)
+		}
+		fmt.Fprintln(w, "Use `whodar search` to explore, or ask with the terms your team would use.")
+		return
+	}
 	fmt.Fprintln(w,
 		"No match for that question. Matching is on the words people and channels are described by, "+
 			"so try the terms your team would use, or `whodar directory` to see what is indexed.")
+}
+
+// firstNonEmpty returns the first non-empty string, or empty when all are empty.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // showRelatedFacts prints any recorded facts whose subject, object, or detail
