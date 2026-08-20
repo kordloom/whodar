@@ -46,7 +46,11 @@
 			return r.json();
 		});
 	}
-	function esc(s) { return (s == null ? "" : String(s)); }
+	function esc(s) {
+		return (s == null ? "" : String(s)).replace(/[&<>"']/g, function (ch) {
+			return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch];
+		});
+	}
 	function initials(name) {
 		var parts = (name || "?").trim().split(/\s+/);
 		return ((parts[0] ? parts[0][0] : "?") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
@@ -87,6 +91,22 @@
 				nodes.get(tid).childIds.push(p.id);
 			});
 		}
+		// Break any manager cycles (cross-source merges can make two people each
+		// other's manager) so the depth, layout, and ancestor walks terminate.
+		nodes.forEach(function (n, id) {
+			var seen = {};
+			for (var p = parentOf(id); p != null; p = parentOf(p)) {
+				if (seen[p]) {
+					var par = parentOf(p), kids = nodes.get(par).childIds, i = kids.indexOf(p);
+					if (i >= 0) kids.splice(i, 1);
+					if (roots.indexOf(p) < 0) roots.push(p);
+					_parent = null;
+					break;
+				}
+				seen[p] = 1;
+			}
+		});
+		_parent = null;
 		var byName = function (a, b) { return nodes.get(a).name.localeCompare(nodes.get(b).name); };
 		nodes.forEach(function (n) { n.childIds.sort(byName); });
 		roots.sort(byName);
@@ -232,15 +252,18 @@
 			if (n.kind === "person" && nodeMatches(n, q))
 				for (var p = parentOf(id); p != null; p = parentOf(p)) collapsed.delete(p);
 		});
-		var matches = [];
+		var passes = function (n) {
+			return nodeMatches(n, q) && (!team || n.team === team) && (!topic || (n.topics || []).indexOf(topic) >= 0);
+		};
 		domNodes.forEach(function (d, id) {
-			var n = nodes.get(id);
-			var ok = nodeMatches(n, q) && (!team || n.team === team) && (!topic || (n.topics || []).indexOf(topic) >= 0);
+			var n = nodes.get(id), ok = passes(n);
 			d.classList.toggle("dim", any && !ok);
-			var isMatch = !!q && ok && n.kind === "person";
-			d.classList.toggle("match", isMatch);
-			if (isMatch) matches.push(id);
+			d.classList.toggle("match", !!q && ok && n.kind === "person");
 		});
+		// Count and step over every matching person, including any still inside a
+		// collapsed subtree, so a pasted query is never miscounted as no matches.
+		var matches = [];
+		if (q) nodes.forEach(function (n, id) { if (n.kind === "person" && passes(n)) matches.push(id); });
 		matches.sort(function (a, b) { return nodes.get(a).name.localeCompare(nodes.get(b).name); });
 		searchMatches = matches;
 		if (searchIdx >= matches.length) searchIdx = -1;

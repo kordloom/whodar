@@ -315,6 +315,10 @@ async function openProfile(id) {
   }
 }
 
+function safeHref(url) {
+  var s = String(url == null ? "" : url).trim();
+  return /^(https?:|mailto:)/i.test(s) ? s : "#";
+}
 function showProfile(p) {
   closeProfile();
   const backdrop = el("div", "modal-backdrop");
@@ -428,7 +432,7 @@ function channelCard(c, query, i) {
   }
   if (c.url) {
     const link = el("a", "card-open", "Open in Slack");
-    link.href = c.url;
+    link.href = safeHref(c.url);
     link.target = "_blank";
     link.rel = "noopener";
     card.appendChild(link);
@@ -857,7 +861,7 @@ function recallCard(ep) {
   const foot = el("div", "rc-foot");
   if (ep.permalink) {
     const link = el("a", "rc-open");
-    link.href = ep.permalink;
+    link.href = safeHref(ep.permalink);
     link.target = "_blank";
     link.rel = "noopener";
     link.appendChild(el("span", null, "Open in " + meta.label));
