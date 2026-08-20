@@ -52,7 +52,7 @@ func newFeedbackRecordCmd(opts *options) *cobra.Command {
 			if notHelpful {
 				vote = feedback.NotHelpful
 			}
-			store, err := feedback.Load(opts.feedbackPath())
+			store, err := opts.loadFeedback()
 			if err != nil {
 				return err
 			}
@@ -87,7 +87,7 @@ func newFeedbackListCmd(opts *options) *cobra.Command {
 		Use:   "list",
 		Short: "Show recorded votes as JSON",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			store, err := feedback.Load(opts.feedbackPath())
+			store, err := opts.loadFeedback()
 			if err != nil {
 				return err
 			}
@@ -117,7 +117,7 @@ func newFeedbackClearCmd(opts *options) *cobra.Command {
 			if !all && filter == (feedback.Filter{}) {
 				return fmt.Errorf("%w: pass --query, --person, --channel, or --all", ErrBadArgs)
 			}
-			store, err := feedback.Load(opts.feedbackPath())
+			store, err := opts.loadFeedback()
 			if err != nil {
 				return err
 			}
@@ -173,7 +173,7 @@ func applyFeedbackStrength(ix *index.Index, name string) error {
 // when the feedback file is unreadable. It returns the store, or nil when the
 // file could not be read.
 func applyFeedback(ix *index.Index, opts *options, errOut io.Writer) *feedback.Store {
-	store, err := feedback.Load(opts.feedbackPath())
+	store, err := opts.loadFeedback()
 	if err != nil {
 		fmt.Fprintf(errOut, "feedback ignored: %v\n", err)
 		return nil

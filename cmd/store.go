@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"github.com/kordloom/whodar/internal/feedback"
 	"io/fs"
 
 	"github.com/spf13/cobra"
@@ -182,4 +183,15 @@ func noIndexError(err error) error {
 		return fmt.Errorf("%w: run `whodar index` first: %w", ErrNoIndex, err)
 	}
 	return err
+}
+
+// loadFeedback opens the feedback store under the data directory, sealed with
+// the same codec as the index so votes are never plaintext when the index is
+// encrypted.
+func (o *options) loadFeedback() (*feedback.Store, error) {
+	c, err := o.codec()
+	if err != nil {
+		return nil, err
+	}
+	return feedback.Load(o.feedbackPath(), c)
 }

@@ -49,7 +49,7 @@ WHODAR_ANTHROPIC_KEY) and add --policy redacted.`,
 			if err != nil {
 				return err
 			}
-			store, err := feedback.Load(dir + "/feedback.json")
+			store, err := feedback.Load(dir+"/feedback.json", nil)
 			if err != nil {
 				return err
 			}

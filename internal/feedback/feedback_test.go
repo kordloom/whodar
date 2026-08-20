@@ -1,6 +1,7 @@
 package feedback
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -9,13 +10,15 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+
+	"github.com/kordloom/whodar/internal/vault"
 )
 
 func TestStoreRoundTrip(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "feedback.json")
 
-	s, err := Load(path)
+	s, err := Load(path, nil)
 	if err != nil {
 		t.Fatalf("load empty: %v", err)
 	}
@@ -30,7 +33,7 @@ func TestStoreRoundTrip(t *testing.T) {
 		}
 	}
 
-	reloaded, err := Load(path)
+	reloaded, err := Load(path, nil)
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
@@ -45,7 +48,7 @@ func TestLoadErrors(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
-	if _, err := Load(path); err == nil {
+	if _, err := Load(path, nil); err == nil {
 		t.Error("want a parse error for invalid JSON")
 	}
 }
@@ -86,11 +89,11 @@ func TestAddMergesConcurrentWrite(t *testing.T) {
 	when := time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)
 
 	// Two stores stand in for two processes sharing one file.
-	procA, err := Load(path)
+	procA, err := Load(path, nil)
 	if err != nil {
 		t.Fatalf("load A: %v", err)
 	}
-	procB, err := Load(path)
+	procB, err := Load(path, nil)
 	if err != nil {
 		t.Fatalf("load B: %v", err)
 	}
@@ -105,7 +108,7 @@ func TestAddMergesConcurrentWrite(t *testing.T) {
 		t.Fatalf("B add: %v", err)
 	}
 
-	reloaded, err := Load(path)
+	reloaded, err := Load(path, nil)
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
@@ -116,7 +119,7 @@ func TestAddMergesConcurrentWrite(t *testing.T) {
 
 func TestAddRejectsBadEntry(t *testing.T) {
 	t.Parallel()
-	s, err := Load(filepath.Join(t.TempDir(), "feedback.json"))
+	s, err := Load(filepath.Join(t.TempDir(), "feedback.json"), nil)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -128,7 +131,7 @@ func TestAddRejectsBadEntry(t *testing.T) {
 func TestListAndClear(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "feedback.json")
-	s, err := Load(path)
+	s, err := Load(path, nil)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -156,7 +159,7 @@ func TestListAndClear(t *testing.T) {
 	if err != nil || removed != 1 {
 		t.Fatalf("clear = %d, %v; want 1 removed", removed, err)
 	}
-	reloaded, err := Load(path)
+	reloaded, err := Load(path, nil)
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
@@ -166,5 +169,40 @@ func TestListAndClear(t *testing.T) {
 	removed, err = s.Clear(Filter{})
 	if err != nil || removed != 2 {
 		t.Errorf("clear all = %d, %v; want 2 removed", removed, err)
+	}
+}
+
+// TestFeedbackEncryptedAtRest verifies that when a codec is given, votes are
+// sealed on disk and never leak the question text, and still read back.
+func TestFeedbackEncryptedAtRest(t *testing.T) {
+	t.Parallel()
+	codec, err := vault.NewKeyCipher(make([]byte, 32))
+	if err != nil {
+		t.Fatalf("NewKeyCipher: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "feedback.json")
+	s, err := Load(path, codec)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if err := s.Add(Entry{Query: "who owns billing", Person: "angela@corp.com", Vote: Helpful}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !vault.IsEncrypted(raw) {
+		t.Error("feedback file is not encrypted at rest")
+	}
+	if bytes.Contains(raw, []byte("who owns billing")) {
+		t.Error("feedback file leaks the question text in plaintext")
+	}
+	reloaded, err := Load(path, codec)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if got := reloaded.All(); len(got) != 1 || got[0].Query != "who owns billing" {
+		t.Errorf("reloaded = %+v, want the one vote", got)
 	}
 }

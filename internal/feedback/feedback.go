@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kordloom/whodar/internal/util"
+	"github.com/kordloom/whodar/internal/vault"
 )
 
 // Votes a user can cast on one result.
@@ -56,15 +57,18 @@ type Store struct {
 	entries []Entry
 	// path is the file the store persists to.
 	path string
+	// codec seals and opens the file, matching the index at-rest encryption. A
+	// nil codec stores plain JSON.
+	codec vault.Codec
 }
 
 // Load reads a store from path. A missing file yields an empty store.
-func Load(path string) (*Store, error) {
-	entries, err := readEntries(path)
+func Load(path string, codec vault.Codec) (*Store, error) {
+	entries, err := readEntries(path, codec)
 	if err != nil {
 		return nil, err
 	}
-	return &Store{path: path, entries: entries}, nil
+	return &Store{path: path, entries: entries, codec: codec}, nil
 }
 
 // Add records a vote and persists it, merging with any votes another process
@@ -160,12 +164,12 @@ func (s *Store) mutate(fn func([]Entry) []Entry) error {
 	}
 	defer unlock()
 
-	cur, err := readEntries(s.path)
+	cur, err := readEntries(s.path, s.codec)
 	if err != nil {
 		return err
 	}
 	next := fn(cur)
-	if err := saveEntries(s.path, next); err != nil {
+	if err := saveEntries(s.path, next, s.codec); err != nil {
 		return err
 	}
 	s.entries = next
@@ -173,13 +177,18 @@ func (s *Store) mutate(fn func([]Entry) []Entry) error {
 }
 
 // readEntries reads the votes at path. A missing file yields no entries.
-func readEntries(path string) ([]Entry, error) {
+func readEntries(path string, codec vault.Codec) ([]Entry, error) {
 	raw, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("feedback: read %s: %w", path, err)
+	}
+	if codec != nil {
+		if raw, err = codec.Decode(raw); err != nil {
+			return nil, fmt.Errorf("feedback: decode %s: %w", path, err)
+		}
 	}
 	var entries []Entry
 	if err := json.Unmarshal(raw, &entries); err != nil {
@@ -189,10 +198,15 @@ func readEntries(path string) ([]Entry, error) {
 }
 
 // saveEntries writes entries to path atomically.
-func saveEntries(path string, entries []Entry) error {
+func saveEntries(path string, entries []Entry, codec vault.Codec) error {
 	raw, err := json.Marshal(entries)
 	if err != nil {
 		return fmt.Errorf("feedback: encode: %w", err)
+	}
+	if codec != nil {
+		if raw, err = codec.Encode(raw); err != nil {
+			return fmt.Errorf("feedback: seal: %w", err)
+		}
 	}
 	if err := util.WriteFileAtomic(path, raw, 0o600); err != nil {
 		return fmt.Errorf("feedback: write %s: %w", path, err)
