@@ -148,7 +148,7 @@ func (ix *Index) AutoJoin() JoinResult {
 		joins = append(joins, Join{Alias: id, Canonical: target, Confidence: conf, Reason: reason})
 	}
 	sort.Strings(blocked)
-	ix.joins = mergeJoins(ix.joins, joins)
+	ix.joins = pruneJoins(mergeJoins(ix.joins, joins), ix)
 	return JoinResult{Joined: len(joins), Joins: joins, Ambiguous: blocked}
 }
 
@@ -173,6 +173,24 @@ func mergeJoins(restored, fresh []Join) []Join {
 		out = append(out, j)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Alias < out[j].Alias })
+	return out
+}
+
+// pruneJoins drops joins whose person is gone from the graph, which happens when
+// a source is replaced and its people no longer exist, so a stale merge is not
+// shown or re-persisted. It also refreshes each kept join's canonical to the
+// current resolution so the persisted ledger does not go stale.
+func pruneJoins(joins []Join, ix *Index) []Join {
+	r := ix.identityResolver()
+	out := make([]Join, 0, len(joins))
+	for _, j := range joins {
+		canon := r.Canonical(j.Alias)
+		if _, ok := ix.Graph.People[canon]; !ok {
+			continue
+		}
+		j.Canonical = canon
+		out = append(out, j)
+	}
 	return out
 }
 

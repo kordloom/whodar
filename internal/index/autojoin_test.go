@@ -216,3 +216,28 @@ func TestJoinsPersist(t *testing.T) {
 		t.Errorf("JoinsFor after re-autojoin = %+v, want the restored join kept", jf)
 	}
 }
+
+// TestAutoJoinPrunesGhostJoins checks that replacing an index's sources drops a
+// join whose people are gone, so no ghost person is reported or re-persisted.
+func TestAutoJoinPrunesGhostJoins(t *testing.T) {
+	t.Parallel()
+	ix := New()
+	ix.Build([]connector.Record{
+		{Kind: connector.KindPerson, Email: "kim@x.com", Name: "Kim", Source: "s"},
+		{Kind: connector.KindPerson, PersonID: "github:kim", Name: "@kim", Source: "s"},
+	})
+	ix.AutoJoin()
+	ix.Canonicalize()
+	if len(ix.Joins()) != 1 {
+		t.Fatalf("setup: joins = %d, want 1", len(ix.Joins()))
+	}
+	// Replace source "s" with an unrelated person; the old join is now a ghost.
+	ix.Add([]connector.Record{
+		{Kind: connector.KindPerson, Email: "dave@x.com", Name: "Dave", Source: "s"},
+	})
+	ix.AutoJoin()
+	ix.Canonicalize()
+	if got := len(ix.Joins()); got != 0 {
+		t.Errorf("joins after source replace = %d (%+v), want 0 ghosts", got, ix.Joins())
+	}
+}
