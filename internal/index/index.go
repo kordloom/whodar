@@ -362,6 +362,11 @@ func foldRecord(base, add connector.Record) connector.Record {
 			base.Members = append(base.Members, m)
 		}
 	}
+	for _, a := range add.AltIDs {
+		if !slices.Contains(base.AltIDs, a) {
+			base.AltIDs = append(base.AltIDs, a)
+		}
+	}
 	if add.Time.After(base.Time) {
 		base.Time = add.Time
 	}
@@ -479,6 +484,11 @@ func (ix *Index) buildPerson(rec connector.Record) {
 	}
 	if rec.PersonID != "" && rec.Email != "" && !util.IsRoleEmail(rec.Email) {
 		r.Union(model.ID(util.NormalizeEmail(rec.Email)), model.ID(strings.ToLower(strings.TrimSpace(rec.PersonID))))
+	}
+	for _, alt := range rec.AltIDs {
+		if key := identityKey(alt); key != "" && model.ID(key) != raw {
+			r.Union(model.ID(key), raw)
+		}
 	}
 	pid := r.Canonical(raw)
 	w := rec.Weight
@@ -1293,6 +1303,23 @@ func (ix *Index) LoadSources(path string, opts ...Option) error {
 
 // personID resolves a stable identifier for a record, preferring an explicit
 // id, then email, then a slug of the name.
+// identityKey normalizes an alternate identifier for the resolver: an email is
+// folded like any other email, a role mailbox is dropped, and anything else is
+// lowercased and trimmed.
+func identityKey(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if strings.Contains(s, "@") {
+		if util.IsRoleEmail(s) {
+			return ""
+		}
+		return util.NormalizeEmail(s)
+	}
+	return strings.ToLower(s)
+}
+
 func personID(rec connector.Record) model.ID {
 	switch {
 	case rec.PersonID != "":

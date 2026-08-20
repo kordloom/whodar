@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"strings"
 
 	"github.com/kordloom/whodar/internal/graph"
 )
@@ -35,11 +36,16 @@ func (g *Graph) Fetch(ctx context.Context) ([]Record, error) {
 		if email == "" && u.DisplayName == "" {
 			continue
 		}
+		var alt []string
+		if u.UserPrincipalName != "" && !strings.EqualFold(u.UserPrincipalName, email) {
+			alt = append(alt, u.UserPrincipalName)
+		}
 		recs = append(recs, Record{
 			Kind:     KindPerson,
 			PersonID: u.ID,
 			Name:     u.DisplayName,
 			Email:    email,
+			AltIDs:   alt,
 			Title:    u.JobTitle,
 			Team:     u.Department,
 			Manager:  u.ManagerEmail(),

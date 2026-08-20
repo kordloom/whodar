@@ -22,6 +22,10 @@ type Record struct {
 	Name string
 	// Email is the person's work email.
 	Email string
+	// AltIDs are other identifiers this source knows for the person, such as an
+	// AD sign-in name or a second email. Each is unioned with the person so any
+	// of them joins them across sources.
+	AltIDs []string
 	// Title is the person's job title.
 	Title string
 	// Team is the person's team name.
