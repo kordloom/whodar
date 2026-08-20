@@ -201,6 +201,20 @@ func (s *Store) forget(ep *Episode) {
 	delete(s.episodes, ep.ID)
 }
 
+// dropSearchIndex removes an episode's keyword postings and embedding vector, so
+// its text can no longer be found by search. Unlike forget it keeps the episode
+// record and its participant links, so the pointer survives while the purged
+// content becomes unsearchable.
+func (s *Store) dropSearchIndex(id string) {
+	for term, posting := range s.postings {
+		delete(posting, id)
+		if len(posting) == 0 {
+			delete(s.postings, term)
+		}
+	}
+	delete(s.vecs, id)
+}
+
 // Query asks for episodes matching text, optionally narrowed to one person.
 type Query struct {
 	// Text is the question, matched against episode terms.

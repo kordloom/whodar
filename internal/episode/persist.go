@@ -329,6 +329,10 @@ func (s *Store) PurgeArchive() int {
 	for _, ep := range s.episodes {
 		if ep.Archived() {
 			ep.Archive = nil
+			// The archive was the searchable body, so drop this episode's
+			// postings and vector too. Otherwise purged content still drives
+			// keyword and semantic search while the words themselves are gone.
+			s.dropSearchIndex(ep.ID)
 			n++
 		}
 	}

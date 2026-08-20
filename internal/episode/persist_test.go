@@ -162,3 +162,27 @@ func TestUnpackRejectsOutOfRangeIndex(t *testing.T) {
 		t.Fatal("unpackEpisode with an out-of-range index = nil error, want failure")
 	}
 }
+
+// TestPurgeArchiveDropsSearchIndex verifies that pruning content also removes
+// the episode's postings and vector, so purged words can no longer be found,
+// while the pointer to the conversation survives.
+func TestPurgeArchiveDropsSearchIndex(t *testing.T) {
+	t.Parallel()
+	s := newTestStore()
+	ep := testEpisode("a", 1, "me@x.com")
+	ep.Archive = []Note{{Author: "me@x.com", At: fixedNow, Text: "rotate the certificate"}}
+	s.Add(ep)
+
+	if got := s.Search(Query{Text: "certificate", Person: "me@x.com"}); len(got) != 1 {
+		t.Fatalf("before purge: search = %d, want 1", len(got))
+	}
+	if n := s.PurgeArchive(); n != 1 {
+		t.Fatalf("PurgeArchive = %d, want 1", n)
+	}
+	if got := s.Search(Query{Text: "certificate", Person: "me@x.com"}); len(got) != 0 {
+		t.Errorf("after purge: content search = %d, want 0 (purged content still searchable)", len(got))
+	}
+	if got := s.Search(Query{Person: "me@x.com"}); len(got) != 1 {
+		t.Errorf("after purge: recency list = %d, want 1 (pointer lost)", len(got))
+	}
+}
