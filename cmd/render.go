@@ -564,3 +564,31 @@ func renderDeparture(w io.Writer, query string, imp resolve.DepartureImpact, s s
 		}
 	}
 }
+
+// renderOwnership prints where declared ownership has drifted from the person
+// who actually does the work.
+func renderOwnership(w io.Writer, drift []resolve.OwnerDrift, s style) {
+	if len(drift) == 0 {
+		fmt.Fprintln(w, s.dim(
+			"No ownership drift found, or no declared ownership indexed. Add a CODEOWNERS source to compare."))
+		return
+	}
+	fmt.Fprintln(w, s.bold(fmt.Sprintf(
+		"Ownership drift  %d area%s where the owner on paper is not the one doing the work",
+		len(drift), plural(len(drift)))))
+	width := 0
+	for _, d := range drift {
+		if n := len([]rune(d.Topic)); n > width {
+			width = n
+		}
+	}
+	if width > 24 {
+		width = 24
+	}
+	for _, d := range drift {
+		fmt.Fprintf(w, "  %s  %s %s  %s %s\n",
+			pad(s.bold(d.Topic), d.Topic, width),
+			s.dim("declared"), s.warn(strings.Join(d.Declared, ", ")),
+			s.dim("→ actual"), s.accent(d.Actual))
+	}
+}

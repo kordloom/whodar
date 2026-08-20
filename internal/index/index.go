@@ -545,6 +545,9 @@ func (ix *Index) buildPerson(rec connector.Record) {
 		p.Topics[tid] += weightTopic * w
 		pt.Topics = append(pt.Topics, strings.ToLower(top))
 		add(top, weightTopic)
+		if rec.Source == "codeowners" && !slices.Contains(p.Owns, tid) {
+			p.Owns = append(p.Owns, tid)
+		}
 	}
 	// Fresh ingest carries readable Text, kept in memory for embedding and
 	// merge and tokenized into postings. A record rebuilt from a saved index

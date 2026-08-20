@@ -26,6 +26,9 @@ type Person struct {
 	Identities []ID
 	// Topics maps a topic ID to this person's affinity weight for it.
 	Topics map[ID]float64
+	// Owns lists topic IDs this person is a declared owner of, from a source of
+	// record such as CODEOWNERS, as opposed to topics they merely work in.
+	Owns []ID
 }
 
 // Team is a named group of people within an organization.

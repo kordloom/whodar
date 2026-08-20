@@ -83,6 +83,11 @@ func mergePerson(dst, src *model.Person) {
 	}
 	dst.Identities = append(dst.Identities, src.Identities...)
 	dst.Identities = append(dst.Identities, src.ID)
+	for _, t := range src.Owns {
+		if !slices.Contains(dst.Owns, t) {
+			dst.Owns = append(dst.Owns, t)
+		}
+	}
 }
 
 // movePostings shifts from's weight onto to for every term.
