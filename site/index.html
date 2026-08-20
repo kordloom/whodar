@@ -277,6 +277,40 @@
 			</div>
 		</section>
 
+		<section class="section wrap" id="exposed">
+			<div class="sec-head reveal">
+				<span class="sec-eyebrow">Where you're exposed</span>
+				<h2>It also shows you where the knowledge is dangerously thin.</h2>
+				<p>The same graph answers the question a chart cannot: where the organization depends on one person without realizing it. Deterministic, no model required.</p>
+			</div>
+			<div class="flow reveal">
+				<div class="flow-node ticks"><i class="tk1"></i><i class="tk2"></i>
+					<div class="n">RISK</div>
+					<h3>Bus factor, ranked</h3>
+					<p>The topics and systems where one or two people hold most of the knowledge, so a single departure is visible before it hurts.</p>
+				</div>
+				<div class="flow-arrow"><svg viewBox="0 0 24 24"><path d="M4 11h13l-5-5 1.5-1.5L21 12l-7.5 7.5L12 18l5-5H4v-2Z"/></svg></div>
+				<div class="flow-node ticks"><i class="tk1"></i><i class="tk2"></i>
+					<div class="n">OWNERSHIP</div>
+					<h3>Paper versus reality</h3>
+					<p>Where CODEOWNERS says one team owns an area but the work and the knowledge sit with someone else. Ownership drift, surfaced.</p>
+				</div>
+				<div class="flow-arrow"><svg viewBox="0 0 24 24"><path d="M4 11h13l-5-5 1.5-1.5L21 12l-7.5 7.5L12 18l5-5H4v-2Z"/></svg></div>
+				<div class="flow-node ticks"><i class="tk1"></i><i class="tk2"></i>
+					<div class="n">DEPARTURE</div>
+					<h3>What walks out the door</h3>
+					<p>Name a person and see the topics, systems, and incidents that lose their strongest expert the day they leave.</p>
+				</div>
+			</div>
+			<div class="reads reveal">
+				<span class="reads-label">Prove it</span>
+				<div class="sources">
+					<span class="src">Findings sealable with LoomSeal</span><span class="src">Offline-verifiable</span><span class="src">Nothing sent to us</span>
+				</div>
+				<p class="note">whodar discovers where you are exposed. <a href="https://github.com/kordloom/loomseal" target="_blank" rel="noopener">LoomSeal</a> turns a finding into evidence a board or auditor can verify offline, with no trust in the machine that produced it &rarr;</p>
+			</div>
+		</section>
+
 		<section class="section wrap" id="recall">
 			<div class="sec-head reveal">
 				<span class="sec-eyebrow"><span class="n">03 //</span> Recall</span>
@@ -341,8 +375,8 @@
 				<article class="card ticks reveal"><i class="tk1"></i><i class="tk2"></i>
 					<div class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h6"/></svg></div>
 					<h3>Or what the organization knew</h3>
-					<p>Companies delete their own chat on a schedule, for good legal reasons, and the engineering record goes with it. Keep the Slack conversation on your own machines instead, and whodar still shows how it was fixed, quoted and cited.</p>
-					<span class="tag">Memory</span>
+					<p>Companies delete their own chat on a schedule, for good legal reasons, and the engineering record goes with it. Keep the conversation behind a finding on your own machines instead, and whodar still shows how it was fixed, quoted and cited.</p>
+					<span class="tag">Early access</span>
 				</article>
 			</div>
 			<div class="reads reveal">
@@ -354,15 +388,12 @@
 				<p class="note"><a href="/docs/reference#whodar-recall" target="_blank" rel="noopener">Recall returns only the conversations you took part in. See how it works →</a></p>
 			</div>
 			<div class="reads reveal">
-				<span class="reads-label">Memory</span>
+				<span class="reads-label">Free and paid</span>
 				<div class="sources">
-					<span class="src">The organization's memory</span><span class="src">Survives retention</span>
-					<span class="src">Any number of people</span>
+					<span class="src">Finding people, free</span><span class="src">Organizational intelligence, paid</span>
+					<span class="src">Evidence retention, optional</span>
 				</div>
-				<p class="note"><strong>Everything that finds people is free, forever</strong>: the graph, and
-					the conversations you took part in. Memory is the one paid add-on, preserving the
-					organization's history so a retention policy stops costing you the answer. No seat count,
-					no telemetry. <a href="/pricing">See what is free and what is not →</a></p>
+				<p class="note"><strong>Finding people is free, forever</strong>: the graph, and recall of the conversations you took part in. The paid tier is organizational intelligence, where your organization is exposed, and it can optionally keep the evidence behind a finding on your own machines, with retention you set. No seat count, no telemetry. <a href="/pricing">See what is free and what is not &rarr;</a></p>
 			</div>
 		</section>
 
@@ -563,6 +594,7 @@ claude mcp add whodar -- whodar mcp
 				<a href="/docs/reference">Reference</a>
 				<a href="https://github.com/kordloom/whodar/releases">Releases</a>
 				<a href="mailto:hello@whodar.dev">Contact</a>
+				<a href="https://kordloom.com" target="_blank" rel="noopener">KordLoom</a>
 			</nav>
 			<div class="foot-themes" role="group" aria-label="Theme"><span class="tl">Theme</span><button data-theme-btn="radar" class="theme-sw radar" type="button" title="Radar" aria-label="Radar theme"></button><button data-theme-btn="ink" class="theme-sw ink" type="button" title="Ink" aria-label="Ink theme"></button><button data-theme-btn="loom" class="theme-sw loom" type="button" title="Loom" aria-label="Loom theme"></button></div>
 			<span class="foot-note">Source-available under the Business Source License 1.1, converting to Apache 2.0 on 2030-08-03. Copyright 2026 KordLoom LLC.</span>
