@@ -1,0 +1,28 @@
+# Run whodar in a container. Pick a profile:
+#   Demo:   docker compose --profile demo up --build -d
+#   Serve:  WHODAR_SERVE_TOKEN=... docker compose --profile serve up --build -d
+# The demo is a self-contained tour of a simulated company across all eight
+# sources: seeded, open, no secrets, discarded when it stops. Serve is the real
+# web UI over an index you build into ./data.
+services:
+  demo:
+    build: .
+    profiles: ["demo"]
+    command: ["demo", "--addr", ":8765"]
+    ports:
+      - "${WHODAR_PORT:-8765}:8765"
+
+  serve:
+    build: .
+    profiles: ["serve"]
+    command: ["serve", "--addr", ":8765", "--data-dir", "/data"]
+    environment:
+      # whodar refuses to bind beyond localhost without this token, and every
+      # request must then carry it as a bearer header or token query parameter.
+      WHODAR_SERVE_TOKEN: ${WHODAR_SERVE_TOKEN:-}
+    volumes:
+      # Holds index.json and the files whodar writes back, such as feedback.
+      # The image runs as nonroot, so this directory must be writable by it.
+      - ./data:/data
+    ports:
+      - "${WHODAR_PORT:-8765}:8765"

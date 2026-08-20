@@ -56,8 +56,10 @@ WHODAR_ANTHROPIC_KEY) and add --policy redacted.`,
 			if cfg.episodes, err = simorg.BuildEpisodes(ix); err != nil {
 				return err
 			}
-			// The demo has no real user, so recall starts as the person the
-			// sample conversations were had with.
+			// The demo is public sample data, so it serves open with no token
+			// and, having no real user, starts recall as the person the sample
+			// conversations were had with.
+			cfg.public = true
 			cfg.recallMe = demoPerson
 
 			link := "http://" + cfg.addr + "/?q=" + url.QueryEscape(demoQuery)

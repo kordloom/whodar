@@ -52,6 +52,10 @@ type webConfig struct {
 	recallMe string
 	// fbStrength is how hard votes move ranking.
 	fbStrength string
+	// public serves open to any caller with no token, even off loopback. It is
+	// meant only for the demo, whose index and recall are sample data with
+	// nothing private to protect.
+	public bool
 }
 
 // newServeCmd builds the serve command, which runs the web UI on localhost and
@@ -114,10 +118,11 @@ func addWebFlags(cmd *cobra.Command, cfg *webConfig, defaultAddr string) {
 // history, and one token cannot tell two people apart. So recall is served
 // only where the caller can only be the person running whodar: a loopback bind
 // with no token. A token means the server is shared, whether directly or
-// behind a proxy that forwards to loopback, and recall stays off.
+// behind a proxy that forwards to loopback, and recall stays off. The demo is
+// the exception: its history is sample data, so it serves recall openly.
 func recallFn(ix *index.Index, cfg webConfig, token string) web.RecallFunc {
 	store := cfg.episodes
-	if store == nil || store.Len() == 0 || !loopbackAddr(cfg.addr) || token != "" {
+	if store == nil || store.Len() == 0 || token != "" || (!loopbackAddr(cfg.addr) && !cfg.public) {
 		return nil
 	}
 	res := recall.New(store, ix)
@@ -132,10 +137,10 @@ func recallFn(ix *index.Index, cfg webConfig, token string) web.RecallFunc {
 
 // serveWeb runs the web UI over ix until interrupted. A nil store disables
 // the feedback API. Binding beyond localhost requires the serve token, which
-// then gates every request.
+// then gates every request, unless cfg.public marks the index as sample data.
 func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedback.Store, cfg webConfig) error {
 	token := os.Getenv(serveTokenEnv)
-	if !loopbackAddr(cfg.addr) && token == "" {
+	if !loopbackAddr(cfg.addr) && token == "" && !cfg.public {
 		return fmt.Errorf("%w: %s binds beyond localhost; set %s so every request needs a token",
 			ErrBadArgs, cfg.addr, serveTokenEnv)
 	}
