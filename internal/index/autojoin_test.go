@@ -182,3 +182,37 @@ func TestAutoJoinConfidence(t *testing.T) {
 		t.Errorf("join = %+v, want confidence %v reason %q", got, confSharedTeam, "name and shared team")
 	}
 }
+
+// TestJoinsPersist checks the confidence ledger round-trips through Save and
+// Load, and that a re-index keeps a restored join it does not re-infer.
+func TestJoinsPersist(t *testing.T) {
+	t.Parallel()
+	path := t.TempDir() + "/index.json"
+
+	ix := New()
+	ix.Build([]connector.Record{
+		{Kind: connector.KindPerson, Email: "kim.doe@x.com", Name: "Kim Doe", Source: "t"},
+		{Kind: connector.KindPerson, PersonID: "github:kimdoe", Name: "@kimdoe", Source: "t"},
+	})
+	ix.AutoJoin()
+	ix.Canonicalize()
+	if err := ix.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	joins := got.Joins()
+	if len(joins) != 1 || joins[0].Alias != "github:kimdoe" || joins[0].Confidence != confUniqueName {
+		t.Fatalf("restored joins = %+v, want the github join at %v", joins, confUniqueName)
+	}
+
+	// A re-index does not re-infer an already-merged join, but the restored
+	// ledger keeps it so the confidence and evidence are not lost.
+	got.AutoJoin()
+	if jf := got.JoinsFor("kim.doe@x.com"); len(jf) != 1 || jf[0].Confidence != confUniqueName {
+		t.Errorf("JoinsFor after re-autojoin = %+v, want the restored join kept", jf)
+	}
+}

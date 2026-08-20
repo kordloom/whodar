@@ -1079,6 +1079,10 @@ type snapshot struct {
 	ChannelVecs map[model.ID][]int8 `json:"channel_vecs,omitempty"`
 	// Aliases maps each known alias identifier to its canonical form.
 	Aliases map[model.ID]model.ID `json:"aliases,omitempty"`
+	// Joins records the inferred identity merges with their confidence and
+	// evidence, so a re-index keeps them and a reader can audit why two
+	// identities became one.
+	Joins []Join `json:"joins,omitempty"`
 	// SourceCounts is how many records each source contributed. The records
 	// themselves live in a sidecar file so a query never loads them; only their
 	// counts stay here for status and the shrink guard.
@@ -1147,6 +1151,7 @@ func (ix *Index) Save(path string, opts ...Option) error {
 		PersonVecs:      quantizeVecs(ix.personVecs),
 		ChannelVecs:     quantizeVecs(ix.channelVecs),
 		Aliases:         ix.identityResolver().Pairs(),
+		Joins:           ix.joins,
 		SourceCounts:    ix.sourceCounts,
 		BuiltAt:         ix.now(),
 	}
@@ -1228,6 +1233,7 @@ func Load(path string, opts ...Option) (*Index, error) {
 		sourceCounts: snap.SourceCounts,
 		builtAt:      snap.BuiltAt,
 		resolver:     identity.NewResolver(),
+		joins:        snap.Joins,
 		halfLife:     DefaultHalfLife,
 		now:          time.Now,
 	}

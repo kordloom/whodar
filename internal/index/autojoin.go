@@ -147,10 +147,33 @@ func (ix *Index) AutoJoin() JoinResult {
 		r.Union(target, id)
 		joins = append(joins, Join{Alias: id, Canonical: target, Confidence: conf, Reason: reason})
 	}
-	sort.Slice(joins, func(i, j int) bool { return joins[i].Alias < joins[j].Alias })
 	sort.Strings(blocked)
-	ix.joins = joins
+	ix.joins = mergeJoins(ix.joins, joins)
 	return JoinResult{Joined: len(joins), Joins: joins, Ambiguous: blocked}
+}
+
+// mergeJoins overlays freshly inferred joins onto any restored from a prior
+// index, keyed by alias: a re-inferred join takes the new confidence, while a
+// restored join this run could not re-derive is kept so its confidence
+// survives. The result is sorted by alias for a stable ledger.
+func mergeJoins(restored, fresh []Join) []Join {
+	if len(restored) == 0 {
+		sort.Slice(fresh, func(i, j int) bool { return fresh[i].Alias < fresh[j].Alias })
+		return fresh
+	}
+	byAlias := make(map[model.ID]Join, len(restored)+len(fresh))
+	for _, j := range restored {
+		byAlias[j.Alias] = j
+	}
+	for _, j := range fresh {
+		byAlias[j.Alias] = j
+	}
+	out := make([]Join, 0, len(byAlias))
+	for _, j := range byAlias {
+		out = append(out, j)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Alias < out[j].Alias })
+	return out
 }
 
 // corroboration reports how firmly two people are the same despite an ambiguous
