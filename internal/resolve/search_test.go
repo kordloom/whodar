@@ -64,3 +64,24 @@ func TestSearch(t *testing.T) {
 		t.Errorf("limit not applied: %d results", len(r))
 	}
 }
+
+// TestProfileViewJoins checks the profile view carries the inferred identity
+// merges with their confidence.
+func TestProfileViewJoins(t *testing.T) {
+	t.Parallel()
+	ix := index.New()
+	ix.Build([]connector.Record{
+		{Kind: connector.KindPerson, Name: "Kevin Novak", Email: "kevin@corp.com", Source: "t"},
+		{Kind: connector.KindPerson, PersonID: "github:kevinnovak", Name: "@kevinnovak", Source: "github"},
+	})
+	ix.AutoJoin()
+	ix.Canonicalize()
+	profile, ok := ix.Profile("kevin@corp.com")
+	if !ok {
+		t.Fatal("profile not found")
+	}
+	view := ProfileView(profile)
+	if len(view.Joins) != 1 || view.Joins[0].Alias != "github:kevinnovak" || view.Joins[0].Confidence != 0.9 {
+		t.Errorf("view.Joins = %+v, want the github join at 0.9", view.Joins)
+	}
+}

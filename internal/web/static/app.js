@@ -353,6 +353,23 @@ function showProfile(p) {
   if (p.identities && p.identities.length) {
     row("Also known as", el("span", "detail-value", p.identities.join(", ")));
   }
+  if (p.joins && p.joins.length) {
+    const v = el("span", "detail-value detail-joins");
+    for (const j of p.joins) {
+      const line = el("div", "join-line");
+      line.appendChild(el("span", "join-alias", j.alias));
+      const pct = Math.round((j.confidence || 0) * 100);
+      const bar = el("span", "join-bar");
+      const fill = el("span", "join-bar-fill");
+      fill.style.width = pct + "%";
+      bar.appendChild(fill);
+      line.appendChild(bar);
+      line.appendChild(el("span", "join-pct", pct + "%"));
+      line.appendChild(el("span", "join-reason", j.reason || ""));
+      v.appendChild(line);
+    }
+    row("Merged by", v);
+  }
   if (p.manager && (p.manager.name || p.manager.email)) {
     row("Manager", el("span", "detail-value", p.manager.name || p.manager.email));
   }

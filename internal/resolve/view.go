@@ -126,6 +126,17 @@ type JSONMember struct {
 	Email string `json:"email,omitempty"`
 }
 
+// JSONJoin is one inferred identity merge on a profile: an alias folded in, how
+// confident the merge is, and the evidence for it.
+type JSONJoin struct {
+	// Alias is the identifier that was folded in, such as "github:kim-doe".
+	Alias string `json:"alias"`
+	// Confidence is how sure the merge is, from 0 to 1.
+	Confidence float64 `json:"confidence"`
+	// Reason names the evidence, such as "unique name match".
+	Reason string `json:"reason"`
+}
+
 // JSONProfile is the full picture of one person, for the profile view.
 type JSONProfile struct {
 	// ID is the person's canonical identifier.
@@ -144,6 +155,10 @@ type JSONProfile struct {
 	Manager *JSONMember `json:"manager,omitempty"`
 	// Identities lists alternate identifiers merged into this person.
 	Identities []string `json:"identities,omitempty"`
+	// Joins explains the inferred merges among those identities: which alias,
+	// how confident, and the evidence. Certain email or provider-id joins are
+	// not listed.
+	Joins []JSONJoin `json:"joins,omitempty"`
 	// Channels lists the channels the person is active in.
 	Channels []string `json:"channels,omitempty"`
 	// Topics are the person's expertise areas, strongest first.
@@ -161,6 +176,9 @@ func ProfileView(p index.Profile) JSONProfile {
 	}
 	for _, id := range p.Person.Identities {
 		out.Identities = append(out.Identities, string(id))
+	}
+	for _, j := range p.Joins {
+		out.Joins = append(out.Joins, JSONJoin{Alias: string(j.Alias), Confidence: j.Confidence, Reason: j.Reason})
 	}
 	if p.Team != nil {
 		out.Team = p.Team.Name

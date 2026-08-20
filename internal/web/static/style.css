@@ -895,3 +895,12 @@ section h2 {
 .card-open { display: inline-flex; align-items: center; gap: 5px; margin-top: 9px; font-size: 12.5px; font-weight: 600; color: var(--accent); text-decoration: none; border: 1px solid var(--accent-soft); border-radius: 8px; padding: 4px 10px; transition: border-color 0.12s, background 0.12s; }
 .card-open::after { content: "\2192"; }
 .card-open:hover { border-color: var(--accent); background: var(--accent-soft); }
+
+/* Inferred identity merges on a profile: alias, confidence bar, and evidence. */
+.detail-joins { display: flex; flex-direction: column; gap: 5px; }
+.join-line { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.join-alias { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.join-bar { width: 56px; height: 6px; border-radius: 3px; background: var(--accent-soft); overflow: hidden; flex: 0 0 auto; }
+.join-bar-fill { display: block; height: 100%; background: var(--accent); }
+.join-pct { color: var(--muted); min-width: 32px; }
+.join-reason { color: var(--muted); }

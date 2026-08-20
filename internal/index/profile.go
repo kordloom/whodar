@@ -20,6 +20,9 @@ type Profile struct {
 	Manager *model.Person
 	// Channels lists the channels naming the person as an active member.
 	Channels []*model.Channel
+	// Joins are the inferred identity merges folded into this person, with the
+	// confidence and evidence for each.
+	Joins []Join
 }
 
 // Profile returns the full profile for id, resolving identity aliases, or
@@ -30,7 +33,7 @@ func (ix *Index) Profile(id model.ID) (Profile, bool) {
 	if p == nil {
 		return Profile{}, false
 	}
-	out := Profile{Person: p}
+	out := Profile{Person: p, Joins: ix.JoinsFor(cid)}
 	if p.TeamID != "" {
 		out.Team = ix.Graph.Teams[p.TeamID]
 	}
