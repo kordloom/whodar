@@ -241,3 +241,43 @@ func TestAutoJoinPrunesGhostJoins(t *testing.T) {
 		t.Errorf("joins after source replace = %d (%+v), want 0 ghosts", got, ix.Joins())
 	}
 }
+
+// TestAutoJoinEmailVariants checks two email records for one person, whose local
+// parts differ only by dots or domain, merge when names agree, and that a shared
+// local part with different names stays separate.
+func TestAutoJoinEmailVariants(t *testing.T) {
+	t.Parallel()
+
+	// Dot and cross-domain variants of the same-named person merge.
+	ix := New()
+	ix.Build([]connector.Record{
+		{Kind: connector.KindPerson, Email: "john.smith@corp.com", Name: "John Smith", Source: "a"},
+		{Kind: connector.KindPerson, Email: "johnsmith@corp.onmicrosoft.com", Name: "John Smith", Source: "b"},
+	})
+	res := ix.AutoJoin()
+	ix.Canonicalize()
+	if len(ix.Graph.People) != 1 {
+		t.Errorf("email variants not merged: %d people %v", len(ix.Graph.People), peopleIDs(ix))
+	}
+	var variant bool
+	for _, j := range res.Joins {
+		if j.Reason == "matching email variant" && j.Confidence == confEmailVariant {
+			variant = true
+		}
+	}
+	if !variant {
+		t.Errorf("no email-variant join recorded: %+v", res.Joins)
+	}
+
+	// Same local part, different names: two people, never collapsed.
+	ix2 := New()
+	ix2.Build([]connector.Record{
+		{Kind: connector.KindPerson, Email: "jsmith@corp.com", Name: "John Smith", Source: "a"},
+		{Kind: connector.KindPerson, Email: "jsmith@partner.com", Name: "Jane Smith", Source: "b"},
+	})
+	ix2.AutoJoin()
+	ix2.Canonicalize()
+	if len(ix2.Graph.People) != 2 {
+		t.Errorf("different-named people wrongly merged: %d people %v", len(ix2.Graph.People), peopleIDs(ix2))
+	}
+}

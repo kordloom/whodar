@@ -1,10 +1,12 @@
 package index
 
 import (
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // minHandleLen keeps trivially short handles from joining anyone.
@@ -43,6 +45,7 @@ type Join struct {
 // shared team corroborates more firmly than a couple of shared topics.
 const (
 	confUniqueName   = 0.9
+	confEmailVariant = 0.85
 	confSharedTeam   = 0.8
 	confSharedTopics = 0.7
 )
@@ -52,8 +55,10 @@ const (
 // email local-part matches the handle, so kim-doe, Kim Doe, and
 // kim.doe@example.com become one node without an alias file. A handle that
 // matches nobody or more than one person stays separate; the alias file
-// remains the override for those. It returns a JoinResult with the join count
-// and the handles left ambiguous; run Canonicalize afterward to merge the graph.
+// remains the override for those. It also merges people who share an email
+// local part under a dotted or cross-domain variant when their names agree. It
+// returns a JoinResult with the join count and the handles left ambiguous; run
+// Canonicalize afterward to merge the graph.
 func (ix *Index) AutoJoin() JoinResult {
 	r := ix.identityResolver()
 	g := ix.Graph
@@ -146,6 +151,54 @@ func (ix *Index) AutoJoin() JoinResult {
 		}
 		r.Union(target, id)
 		joins = append(joins, Join{Alias: id, Canonical: target, Confidence: conf, Reason: reason})
+	}
+
+	// Merge people who are one person under an email variant: their email local
+	// parts match once dots are dropped (first.last vs firstlast, or the same
+	// mailbox on a primary and an onmicrosoft domain), confirmed by an identical
+	// display name so two different people who share a local part are never
+	// collapsed. Plus-tags are already folded by NormalizeEmail.
+	byLocal := make(map[string][]model.ID)
+	for id, p := range g.People {
+		if p.Email == "" || util.IsRoleEmail(p.Email) {
+			continue
+		}
+		key := dotStrip(emailLocal(strings.ToLower(p.Email)))
+		if len(key) < minHandleLen {
+			continue
+		}
+		canon := r.Canonical(id)
+		if !slices.Contains(byLocal[key], canon) {
+			byLocal[key] = append(byLocal[key], canon)
+		}
+	}
+	for key, group := range byLocal {
+		for i := 0; i < len(group); i++ {
+			for j := i + 1; j < len(group); j++ {
+				a, b := r.Canonical(group[i]), r.Canonical(group[j])
+				if a == b {
+					continue
+				}
+				pa, pb := g.People[a], g.People[b]
+				if pa == nil || pb == nil {
+					continue
+				}
+				name := flatten(pa.Name)
+				// The local part must BE the full name (john.smith, not a bare
+				// first name), so two different people who only share a first
+				// name at different domains are never collapsed.
+				if name == "" || name != flatten(pb.Name) || name != key {
+					continue
+				}
+				r.Union(a, b)
+				target := r.Canonical(a)
+				other := b
+				if target == b {
+					other = a
+				}
+				joins = append(joins, Join{Alias: other, Canonical: target, Confidence: confEmailVariant, Reason: "matching email variant"})
+			}
+		}
 	}
 	sort.Strings(blocked)
 	ix.joins = pruneJoins(mergeJoins(ix.joins, joins), ix)
@@ -269,6 +322,10 @@ func handlePart(id model.ID) string {
 	}
 	return s
 }
+
+// dotStrip removes dots from an email local-part so first.last and firstlast
+// compare equal.
+func dotStrip(local string) string { return strings.ReplaceAll(local, ".", "") }
 
 // emailLocal returns the part of an email before the at sign.
 func emailLocal(email string) string {
