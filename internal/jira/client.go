@@ -56,15 +56,6 @@ type Client struct {
 // Option configures a Client.
 type Option func(*Client)
 
-// WithHTTPClient sets the HTTP doer.
-func WithHTTPClient(d httputil.Doer) Option {
-	return func(c *Client) {
-		if d != nil {
-			c.http = d
-		}
-	}
-}
-
 // WithProgress sets a callback invoked after each page of a paging call with
 // the running item count, so a long search can show movement.
 func WithProgress(p util.Progress) Option {

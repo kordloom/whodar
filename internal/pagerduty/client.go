@@ -37,15 +37,6 @@ type Client struct {
 // Option configures a Client.
 type Option func(*Client)
 
-// WithHTTPClient sets the HTTP doer.
-func WithHTTPClient(d httputil.Doer) Option {
-	return func(c *Client) {
-		if d != nil {
-			c.http = d
-		}
-	}
-}
-
 // WithBaseURL overrides the API base URL.
 func WithBaseURL(u string) Option {
 	return func(c *Client) {

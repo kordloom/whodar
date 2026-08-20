@@ -43,15 +43,6 @@ type Ollama struct {
 // Option configures an Ollama client.
 type Option func(*Ollama)
 
-// WithHTTPClient sets the HTTP doer.
-func WithHTTPClient(d Doer) Option {
-	return func(o *Ollama) {
-		if d != nil {
-			o.http = d
-		}
-	}
-}
-
 // WithBaseURL overrides the server address.
 func WithBaseURL(u string) Option {
 	return func(o *Ollama) {
