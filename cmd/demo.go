@@ -26,6 +26,8 @@ const demoQuery = "who do I talk to about billing retries"
 // company with no credentials or setup.
 func newDemoCmd(opts *options) *cobra.Command {
 	var cfg webConfig
+	var big bool
+	open := true
 	cmd := &cobra.Command{
 		Use:   "demo",
 		Short: "Explore whodar on a simulated company",
@@ -46,8 +48,16 @@ set becomes an open relay to your paid account.`,
 			}
 			defer func() { _ = os.RemoveAll(dir) }()
 
+			buildIndex, buildEpisodes := simorg.BuildIndex, simorg.BuildEpisodes
+			recallMe, query, sources := demoPerson, demoQuery, 8
+			if big {
+				buildIndex, buildEpisodes = simorg.BuildBigIndex, simorg.BuildBigEpisodes
+				recallMe, query = simorg.BigDemoPerson()
+				sources = 3
+			}
+
 			fmt.Fprintln(cmd.ErrOrStderr(), "whodar demo: indexing a simulated company (sample data only)")
-			ix, err := simorg.BuildIndex(dir)
+			ix, err := buildIndex(dir)
 			if err != nil {
 				return err
 			}
@@ -55,25 +65,30 @@ set becomes an open relay to your paid account.`,
 			if err != nil {
 				return err
 			}
-			if cfg.episodes, err = simorg.BuildEpisodes(ix); err != nil {
+			if cfg.episodes, err = buildEpisodes(ix); err != nil {
 				return err
 			}
 			// The demo is public sample data, so it serves open with no token
 			// and, having no real user, starts recall as the person the sample
 			// conversations were had with.
 			cfg.public = true
-			cfg.recallMe = demoPerson
+			cfg.recallMe = recallMe
 
-			link := "http://" + cfg.addr + "/?q=" + url.QueryEscape(demoQuery)
+			link := "http://" + cfg.addr + "/?q=" + url.QueryEscape(query)
 			fmt.Fprintf(cmd.ErrOrStderr(),
-				"whodar demo: %d people, %d channels across 8 sources\nwhodar demo: try %s\n",
-				len(ix.Graph.People), len(ix.Graph.Channels), link)
-			go openBrowser(link)
+				"whodar demo: %d people, %d channels across %d sources\nwhodar demo: try %s\n",
+				len(ix.Graph.People), len(ix.Graph.Channels), sources, link)
+			if open {
+				go openBrowser(link)
+			}
 
 			return serveWeb(cmd, opts, ix, store, cfg)
 		},
 	}
 	addWebFlags(cmd, &cfg, "127.0.0.1:8765")
+	cmd.Flags().BoolVar(&big, "big", false,
+		"Serve a large simulated company of 200+ people instead of the small sample")
+	cmd.Flags().BoolVar(&open, "open", true, "Open the demo in a browser on start")
 	return cmd
 }
 

@@ -34,6 +34,11 @@ type Spec struct {
 	NoArchive bool
 	// Seed fixes the randomness so a run is reproducible.
 	Seed int64
+	// GivenNames and FamilyNames override the built-in name pools when set, so a
+	// caller such as the demo can cast the company from its own list. Empty uses
+	// the defaults.
+	GivenNames  []string
+	FamilyNames []string
 }
 
 // withDefaults fills a spec out into a small company.
@@ -194,6 +199,34 @@ var (
 	}
 )
 
+// showGivenNames and showFamilyNames cast the demo company from characters across
+// The Office, Full House, Fresh Prince of Bel-Air, Silicon Valley, Breaking Bad,
+// Better Call Saul, and Boardwalk Empire. The generator pairs a given name with a
+// family name independently, so most people come out a recognizable-but-original
+// mashup (Walter Halpert, Kim Tanner, Nacho Bachman) rather than a verbatim character.
+var (
+	showGivenNames = []string{
+		"Michael", "Jim", "Pam", "Dwight", "Angela", "Kevin", "Oscar", "Stanley",
+		"Holly", "Ryan", "Kelly", "Andy", "Phyllis", "Meredith", "Darryl", "Erin",
+		"Danny", "Jesse", "Joey", "Rebecca", "Kimmy", "Stephanie", "Michelle", "Steve",
+		"Will", "Carlton", "Philip", "Vivian", "Hilary", "Ashley", "Geoffrey",
+		"Richard", "Erlich", "Dinesh", "Jared", "Gavin", "Monica", "Laurie", "Russ",
+		"Walter", "Skyler", "Hank", "Marie", "Saul", "Gustavo", "Mike", "Hector",
+		"Gale", "Jane", "Todd", "Jimmy", "Kim", "Chuck", "Howard", "Nacho", "Lalo",
+		"Werner", "Nucky", "Margaret", "Chalky", "Gillian", "Owen", "Eli", "Meyer",
+	}
+	showFamilyNames = []string{
+		"Scott", "Halpert", "Beesly", "Schrute", "Malone", "Martinez", "Hudson",
+		"Kapoor", "Bernard", "Palmer", "Vance", "Bratton", "Flenderson", "Lewis",
+		"Wallace", "Tanner", "Katsopolis", "Gladstone", "Gibbler", "Hale", "Smith",
+		"Banks", "Butler", "Hendricks", "Bachman", "Gilfoyle", "Belson", "Bream",
+		"Bighetti", "Hanneman", "Dunn", "White", "Pinkman", "Schrader", "Goodman",
+		"Fring", "Ehrmantraut", "Salamanca", "Boetticher", "McGill", "Wexler",
+		"Hamlin", "Varga", "Schweikart", "Thompson", "Darmody", "Schroeder", "Harrow",
+		"Capone", "Rosetti", "Rothstein", "Luciano", "Lansky",
+	}
+)
+
 // Generate synthesizes a company and the questions it answers. Nothing is
 // random about the answers: an owner is made fluent in one subject and nobody
 // else is, and every thread is planted with a person who resolves it, so a
@@ -229,6 +262,15 @@ type person struct {
 	title string
 	// team is the team name.
 	team string
+	// manager is the manager's email, empty at the top of the chain. Set only by
+	// the demo company builder.
+	manager string
+	// github is the GitHub login, empty when the person has none and is joined by
+	// alias instead. Set only by the demo company builder.
+	github string
+	// topics are the subject indices this person is an expert in. Set only by the
+	// demo company builder.
+	topics []int
 }
 
 // canonical returns the identifier the index keys this person by.
@@ -236,13 +278,21 @@ func (p person) canonical() model.ID { return model.ID(p.email) }
 
 // generatePeople builds the workforce.
 func generatePeople(spec Spec, rng *rand.Rand) []person {
+	given := spec.GivenNames
+	if len(given) == 0 {
+		given = givenNames
+	}
+	family := spec.FamilyNames
+	if len(family) == 0 {
+		family = familyNames
+	}
 	out := make([]person, 0, spec.People)
 	for i := range spec.People {
-		given := givenNames[i%len(givenNames)]
-		family := familyNames[(i/len(givenNames)+i)%len(familyNames)]
-		name := given + " " + family
+		g := given[i%len(given)]
+		f := family[(i/len(given)+i)%len(family)]
+		name := g + " " + f
 		email := fmt.Sprintf("%s.%s%d@corp.com",
-			strings.ToLower(asciiFold(given)), strings.ToLower(asciiFold(family)), i)
+			strings.ToLower(asciiFold(g)), strings.ToLower(asciiFold(f)), i)
 		out = append(out, person{
 			id:    fmt.Sprintf("U%04d", i),
 			name:  name,
