@@ -1,18 +1,27 @@
 package cmd
 
 import (
+	"bytes"
+	"fmt"
 	"io"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/report"
 	"github.com/kordloom/whodar/internal/resolve"
 )
 
 // newRiskCmd builds the risk command, a deterministic view of where knowledge is
 // concentrated in too few people, and what would leave with one of them.
 func newRiskCmd(opts *options) *cobra.Command {
-	var limit int
+	var (
+		limit    int
+		htmlPath string
+	)
 	cmd := &cobra.Command{
 		Use:   "risk [person]",
 		Short: "Show where knowledge is dangerously concentrated",
@@ -31,6 +40,17 @@ Examples:
 			if err != nil {
 				return noIndexError(err)
 			}
+			if htmlPath != "" {
+				if len(args) > 0 {
+					return fmt.Errorf("%w: --html writes the whole-company brief, so it takes no person",
+						ErrBadArgs)
+				}
+				capped := 0
+				if cmd.Flags().Changed("limit") {
+					capped = limit
+				}
+				return writeRiskHTML(cmd, ix, htmlPath, capped)
+			}
 			if len(args) > 0 {
 				who := strings.Join(args, " ")
 				imp := resolve.Departure(ix, who)
@@ -45,5 +65,38 @@ Examples:
 		},
 	}
 	cmd.Flags().IntVar(&limit, "limit", 20, "Maximum topics to report.")
+	cmd.Flags().StringVar(&htmlPath, "html", "",
+		"Write a self-contained HTML brief to this path, for sending to somebody without whodar.")
 	return cmd
+}
+
+// writeRiskHTML renders the knowledge-risk brief to a file. It renders into
+// memory first so a template failure leaves no half-written report behind.
+func writeRiskHTML(cmd *cobra.Command, ix *index.Index, path string, limit int) error {
+	// Score everything, then cap only what is listed. A brief that quietly
+	// counted just the rows it printed would understate the finding it is for.
+	all := resolve.Risk(ix, 0)
+	exposed := report.Exposures(all)
+	listed := all
+	if limit > 0 && len(listed) > limit {
+		listed = listed[:limit]
+	}
+	brief := report.Brief{
+		Generated: time.Now(),
+		People:    len(ix.Graph.People),
+		Scored:    len(all),
+		Sources:   ix.SourceNames(),
+		Risks:     listed,
+		Totals:    report.Count(all, exposed),
+		Exposed:   exposed,
+	}
+	var buf bytes.Buffer
+	if err := report.WriteRisk(&buf, brief); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
+		return fmt.Errorf("risk: write %s: %w", path, err)
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "whodar: wrote the knowledge-risk brief to %s\n", path)
+	return nil
 }

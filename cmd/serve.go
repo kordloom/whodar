@@ -24,6 +24,7 @@ import (
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/policy"
 	"github.com/kordloom/whodar/internal/recall"
+	"github.com/kordloom/whodar/internal/report"
 	"github.com/kordloom/whodar/internal/resolve"
 	"github.com/kordloom/whodar/internal/web"
 )
@@ -184,7 +185,7 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 		if !ok {
 			return resolve.JSONProfile{}, false
 		}
-		return resolve.ProfileView(profile), true
+		return resolve.ProfileView(ix, profile), true
 	}
 	dir := resolve.BuildDirectory(ix)
 	modes := func(ctx context.Context) web.ModesReport {
@@ -197,6 +198,19 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 		Search: func(q string, limit int) []resolve.SearchResult { return resolve.Search(ix, q, limit) },
 		Exposure: func() web.Exposure {
 			return web.Exposure{Risk: resolve.Risk(ix, 0), Drift: resolve.OwnershipDrift(ix)}
+		},
+		Brief: func() report.Brief {
+			all := resolve.Risk(ix, 0)
+			exposed := report.Exposures(all)
+			return report.Brief{
+				Generated: time.Now(),
+				People:    len(ix.Graph.People),
+				Scored:    len(all),
+				Sources:   ix.SourceNames(),
+				Risks:     all,
+				Totals:    report.Count(all, exposed),
+				Exposed:   exposed,
+			}
 		},
 		Departure: func(person string) resolve.DepartureImpact {
 			return resolve.Departure(ix, person)
@@ -212,11 +226,19 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{Addr: cfg.addr, Handler: handler, ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
+
+	// Bind before announcing. Serving is not worth printing until the port is
+	// actually held, and a bind failure underneath a success line reads as a
+	// server that started and then died.
+	ln, err := net.Listen("tcp", cfg.addr)
+	if err != nil {
+		return fmt.Errorf("%w: cannot bind %s: %w: pass --addr to use a free port", ErrServe, cfg.addr, err)
+	}
 
 	ctx := cmd.Context()
 	errCh := make(chan error, 1)
-	go func() { errCh <- srv.ListenAndServe() }()
+	go func() { errCh <- srv.Serve(ln) }()
 	fmt.Fprintf(cmd.ErrOrStderr(), "whodar serving on http://%s (Ctrl-C to stop)\n", cfg.addr)
 
 	select {

@@ -8,6 +8,10 @@ var ErrUnknownSource = errors.New("unknown source")
 // ErrBadArgs indicates missing or invalid command arguments.
 var ErrBadArgs = errors.New("invalid arguments")
 
+// ErrServe indicates the web server could not start, most often because
+// something already holds the address.
+var ErrServe = errors.New("cannot serve")
+
 // ErrNoIndex indicates the index could not be loaded.
 var ErrNoIndex = errors.New("no index")
 
