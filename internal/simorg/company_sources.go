@@ -107,13 +107,16 @@ func (c *company) githubServer() (*httptest.Server, []string) {
 func (c *company) jiraServer() *httptest.Server {
 	issues := make([]map[string]any, 0, len(c.owners)*3)
 	for s := range c.owners {
-		owner := c.owners[s].who
+		exp := c.experts(s)
 		word := topicWord(s)
 		proj := strings.ToUpper(word)
 		if len(proj) > 4 {
 			proj = proj[:4]
 		}
 		for k := range 3 {
+			// Rotate the work across everyone fluent in the subject, so a topic
+			// with several experts reads as shared rather than concentrated.
+			owner := exp[k%len(exp)]
 			issues = append(issues, map[string]any{
 				"key": fmt.Sprintf("%s-%d", proj, s*10+k),
 				"fields": map[string]any{
@@ -203,7 +206,8 @@ func (c *company) confluenceServer() *httptest.Server {
 func (c *company) pagerdutyServer() *httptest.Server {
 	var services, incidents, oncalls []map[string]any
 	for s := 0; s < len(c.owners) && s < 8; s++ {
-		owner := c.owners[s].who
+		exp := c.experts(s)
+		owner := exp[0]
 		sid, epid, pid := fmt.Sprintf("S%d", s), fmt.Sprintf("EP%d", s), "P"+owner.id
 		svcName := topicSlug(s)
 		services = append(services, map[string]any{
@@ -215,6 +219,8 @@ func (c *company) pagerdutyServer() *httptest.Server {
 			"escalation_policy": map[string]any{"id": epid},
 		})
 		for k := range 2 {
+			// A rotation means incidents land on different responders.
+			resp := exp[k%len(exp)]
 			id := fmt.Sprintf("PINC%d%d", s, k)
 			incidents = append(incidents, map[string]any{
 				"id": id, "incident_number": s*100 + k, "status": "resolved",
@@ -223,7 +229,8 @@ func (c *company) pagerdutyServer() *httptest.Server {
 				"created_at": isoDaysAgo(20 + k), "resolved_at": isoDaysAgo(20 + k),
 				"service":    map[string]any{"id": sid, "summary": svcName},
 				"assignments": []map[string]any{
-					{"assignee": map[string]any{"id": pid, "name": owner.name, "email": owner.email}},
+					{"assignee": map[string]any{
+						"id": "P" + resp.id, "name": resp.name, "email": resp.email}},
 				},
 			})
 		}
@@ -263,9 +270,10 @@ func (c *company) buildGitRepo(dir string) error {
 	}
 	now := time.Now()
 	for s := range c.owners {
-		owner := c.owners[s].who
+		exp := c.experts(s)
 		rel := topicSlug(s) + "/main.tf"
 		for k := range 3 {
+			owner := exp[k%len(exp)]
 			if err := commit(rel, fmt.Sprintf("v%d", k), owner.name, owner.email,
 				now.AddDate(0, 0, -(s*3 + k + 1))); err != nil {
 				return fmt.Errorf("simorg: git commit: %w", err)

@@ -10,7 +10,10 @@ services:
   demo:
     build: .
     profiles: ["demo", "tunnel"]
-    command: ["demo", "--addr", ":8765"]
+    # The public demo serves the large simulated company: a few hundred people
+    # across every source, so the org chart, the exposure view, and recall all
+    # have something real to show. There is no browser in a container to open.
+    command: ["demo", "--big", "--open=false", "--addr", ":8765"]
     ports:
       # Bind the host port to loopback only. Under the tunnel profile the demo is
       # reached through Cloudflare over the compose network at http://demo:8765,
