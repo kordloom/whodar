@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>whodar</title>
   <script src="/static/theme.js?v=10"></script>
-  <link rel="stylesheet" href="/static/style.css?v=12">
+  <link rel="stylesheet" href="/static/style.css?v=14">
   <link rel="icon" type="image/png" href="/static/whodar-logo.png">
 </head>
 <body>
@@ -27,6 +27,7 @@
         <a href="#/topics" data-view="topics">Topics
           <span class="nav-count" data-count="topics"></span></a>
         {{if .Exposure}}<a href="#/exposure" data-view="exposure">Exposure</a>{{end}}
+        {{if .CLI}}<a href="#/cli" data-view="cli">Command line</a>{{end}}
         <a href="/orgchart">Org chart</a>
       </nav>
       <div class="side-foot">
@@ -162,6 +163,19 @@
         </div>
         <p class="exp-lede">Deterministic over the graph, no model required. A topic is
           critical when one person holds most of it, elevated when two do.</p>
+        <div class="exp-proof">
+          <div class="exp-proof-head">
+            <h3 class="exp-head exp-head-flush">Prove it</h3>
+            <button id="exp-proof-go" type="button">Seal this finding</button>
+          </div>
+          <p class="exp-note">Whodar can sign the finding below into a
+            <a href="https://github.com/kordloom/loomseal" target="_blank" rel="noopener">LoomSeal</a>
+            bundle: the claim, a digest of the evidence behind it, and an ed25519 signature.
+            Anyone can verify it offline, with no account and nothing sent to us, so the
+            finding can be trusted without trusting the machine that produced it.</p>
+          <div id="exp-proof-out"></div>
+        </div>
+
         <h3 class="exp-head">Knowledge concentration</h3>
         <div id="exp-risk" class="exp-list"></div>
         <h3 class="exp-head">What walks out the door</h3>
@@ -180,9 +194,25 @@
         <div id="exp-drift" class="exp-list"></div>
       </section>
       {{end}}
+
+      {{if .CLI}}
+      <section id="view-cli" hidden>
+        <div class="dir-head">
+          <h2>On the command line</h2>
+          <p id="cli-status" class="dir-count" role="status"></p>
+        </div>
+        <p class="exp-lede">Everything here also answers from a terminal, and the web app is
+          one way to read it rather than the product itself. These run against the same
+          simulated company you are looking at, printed by the same code the terminal uses.
+          Setting up your own sources is <code>whodar connect</code>, then
+          <code>whodar index</code>.</p>
+        <div class="cli-tabs" id="cli-tabs"></div>
+        <pre id="cli-out" class="cli-out" tabindex="0"></pre>
+      </section>
+      {{end}}
     </main>
   </div>
 
-  <script src="/static/app.js?v=12"></script>
+  <script src="/static/app.js?v=14"></script>
 </body>
 </html>

@@ -34,6 +34,20 @@ const expDepInput = document.getElementById("exp-dep-input");
 const expDepGo = document.getElementById("exp-dep-go");
 const expDepResult = document.getElementById("exp-dep-result");
 const expDepPeople = document.getElementById("exp-dep-people");
+const expProofGo = document.getElementById("exp-proof-go");
+const expProofOut = document.getElementById("exp-proof-out");
+const cliView = document.getElementById("view-cli");
+const cliTabs = document.getElementById("cli-tabs");
+const cliOut = document.getElementById("cli-out");
+const cliStatus = document.getElementById("cli-status");
+// The commands the demo can print, in the order somebody would run them.
+const CLI_COMMANDS = [
+  { cmd: "risk", label: "whodar risk" },
+  { cmd: "ownership", label: "whodar ownership" },
+  { cmd: "related", label: "whodar related" },
+  { cmd: "attest", label: "whodar attest" },
+];
+let cliCurrent = "";
 let recallData = null;
 let recallSourceFilter = null;
 let recallTimer = null;
@@ -499,6 +513,7 @@ function viewFromHash() {
   const name = location.hash.replace(/^#\//, "");
   if (name === "recall" && recallView) return "recall";
   if (name === "exposure" && expView) return "exposure";
+  if (name === "cli" && cliView) return "cli";
   return DIR_VIEWS[name] ? name : "ask";
 }
 
@@ -506,9 +521,10 @@ function viewFromHash() {
 function showView(view) {
   currentView = view;
   askView.hidden = view !== "ask";
-  dirView.hidden = view === "ask" || view === "recall" || view === "exposure";
+  dirView.hidden = view === "ask" || view === "recall" || view === "exposure" || view === "cli";
   if (recallView) recallView.hidden = view !== "recall";
   if (expView) expView.hidden = view !== "exposure";
+  if (cliView) cliView.hidden = view !== "cli";
   for (const a of sideNav.querySelectorAll("a")) {
     a.classList.toggle("active", a.dataset.view === view);
   }
@@ -520,6 +536,10 @@ function showView(view) {
   }
   if (view === "exposure") {
     renderExposure();
+    return;
+  }
+  if (view === "cli") {
+    renderCLI(cliCurrent || CLI_COMMANDS[0].cmd);
     return;
   }
   if (view !== "ask") {
@@ -936,8 +956,10 @@ async function renderExposure() {
   fillDeparturePeople();
   // A departure check is shareable the same way a query is: /?dep=Gavin+Hudson
   // opens the exposure view with that person already checked.
-  const dep = new URLSearchParams(location.search).get("dep");
+  const params = new URLSearchParams(location.search);
+  const dep = params.get("dep");
   if (dep && expDepResult && !expDepResult.childElementCount) checkDeparture(dep);
+  if (params.get("proof") && expProofOut && !expProofOut.childElementCount) sealFinding();
 }
 
 // fillDeparturePeople stocks the person picker from the directory, once, so a
@@ -1012,6 +1034,7 @@ function riskCard(r) {
   if (r.includes && r.includes.length) {
     card.appendChild(el("p", "exp-also", "also called " + r.includes.join(", ")));
   }
+  addRelated(card, r.topic);
   for (const e of r.experts || []) {
     const row = el("div", "exp-expert");
     row.appendChild(el("span", "exp-share", Math.round(e.share * 100) + "%"));
@@ -1045,6 +1068,122 @@ function driftCard(d) {
   return card;
 }
 
+
+// addRelated hangs the topics that share this one's experts under its card, so a
+// subject and its specialties read as one body of knowledge rather than as
+// unrelated rows that happen to sit near each other.
+async function addRelated(card, topic) {
+  try {
+    const res = await fetch("/api/related?topic=" + encodeURIComponent(topic) + "&limit=4",
+      { headers: { Accept: "application/json" } });
+    if (!res.ok) return;
+    const data = await res.json();
+    const rel = (data.related || []).filter((r) => r.topic !== topic);
+    if (!rel.length) return;
+    const line = el("p", "exp-also");
+    line.appendChild(el("span", "exp-dim", "shares experts with "));
+    rel.forEach((r, i) => {
+      if (i) line.appendChild(el("span", "exp-dim", ", "));
+      const t = el("span", "exp-rel", r.topic);
+      t.title = Math.round(r.overlap * 100) + "% of its experts also hold " + topic +
+        (r.narrower ? ", and it is the narrower of the two" : "");
+      line.appendChild(t);
+    });
+    card.appendChild(line);
+  } catch (err) {
+    // Related topics are extra context; a card without them is still complete.
+  }
+}
+
+// sealFinding asks the server to sign the current finding and shows what came
+// back, plus the two commands that check it without trusting this page.
+async function sealFinding() {
+  expProofOut.replaceChildren();
+  expProofOut.appendChild(el("p", "exp-empty", "Signing..."));
+  let bundle;
+  try {
+    const res = await fetch("/api/attest", { headers: { Accept: "application/json" } });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    bundle = await res.json();
+  } catch (err) {
+    expProofOut.replaceChildren();
+    expProofOut.appendChild(el("p", "exp-empty", "Could not seal the finding: " + err.message));
+    return;
+  }
+  const claim = (bundle.claims || [])[0] || {};
+  const ev = (claim.evidence || [])[0] || {};
+  const producer = bundle.producer || {};
+  const sigs = bundle.signatures || [];
+
+  const card = el("div", "exp-card exp-ok");
+  const head = el("div", "exp-card-head");
+  head.appendChild(el("span", "exp-topic", claim.type || "whodar.knowledge-risk/1"));
+  head.appendChild(el("span", "exp-level", sigs.length ? "signed" : "unsigned"));
+  head.appendChild(el("span", "exp-bus", bundle.bundle_id || ""));
+  card.appendChild(head);
+
+  const rows = [
+    ["signing key", producer.key_id || ""],
+    ["evidence digest", ev.digest || ""],
+    ["claimed at", claim.at || ""],
+    ["chain", (bundle.chain || {}).profile || ""],
+  ];
+  for (const [k, v] of rows) {
+    if (!v) continue;
+    const row = el("div", "exp-expert");
+    row.appendChild(el("span", "exp-dim", k));
+    row.appendChild(el("span", "exp-mono", v));
+    card.appendChild(row);
+  }
+  expProofOut.replaceChildren(card);
+
+  const dl = el("a", "exp-dl", "Download the bundle");
+  dl.href = "/api/attest?download=1";
+  dl.setAttribute("download", "whodar-knowledge-risk.loomseal.json");
+  expProofOut.appendChild(dl);
+  const how = el("p", "exp-also",
+    "Verify it anywhere, offline: loomseal verify whodar-knowledge-risk.loomseal.json");
+  expProofOut.appendChild(how);
+}
+
+
+// renderCLI prints one command's real terminal output. The tabs are built once
+// and the selected one is fetched fresh, so what appears is what the command
+// prints right now against this index.
+async function renderCLI(cmd) {
+  cliCurrent = cmd;
+  if (!cliTabs.childElementCount) {
+    for (const c of CLI_COMMANDS) {
+      const b = el("button", "cli-tab", c.label);
+      b.type = "button";
+      b.dataset.cmd = c.cmd;
+      b.addEventListener("click", () => renderCLI(c.cmd));
+      cliTabs.appendChild(b);
+    }
+  }
+  for (const b of cliTabs.children) {
+    b.classList.toggle("active", b.dataset.cmd === cmd);
+  }
+  cliStatus.textContent = "Running...";
+  cliOut.textContent = "";
+  try {
+    const res = await fetch("/api/cli?cmd=" + encodeURIComponent(cmd), {
+      headers: { Accept: "text/plain" },
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const text = await res.text();
+    if (cliCurrent !== cmd) return;
+    const label = (CLI_COMMANDS.find((c) => c.cmd === cmd) || {}).label || cmd;
+    cliOut.textContent = "$ " + label + "\n\n" + text;
+    cliStatus.textContent = "";
+  } catch (err) {
+    cliStatus.textContent = "Could not run that: " + err.message;
+  }
+}
+
+if (expProofGo) {
+  expProofGo.addEventListener("click", sealFinding);
+}
 if (expDepGo) {
   expDepGo.addEventListener("click", () => checkDeparture(expDepInput.value));
 }

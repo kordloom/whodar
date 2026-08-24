@@ -109,6 +109,15 @@ type Config struct {
 	// Departure reports what knowledge leaves with one person, at
 	// /api/departure; nil disables it.
 	Departure DepartureFunc
+	// Attest seals the current finding into a signed, offline-verifiable
+	// bundle, at /api/attest; nil disables it.
+	Attest AttestFunc
+	// Related reports the topics that share a topic's experts, at
+	// /api/related; nil disables it.
+	Related RelatedFunc
+	// CLI renders what a command line invocation prints for this same index,
+	// at /api/cli; nil disables it.
+	CLI CLIFunc
 	// Log receives server-side error detail kept out of client responses; nil
 	// discards it.
 	Log io.Writer
@@ -161,6 +170,15 @@ func Handler(cfg Config) (http.Handler, error) {
 	}
 	if cfg.Departure != nil {
 		mux.HandleFunc("/api/departure", departureHandler(cfg.Departure))
+	}
+	if cfg.Attest != nil {
+		mux.HandleFunc("/api/attest", attestHandler(cfg.Attest, logw))
+	}
+	if cfg.Related != nil {
+		mux.HandleFunc("/api/related", relatedHandler(cfg.Related))
+	}
+	if cfg.CLI != nil {
+		mux.HandleFunc("/api/cli", cliHandler(cfg.CLI))
 	}
 	if cfg.Recall != nil {
 		mux.HandleFunc("/api/recall", recallHandler(cfg.Recall, logw))
@@ -280,9 +298,11 @@ func indexHandler(tmpl *template.Template, cfg Config) http.HandlerFunc {
 		RecallMe string
 		// Exposure reports whether the exposure view is available.
 		Exposure bool
+		// CLI reports whether the command line view is available.
+		CLI bool
 	}{
 		Version: cfg.Version, Recall: cfg.Recall != nil, RecallMe: cfg.RecallMe,
-		Exposure: cfg.Exposure != nil,
+		Exposure: cfg.Exposure != nil, CLI: cfg.CLI != nil,
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -462,6 +482,77 @@ func exposureHandler(fn ExposureFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(fn())
+	}
+}
+
+// CLIFunc renders one command's terminal output, reporting false for a command
+// it does not know.
+type CLIFunc func(command string) (string, bool)
+
+// cliHandler serves what the command line prints, as plain text. The web app
+// answers the same questions through its own views; this exists so a reader can
+// see the tool the way an engineer actually runs it, against this same data.
+func cliHandler(fn CLIFunc) http.HandlerFunc {
+	if fn == nil {
+		panic("web: cliHandler requires a CLIFunc")
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		out, ok := fn(strings.TrimSpace(r.URL.Query().Get("cmd")))
+		if !ok {
+			writeError(w, http.StatusNotFound, "no such command")
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = io.WriteString(w, out)
+	}
+}
+
+// RelatedFunc reports the topics that belong to the same body of knowledge.
+type RelatedFunc func(topic string, limit int) []resolve.TopicRelation
+
+// relatedHandler serves the topics whose experts overlap with one topic's.
+func relatedHandler(fn RelatedFunc) http.HandlerFunc {
+	if fn == nil {
+		panic("web: relatedHandler requires a RelatedFunc")
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		topic := strings.TrimSpace(r.URL.Query().Get("topic"))
+		if topic == "" {
+			writeError(w, http.StatusBadRequest, "name the topic with ?topic=")
+			return
+		}
+		limit := 8
+		if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 {
+			limit = n
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"topic": topic, "related": fn(topic, limit)})
+	}
+}
+
+// AttestFunc seals the current finding into a signed bundle.
+type AttestFunc func() ([]byte, error)
+
+// attestHandler serves the signed evidence bundle. It is offered as a download
+// because the bundle is the artifact: a reader takes it away and verifies it
+// with a tool that has nothing to do with this server.
+func attestHandler(fn AttestFunc, logw io.Writer) http.HandlerFunc {
+	if fn == nil {
+		panic("web: attestHandler requires an AttestFunc")
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		bundle, err := fn()
+		if err != nil {
+			fmt.Fprintf(logw, "web: attest: %v\n", err)
+			writeError(w, http.StatusInternalServerError, "could not seal the finding")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("download") != "" {
+			w.Header().Set("Content-Disposition",
+				`attachment; filename="whodar-knowledge-risk.loomseal.json"`)
+		}
+		_, _ = w.Write(bundle)
 	}
 }
 

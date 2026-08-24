@@ -1,9 +1,13 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -13,6 +17,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/kordloom/whodar/internal/attest"
 	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/feedback"
 	"github.com/kordloom/whodar/internal/index"
@@ -196,6 +201,11 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 		Departure: func(person string) resolve.DepartureImpact {
 			return resolve.Departure(ix, person)
 		},
+		Attest: attestFn(ix, opts, cmd.ErrOrStderr()),
+		Related: func(topic string, limit int) []resolve.TopicRelation {
+			return resolve.Related(ix, topic, limit)
+		},
+		CLI:   cliFn(ix, attestFn(ix, opts, cmd.ErrOrStderr())),
 		Log:   cmd.ErrOrStderr(),
 		Ready: func() bool { return ix != nil && len(ix.Graph.People) > 0 },
 	})
@@ -241,6 +251,76 @@ func isLoopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// cliFn renders what the command line prints for this same index, through the
+// very renderers the terminal uses, with color turned off. The web views answer
+// these questions in their own way; this exists so a reader can see the tool as
+// an engineer would run it, against the data in front of them, rather than take
+// a screenshot's word for it.
+func cliFn(ix *index.Index, seal web.AttestFunc) web.CLIFunc {
+	var plain style
+	return func(name string) (string, bool) {
+		var b strings.Builder
+		switch name {
+		case "risk":
+			renderRisk(&b, resolve.Risk(ix, 12), plain)
+		case "ownership":
+			renderOwnership(&b, resolve.OwnershipDrift(ix), plain)
+		case "related":
+			topic := "billing"
+			if top := resolve.Risk(ix, 1); len(top) > 0 {
+				topic = top[0].Topic
+			}
+			renderRelated(&b, topic, resolve.Related(ix, topic, 8), plain)
+		case "attest":
+			if seal == nil {
+				return "", false
+			}
+			bundle, err := seal()
+			if err != nil {
+				return "", false
+			}
+			var pretty bytes.Buffer
+			if err := json.Indent(&pretty, bundle, "", "  "); err != nil {
+				b.Write(bundle)
+				break
+			}
+			b.Write(pretty.Bytes())
+		default:
+			return "", false
+		}
+		return b.String(), true
+	}
+}
+
+// attestFn returns the web handler that seals the current knowledge-risk finding
+// into a signed LoomSeal bundle. The signing key is the persistent one under the
+// data directory where that is writable. A hardened or read-only deployment,
+// such as the public demo, cannot keep one, so it signs with a key held only in
+// memory: the bundle carries its own public key, so it still verifies on its own
+// terms, it just does not claim the same identity across restarts.
+func attestFn(ix *index.Index, opts *options, logw io.Writer) web.AttestFunc {
+	priv, err := opts.attestKey()
+	if err != nil {
+		_, key, genErr := ed25519.GenerateKey(nil)
+		if genErr != nil {
+			fmt.Fprintf(logw, "whodar: attest disabled: %v\n", genErr)
+			return nil
+		}
+		fmt.Fprintf(logw, "whodar: attest signing with an in-memory key (%v)\n", err)
+		priv = key
+	}
+	pub, ok := priv.Public().(ed25519.PublicKey)
+	if !ok {
+		return nil
+	}
+	return func() ([]byte, error) {
+		payload, evidence := attestPayload(resolve.Risk(ix, 0))
+		return attest.Seal(priv, "whodar", version, attest.InstallID(pub),
+			"whodar.knowledge-risk/1", map[string]any{"id": "organization", "type": "fleet"},
+			payload, evidence, time.Now())
+	}
 }
 
 // modeReadiness reports what each answer mode and AI provider needs right
