@@ -122,9 +122,11 @@ func warnEmptyAsk(cmd *cobra.Command, ix *index.Index, query string, ans resolve
 		fmt.Fprintln(w, "No one is indexed yet: run `whodar index` against a source first.")
 		return
 	}
-	// Ask ranks by who knows a subject, so a name or a team returns nothing even
-	// when the person is indexed. Offer the closest entities by name before the
-	// generic hint, so a misdirected question still points somewhere useful.
+	// Ask ranks by who knows a subject. A question naming a person is answered
+	// directly, but a team, a channel, or a half-remembered name still returns
+	// nothing while the entity sits in the index, so offer the closest matches
+	// by name before the generic hint and point a misdirected question
+	// somewhere useful.
 	if hits := suggestFromSearch(ix, query, 5); len(hits) > 0 {
 		fmt.Fprintln(w, "No expertise match for that. Closest by name:")
 		for _, h := range hits {

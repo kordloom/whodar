@@ -180,7 +180,17 @@ func loadWith(path string, c vault.Codec) (*index.Index, error) {
 // their own guidance survives.
 func noIndexError(err error) error {
 	if errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("%w: run `whodar index` first: %w", ErrNoIndex, err)
+		// The first thing somebody runs is usually a question, and the answer
+		// to a missing index is not the raw open error and a path. Point at the
+		// two commands that get them somewhere: the demo needs nothing at all,
+		// and connect is how a real index starts. Indexing is named last
+		// because it is the step that needs credentials to already exist.
+		return fmt.Errorf(
+			"%w. Nothing is indexed yet.\n"+
+				"  Try it on sample data with no setup:  whodar demo\n"+
+				"  Point it at your own tools:            whodar connect\n"+
+				"  Then build the index:                  whodar index",
+			ErrNoIndex)
 	}
 	return err
 }
