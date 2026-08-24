@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"sort"
 	"time"
 
@@ -59,8 +61,8 @@ type doctorFacts struct {
 	IndexPath string
 	// IndexLoaded is true when the index opened successfully.
 	IndexLoaded bool
-	// IndexErr is the load error text when IndexLoaded is false.
-	IndexErr string
+	// IndexErr is why the index could not be loaded, nil when it was.
+	IndexErr error
 	// BuiltAt is when the index was last built; zero when unknown.
 	BuiltAt time.Time
 	// Now is the reference time for the freshness check.
@@ -81,14 +83,36 @@ type doctorFacts struct {
 
 // diagnose runs every check against the facts and returns findings in report
 // order. It never reads the environment or disk, so a test can drive any state.
+// rootCause unwraps an error to its innermost message, so a reader sees what
+// actually went wrong rather than the chain of packages it travelled through.
+func rootCause(err error) string {
+	if err == nil {
+		return ""
+	}
+	for {
+		next := errors.Unwrap(err)
+		if next == nil {
+			return err.Error()
+		}
+		err = next
+	}
+}
+
 func diagnose(f doctorFacts) []finding {
 	var out []finding
 
 	if !f.IndexLoaded {
+		// A first run has no index yet, which is not a malfunction and should
+		// not read like one. Repeating the path and the layers of wrapping the
+		// error picked up on its way here says nothing the reader can act on.
+		detail := fmt.Sprintf("no index at %s yet", f.IndexPath)
+		if !errors.Is(f.IndexErr, fs.ErrNotExist) {
+			detail = fmt.Sprintf("cannot read the index at %s: %s", f.IndexPath, rootCause(f.IndexErr))
+		}
 		out = append(out, finding{
 			Name:   "index",
 			Level:  levelFail,
-			Detail: fmt.Sprintf("cannot load %s: %s", f.IndexPath, f.IndexErr),
+			Detail: detail,
 			Fix:    "whodar index --source org-csv --file people.csv",
 		})
 		// Nothing else is knowable without an index; the credential survey below
@@ -248,7 +272,7 @@ whodar from answering, so it works as a gate in a script.`,
 				LicenseReason: license.Resolve(opts.dataDir, time.Now()).Reason(),
 			}
 			if ix, err := opts.loadIndex(cmd); err != nil {
-				facts.IndexErr = err.Error()
+				facts.IndexErr = err
 			} else {
 				facts.IndexLoaded = true
 				facts.People = len(ix.Graph.People)
