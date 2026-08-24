@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -18,9 +19,17 @@ import (
 	"github.com/kordloom/whodar/internal/util"
 )
 
-// maxTopicWeight caps how many times one topic counts for a person, so a heavy
-// contributor outranks a one-off without a single topic dominating the score.
-const maxTopicWeight = 4
+// maxTopicWeight is where a topic's count stops counting one for one, so a
+// heavy contributor outranks a one-off without a single topic dominating the
+// score. Past it the count still grows, logarithmically, because a hard stop
+// here makes somebody who touched an area four times indistinguishable from
+// its owner who touched it three hundred, and telling those two apart is the
+// entire question whodar is asked. maxTopicRepeat is where it finally stops,
+// so one long-running subject cannot crowd out everything else a person knows.
+const (
+	maxTopicWeight = 4
+	maxTopicRepeat = 16
+)
 
 // noiseWords are common pull request and issue title words that carry no topic.
 var noiseWords = map[string]bool{
@@ -541,12 +550,24 @@ func expandTopics(counts map[string]int) []string {
 
 	var out []string
 	for _, t := range tokens {
-		n := min(counts[t], maxTopicWeight)
+		n := topicRepeat(counts[t])
 		for range n {
 			out = append(out, t)
 		}
 	}
 	return out
+}
+
+// topicRepeat turns a raw count of how often somebody touched a subject into
+// how many times it is worth repeating: one for one while the evidence is
+// thin, then logarithmically, so sustained work always outweighs incidental
+// work without any amount of it running away with the score.
+func topicRepeat(count int) int {
+	if count <= maxTopicWeight {
+		return count
+	}
+	n := int(math.Round(maxTopicWeight * (1 + math.Log(float64(count)/maxTopicWeight))))
+	return min(n, maxTopicRepeat)
 }
 
 // splitRepo splits "owner/name" into its parts.

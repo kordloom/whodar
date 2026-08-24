@@ -918,12 +918,18 @@ const (
 	bm25B         = 0.75
 	termWeightCap = 4.0
 	// normCap bounds the verbosity discount. A term's weight is capped, so
-	// letting the length normalizer grow without limit eventually divides an
+	// letting the length normalizer grow unchecked eventually divides an
 	// explicit topic tag below a single passing mention, which would mean the
-	// more work someone does, the worse they rank on what they own. The
-	// discount still applies in full up to this point; past it, talking more
-	// stops counting against you.
-	normCap = 3.0
+	// more work someone does, the worse they rank on what they own.
+	//
+	// The bound is low on purpose, and the number is measured rather than
+	// chosen: against a real repository's own CODEOWNERS, accuracy rises all
+	// the way down from 4.5 to here and falls off again below it, because the
+	// people who own the most are also the people who appear the most, and
+	// discounting them for it hands their subjects to whoever passed through
+	// once. Removing the discount entirely is worse again: then whoever appears
+	// most often wins everything. See the ranking section of docs/REFERENCE.md before changing it.
+	normCap = 1.75
 )
 
 // Fuzzy matching bounds. Terms shorter than fuzzyMinLen never fuzz, one edit
@@ -1107,7 +1113,13 @@ func scoreByTerms(
 			// The normalizer floors at one: an above-average profile is
 			// discounted for verbosity, but a sparse or decayed profile gets
 			// no boost, since its raw weight already says how little is there.
-			// It is capped at the other end for the reason normCap gives.
+			// Past normCap it grows logarithmically rather than stopping, for
+			// the reason normCap gives: a hard stop treats somebody who touched
+			// a hundred subjects the same as somebody who touched ten thousand,
+			// and in a real organization that spread is the whole question. It
+			// is the same saturation the term weight above uses, and it keeps
+			// the same guarantee: breadth always costs something, and no amount
+			// of it divides an owner's evidence away entirely.
 			norm := min(max(1, 1-bm25B+bm25B*(lens.byID[id]/lens.avg)), normCap)
 			scores[id] += hit.penalty * idf * (w * (bm25K1 + 1)) / (w + bm25K1*norm)
 		}
