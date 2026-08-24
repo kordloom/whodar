@@ -193,6 +193,9 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 		Exposure: func() web.Exposure {
 			return web.Exposure{Risk: resolve.Risk(ix, 0), Drift: resolve.OwnershipDrift(ix)}
 		},
+		Departure: func(person string) resolve.DepartureImpact {
+			return resolve.Departure(ix, person)
+		},
 		Log:   cmd.ErrOrStderr(),
 		Ready: func() bool { return ix != nil && len(ix.Graph.People) > 0 },
 	})

@@ -1017,3 +1017,51 @@ section h2 {
   .exp-bar { flex-basis: 60px; }
   .exp-bus { margin-left: 0; }
 }
+
+/* Departure check: pick a person, see what leaves with them. */
+.exp-dep-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.exp-dep-controls input {
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 9px 12px;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+}
+.exp-dep-controls input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.exp-dep-controls button {
+  padding: 9px 18px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.exp-dep-controls button:hover { filter: brightness(1.08); }
+/* An expert's name doubles as the way to check their departure, so it has to
+   look pressable without turning the list into a row of buttons. */
+.exp-name-btn {
+  padding: 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px dashed transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.exp-name-btn:hover, .exp-name-btn:focus-visible {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}

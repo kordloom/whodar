@@ -106,6 +106,9 @@ type Config struct {
 	// Exposure reports where the organization is exposed, at /api/exposure;
 	// nil disables it.
 	Exposure ExposureFunc
+	// Departure reports what knowledge leaves with one person, at
+	// /api/departure; nil disables it.
+	Departure DepartureFunc
 	// Log receives server-side error detail kept out of client responses; nil
 	// discards it.
 	Log io.Writer
@@ -155,6 +158,9 @@ func Handler(cfg Config) (http.Handler, error) {
 	}
 	if cfg.Exposure != nil {
 		mux.HandleFunc("/api/exposure", exposureHandler(cfg.Exposure))
+	}
+	if cfg.Departure != nil {
+		mux.HandleFunc("/api/departure", departureHandler(cfg.Departure))
 	}
 	if cfg.Recall != nil {
 		mux.HandleFunc("/api/recall", recallHandler(cfg.Recall, logw))
@@ -456,6 +462,25 @@ func exposureHandler(fn ExposureFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(fn())
+	}
+}
+
+// DepartureFunc reports what leaves with the person a query names.
+type DepartureFunc func(person string) resolve.DepartureImpact
+
+// departureHandler serves what one person's departure would cost.
+func departureHandler(fn DepartureFunc) http.HandlerFunc {
+	if fn == nil {
+		panic("web: departureHandler requires a DepartureFunc")
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		person := strings.TrimSpace(r.URL.Query().Get("person"))
+		if person == "" {
+			writeError(w, http.StatusBadRequest, "name who is leaving with ?person=")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(fn(person))
 	}
 }
 

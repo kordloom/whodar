@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>whodar</title>
   <script src="/static/theme.js?v=10"></script>
-  <link rel="stylesheet" href="/static/style.css?v=11">
+  <link rel="stylesheet" href="/static/style.css?v=12">
   <link rel="icon" type="image/png" href="/static/whodar-logo.png">
 </head>
 <body>
@@ -164,6 +164,17 @@
           critical when one person holds most of it, elevated when two do.</p>
         <h3 class="exp-head">Knowledge concentration</h3>
         <div id="exp-risk" class="exp-list"></div>
+        <h3 class="exp-head">What walks out the door</h3>
+        <p class="exp-note">Name a person and see what loses its strongest expert the day
+          they leave. Click any expert above to check them.</p>
+        <div class="exp-dep-controls">
+          <input id="exp-dep-input" type="text" list="exp-dep-people"
+            placeholder="Name or email, e.g. Gavin Hudson" aria-label="Person who is leaving">
+          <datalist id="exp-dep-people"></datalist>
+          <button id="exp-dep-go" type="button">Check</button>
+        </div>
+        <div id="exp-dep-result" class="exp-list"></div>
+
         <h3 class="exp-head">Ownership drift</h3>
         <p class="exp-note">Where the owner on paper is not the one doing the work.</p>
         <div id="exp-drift" class="exp-list"></div>
@@ -172,6 +183,6 @@
     </main>
   </div>
 
-  <script src="/static/app.js?v=11"></script>
+  <script src="/static/app.js?v=12"></script>
 </body>
 </html>

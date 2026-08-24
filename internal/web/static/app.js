@@ -30,6 +30,10 @@ const expView = document.getElementById("view-exposure");
 const expStatus = document.getElementById("exp-status");
 const expRisk = document.getElementById("exp-risk");
 const expDrift = document.getElementById("exp-drift");
+const expDepInput = document.getElementById("exp-dep-input");
+const expDepGo = document.getElementById("exp-dep-go");
+const expDepResult = document.getElementById("exp-dep-result");
+const expDepPeople = document.getElementById("exp-dep-people");
 let recallData = null;
 let recallSourceFilter = null;
 let recallTimer = null;
@@ -929,6 +933,72 @@ async function renderExposure() {
   } else {
     expDrift.appendChild(el("p", "exp-empty", "No ownership drift found, or no declared ownership indexed."));
   }
+  fillDeparturePeople();
+  // A departure check is shareable the same way a query is: /?dep=Gavin+Hudson
+  // opens the exposure view with that person already checked.
+  const dep = new URLSearchParams(location.search).get("dep");
+  if (dep && expDepResult && !expDepResult.childElementCount) checkDeparture(dep);
+}
+
+// fillDeparturePeople stocks the person picker from the directory, once, so a
+// name can be chosen rather than remembered.
+async function fillDeparturePeople() {
+  if (!expDepPeople || expDepPeople.childElementCount) return;
+  try {
+    const dir = await directory();
+    for (const p of (dir.people || []).slice(0, 500)) {
+      const opt = document.createElement("option");
+      opt.value = p.name || p.id;
+      expDepPeople.appendChild(opt);
+    }
+  } catch (err) {
+    // The picker is a convenience; typing a name still works without it.
+  }
+}
+
+// checkDeparture asks what one person's departure would cost and draws it.
+async function checkDeparture(who) {
+  const person = (who || "").trim();
+  if (!person) return;
+  if (expDepInput) expDepInput.value = person;
+  expDepResult.replaceChildren();
+  expDepResult.appendChild(el("p", "exp-empty", "Checking..."));
+  let imp;
+  try {
+    const res = await fetch("/api/departure?person=" + encodeURIComponent(person),
+      { headers: { Accept: "application/json" } });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    imp = await res.json();
+  } catch (err) {
+    expDepResult.replaceChildren();
+    expDepResult.appendChild(el("p", "exp-empty", "Could not check that person: " + err.message));
+    return;
+  }
+  expDepResult.replaceChildren();
+  if (!imp.person) {
+    expDepResult.appendChild(el("p", "exp-empty", "Nobody in the graph matches " + person + "."));
+    return;
+  }
+  const sole = imp.sole || [];
+  const top = imp.top || [];
+  const card = el("div", "exp-card " + (sole.length ? "exp-critical" : top.length ? "exp-elevated" : "exp-ok"));
+  const head = el("div", "exp-card-head");
+  head.appendChild(el("span", "exp-topic", imp.name || imp.person));
+  head.appendChild(el("span", "exp-level", sole.length ? "sole owner" : top.length ? "top expert" : "covered"));
+  head.appendChild(el("span", "exp-bus", sole.length + " sole, " + top.length + " leading"));
+  card.appendChild(head);
+  if (sole.length) {
+    card.appendChild(el("p", "exp-also", "Nobody else has any expertise in these:"));
+    chips(card, sole);
+  }
+  if (top.length) {
+    card.appendChild(el("p", "exp-also", "Strongest expert, but others remain:"));
+    chips(card, top);
+  }
+  if (!sole.length && !top.length) {
+    card.appendChild(el("p", "exp-also", "Leads nothing on their own. Their areas all have another expert."));
+  }
+  expDepResult.appendChild(card);
 }
 
 // riskCard draws one topic's knowledge concentration with its experts.
@@ -950,7 +1020,11 @@ function riskCard(r) {
     fill.style.width = Math.round(e.share * 100) + "%";
     bar.appendChild(fill);
     row.appendChild(bar);
-    row.appendChild(el("span", "exp-name", e.name));
+    const name = el("button", "exp-name exp-name-btn", e.name);
+    name.type = "button";
+    name.title = "See what leaves with " + e.name;
+    name.addEventListener("click", () => checkDeparture(e.id || e.name));
+    row.appendChild(name);
     card.appendChild(row);
   }
   return card;
@@ -969,6 +1043,18 @@ function driftCard(d) {
   row.appendChild(el("span", "exp-actual", d.actual));
   card.appendChild(row);
   return card;
+}
+
+if (expDepGo) {
+  expDepGo.addEventListener("click", () => checkDeparture(expDepInput.value));
+}
+if (expDepInput) {
+  expDepInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      checkDeparture(expDepInput.value);
+    }
+  });
 }
 
 window.addEventListener("hashchange", () => showView(viewFromHash()));
