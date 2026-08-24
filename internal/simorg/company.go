@@ -9,9 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/kordloom/whodar/internal/confluence"
 	"github.com/kordloom/whodar/internal/connector"
 	"github.com/kordloom/whodar/internal/episode"
+	"github.com/kordloom/whodar/internal/github"
 	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/jira"
+	"github.com/kordloom/whodar/internal/pagerduty"
 	"github.com/kordloom/whodar/internal/slack"
 )
 
@@ -60,10 +64,48 @@ func buildCompany(spec Spec) *company {
 	people := buildBigPeople(spec)
 	owners := buildBigOwners(people)
 	channels := generateChannels(spec, owners)
+	// The channel name is the topic slug; align each channel's topic and purpose
+	// text to it so a channel does not also register its spaced phrase as separate
+	// single-word topics.
+	for _, ch := range channels {
+		name, _ := ch["name"].(string)
+		if tp, ok := ch["topic"].(map[string]any); ok {
+			tp["value"] = name
+		}
+		if pp, ok := ch["purpose"].(map[string]any); ok {
+			pp["value"] = name
+		}
+	}
 	history, threads, count := generateHistory(spec, rng, people, owners, channels)
-	return &company{
+	c := &company{
 		spec: spec, people: people, owners: owners,
 		channels: channels, history: history, threads: threads, messages: count,
+	}
+	c.addSecondaryExperts(rng)
+	return c
+}
+
+// addSecondaryExperts gives some subjects a second or third fluent voice, so the
+// risk view shows a real spread of critical, elevated, and ok rather than every
+// topic sitting at bus factor one.
+func (c *company) addSecondaryExperts(rng *rand.Rand) {
+	ts := 1_700_000_000
+	for s := range c.owners {
+		extra := s % 3 // 0 critical, 1 elevated, 2 ok
+		channelID := c.owners[s].channel
+		words := subjects[s].Words
+		for k := 0; k < extra; k++ {
+			idx := (s*17 + k*53 + 11) % len(c.people)
+			if c.people[idx].email == c.owners[s].who.email {
+				idx = (idx + 1) % len(c.people)
+			}
+			c.people[idx].topics = append(c.people[idx].topics, s)
+			for range 5 {
+				ts += 600
+				c.history[channelID] = append(c.history[channelID],
+					slackMessageAt(c.people[idx].id, sentence(rng, fillers.Owner, words), ts))
+			}
+		}
 	}
 }
 
@@ -163,7 +205,7 @@ func (c *company) orgCSV() string {
 	for _, p := range c.people {
 		names := make([]string, 0, len(p.topics))
 		for _, t := range p.topics {
-			names = append(names, subjects[t].Topic)
+			names = append(names, topicSlug(t))
 		}
 		fmt.Fprintf(&b, "%s,%s,%s,%s,Engineering,%s,%s\n",
 			p.name, p.email, p.title, p.team, p.manager, strings.Join(names, ";"))
@@ -207,8 +249,21 @@ func BuildBigIndex(dir string) (*index.Index, error) {
 		return nil, fmt.Errorf("simorg: %w", err)
 	}
 
+	repoDir := filepath.Join(dir, "repo")
+	if err := c.buildGitRepo(repoDir); err != nil {
+		return nil, err
+	}
+
 	slackSrv := c.slackServer()
 	defer slackSrv.Close()
+	githubSrv, repos := c.githubServer()
+	defer githubSrv.Close()
+	jiraSrv := c.jiraServer()
+	defer jiraSrv.Close()
+	confluenceSrv := c.confluenceServer()
+	defer confluenceSrv.Close()
+	pagerdutySrv := c.pagerdutyServer()
+	defer pagerdutySrv.Close()
 
 	sources := []struct {
 		Name   string
@@ -218,6 +273,16 @@ func BuildBigIndex(dir string) (*index.Index, error) {
 		{"codeowners", connector.NewCodeOwners(ownersPath)},
 		{"slack", connector.NewSlackWithClient(
 			slack.New("xoxb-demo", slack.WithBaseURL(slackSrv.URL)), connector.SlackOptions{})},
+		{"github", connector.NewGitHubWithClient(
+			github.New("ghp-demo", github.WithBaseURL(githubSrv.URL)),
+			connector.GitHubOptions{Repos: repos, ResolveEmails: true})},
+		{"jira", connector.NewJiraWithClient(
+			jira.New(jiraSrv.URL, "demo@corp.com", "token"), connector.JiraOptions{})},
+		{"confluence", connector.NewConfluenceWithClient(
+			confluence.New(confluenceSrv.URL, "demo@corp.com", "token"), connector.ConfluenceOptions{})},
+		{"pagerduty", connector.NewPagerDutyWithClient(
+			pagerduty.New("token", pagerduty.WithBaseURL(pagerdutySrv.URL)), connector.PagerDutyOptions{})},
+		{"git", connector.NewGitHistory(connector.GitOptions{Paths: []string{repoDir}, SinceDays: 900})},
 	}
 
 	ix := index.New()
@@ -246,19 +311,45 @@ func BuildBigEpisodes(ix *index.Index) (*episode.Store, error) {
 	c := buildCompany(BigSpec())
 	slackSrv := c.slackServer()
 	defer slackSrv.Close()
-	src := connector.NewSlackWithClient(
-		slack.New("xoxb-demo", slack.WithBaseURL(slackSrv.URL)),
-		connector.SlackOptions{Episodes: true, Archive: true})
-	if _, err := src.Fetch(ctx); err != nil {
-		return nil, fmt.Errorf("simorg: big episodes: %w", err)
+	githubSrv, repos := c.githubServer()
+	defer githubSrv.Close()
+	jiraSrv := c.jiraServer()
+	defer jiraSrv.Close()
+	pagerdutySrv := c.pagerdutyServer()
+	defer pagerdutySrv.Close()
+
+	sources := []struct {
+		Name   string
+		Source interface {
+			connector.Source
+			connector.EpisodeSource
+		}
+	}{
+		{"slack", connector.NewSlackWithClient(
+			slack.New("xoxb-demo", slack.WithBaseURL(slackSrv.URL)),
+			connector.SlackOptions{Episodes: true, Archive: true})},
+		{"github", connector.NewGitHubWithClient(
+			github.New("ghp-demo", github.WithBaseURL(githubSrv.URL)),
+			connector.GitHubOptions{Repos: repos, Episodes: true, ResolveEmails: true})},
+		{"jira", connector.NewJiraWithClient(
+			jira.New(jiraSrv.URL, "demo@corp.com", "token"), connector.JiraOptions{Episodes: true})},
+		{"pagerduty", connector.NewPagerDutyWithClient(
+			pagerduty.New("token", pagerduty.WithBaseURL(pagerdutySrv.URL)),
+			connector.PagerDutyOptions{Episodes: true})},
 	}
-	eps := src.Episodes()
-	if ix != nil {
-		ix.CanonicalizeEpisodes(eps)
-	}
+
 	store := episode.New()
-	for _, ep := range eps {
-		store.Add(ep)
+	for _, s := range sources {
+		if _, err := s.Source.Fetch(ctx); err != nil {
+			return nil, fmt.Errorf("simorg: %s episodes: %w", s.Name, err)
+		}
+		eps := s.Source.Episodes()
+		if ix != nil {
+			ix.CanonicalizeEpisodes(eps)
+		}
+		for _, ep := range eps {
+			store.Add(ep)
+		}
 	}
 	return store, nil
 }

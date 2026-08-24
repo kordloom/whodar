@@ -53,7 +53,7 @@ set becomes an open relay to your paid account.`,
 			if big {
 				buildIndex, buildEpisodes = simorg.BuildBigIndex, simorg.BuildBigEpisodes
 				recallMe, query = simorg.BigDemoPerson()
-				sources = 3
+				sources = 8
 			}
 
 			fmt.Fprintln(cmd.ErrOrStderr(), "whodar demo: indexing a simulated company (sample data only)")
