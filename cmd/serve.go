@@ -274,7 +274,48 @@ func modeReadiness(
 	}
 	modes["llm"] = providers[provider]
 
-	return web.ModesReport{Modes: modes, Providers: providers, Provider: provider}
+	report := web.ModesReport{Modes: modes, Providers: providers, Provider: provider}
+	if cfg.public {
+		report = demoModeHints(report)
+	}
+	return report
+}
+
+// demoModeHints rewrites the hints a public demo shows for the modes it does not
+// run. The local hints tell the reader to install Ollama, rebuild the index, or
+// restart the server, which is advice a visitor cannot act on and which makes a
+// deliberate choice read as a broken feature. What is true is better: ranking is
+// deterministic and needs no model, a model is an upgrade you host yourself, and
+// a public server must never hold a provider key.
+func demoModeHints(r web.ModesReport) web.ModesReport {
+	const (
+		semanticHint = "Matches by meaning, so \"failed payments\" can find \"billing retries\". " +
+			"It runs on an embedding model you host yourself, so this public demo stays keyword only. " +
+			"Every answer you see here is deterministic, with no model involved."
+		modelHint = "Whodar ranks deterministically and explains every answer, so a model is an " +
+			"upgrade rather than a requirement. Run whodar yourself to point it at a local model, " +
+			"or at Claude, ChatGPT, or Gemini under a policy you set."
+		cloudHint = " This public demo carries no provider key on purpose: a shared server holding " +
+			"one would spend someone else's account."
+	)
+	if m, ok := r.Modes["semantic"]; ok && !m.Ready {
+		m.Hint = semanticHint
+		r.Modes["semantic"] = m
+	}
+	for name, p := range r.Providers {
+		if p.Ready {
+			continue
+		}
+		p.Hint = modelHint
+		if name != "ollama" {
+			p.Hint += cloudHint
+		}
+		r.Providers[name] = p
+	}
+	if m, ok := r.Modes["llm"]; ok && !m.Ready {
+		r.Modes["llm"] = r.Providers[r.Provider]
+	}
+	return r
 }
 
 // ollamaReadiness live-probes the local Ollama server.
