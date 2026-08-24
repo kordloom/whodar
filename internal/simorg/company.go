@@ -41,7 +41,29 @@ func BigSpec() Spec {
 var icTitles = []string{
 	"Software Engineer", "Senior Software Engineer", "Staff Engineer",
 	"Site Reliability Engineer", "Security Engineer", "Platform Engineer",
-	"Data Engineer", "Principal Engineer",
+	"Analytics Engineer", "Principal Engineer",
+}
+
+// titlesByTeam gives the parts of the company that are not engineering their own
+// roles. A People team staffed by site reliability engineers is a giveaway that
+// the org chart was generated rather than observed.
+// A title outranks a passing mention by a wide margin, so none of these may
+// share a word with a subject: a "Payroll Specialist" would beat the person the
+// company actually routes payroll questions to.
+var titlesByTeam = map[string][]string{
+	"People":    {"People Partner", "People Operations Specialist", "Employee Relations Lead"},
+	"Finance":   {"Financial Analyst", "Accounting Specialist", "Procurement Lead"},
+	"Workplace": {"Workplace Coordinator", "IT Support Specialist", "Workplace Manager"},
+	"Talent":    {"Talent Partner", "Sourcer", "Talent Manager"},
+	"Legal":     {"Attorney", "Compliance Analyst", "Privacy Lead"},
+}
+
+// titlePool returns the roles a team hires for.
+func titlePool(team string) []string {
+	if pool, ok := titlesByTeam[team]; ok {
+		return pool
+	}
+	return icTitles
 }
 
 // company is a large synthesized organization for the public demo: people with a
@@ -94,8 +116,20 @@ func (c *company) addSecondaryExperts(rng *rand.Rand) {
 		extra := s % 3 // 0 critical, 1 elevated, 2 ok
 		channelID := c.owners[s].channel
 		words := subjects[s].Words
+		// A backup expert comes from the owner's own team when it has one:
+		// the second person who can answer a vacation question works in
+		// People, not on a randomly drawn engineering team.
+		var teammates []int
+		for i := range c.people {
+			if c.people[i].team == c.owners[s].who.team && c.people[i].email != c.owners[s].who.email {
+				teammates = append(teammates, i)
+			}
+		}
 		for k := 0; k < extra; k++ {
 			idx := (s*17 + k*53 + 11) % len(c.people)
+			if len(teammates) > 0 {
+				idx = teammates[(s+k)%len(teammates)]
+			}
 			if c.people[idx].email == c.owners[s].who.email {
 				idx = (idx + 1) % len(c.people)
 			}
@@ -156,6 +190,9 @@ func buildBigPeople(spec Spec) []person {
 			continue
 		}
 		people[i].title = "Engineering Manager"
+		if _, ok := titlesByTeam[people[i].team]; ok {
+			people[i].title = people[i].team + " Manager"
+		}
 		if len(dirs) > 0 {
 			people[i].manager = people[dirs[di%len(dirs)]].email
 		} else {
@@ -168,7 +205,8 @@ func buildBigPeople(spec Spec) []person {
 		if people[i].title == "Engineering Manager" {
 			continue
 		}
-		people[i].title = icTitles[i%len(icTitles)]
+		pool := titlePool(people[i].team)
+		people[i].title = pool[i%len(pool)]
 		if mgr, ok := teamMgr[people[i].team]; ok {
 			people[i].manager = mgr
 		} else {
@@ -178,16 +216,56 @@ func buildBigPeople(spec Spec) []person {
 	return people
 }
 
+// subjectTeams routes a subject to the part of the company that would really
+// own it. A vacation question answered by a principal engineer reads as wrong
+// even when the lookup worked, because in a real company that knowledge lives
+// with the People team. Subjects not listed stay with engineering.
+var subjectTeams = map[string]string{
+	"vacation":             "People",
+	"health benefits":      "People",
+	"payroll taxes":        "Finance",
+	"expense reports":      "Finance",
+	"laptop hardware":      "Workplace",
+	"office facilities":    "Workplace",
+	"onboarding paperwork": "Talent",
+	"hiring interviews":    "Talent",
+	"contract review":      "Legal",
+}
+
 // buildBigOwners makes one person the expert for each subject, spread across the
-// company so ownership is not clustered on a single team.
+// company so ownership is not clustered on a single team, and placed on the team
+// that would own the subject in a real company.
 func buildBigOwners(people []person) []owner {
 	owners := make([]owner, 0, len(subjects))
 	if len(people) == 0 {
 		return owners
 	}
+	// Owners come from the fitting team when the subject has one. Managers are
+	// skipped so the expert is the person who does the work, not the person the
+	// work reports to.
+	pickFromTeam := func(team string, nth int) int {
+		var members []int
+		for i := range people {
+			if people[i].team == team && !strings.Contains(people[i].title, "Manager") &&
+				!strings.Contains(people[i].title, "Director") && !strings.Contains(people[i].title, "VP") {
+				members = append(members, i)
+			}
+		}
+		if len(members) == 0 {
+			return -1
+		}
+		return members[nth%len(members)]
+	}
+	perTeam := make(map[string]int)
 	step := max(1, len(people)/len(subjects))
 	for s := range subjects {
 		idx := (s*step + 7) % len(people)
+		if team, ok := subjectTeams[subjects[s].Topic]; ok {
+			if i := pickFromTeam(team, perTeam[team]); i >= 0 {
+				idx = i
+				perTeam[team]++
+			}
+		}
 		people[idx].topics = append(people[idx].topics, s)
 		owners = append(owners, owner{
 			subject: s, who: people[idx], channel: fmt.Sprintf("C%03d", s),

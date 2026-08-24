@@ -652,14 +652,75 @@ func (ix *Index) buildChannel(rec connector.Record) {
 	}
 }
 
+// expandedQuery grows the tokenized query with its synonyms and returns the
+// full term list, the per-term coverage back to the words actually asked, and
+// the asked expression behind each expansion for the reason line. Every
+// original term covers itself; an expansion covers the words that triggered it,
+// so a hit through a synonym still counts toward how much of the question was
+// answered instead of diluting it.
+func expandedQuery(query string) (terms []string, covers map[string][]string, asked map[string]string) {
+	ordered := tokenize(query)
+	terms = distinct(ordered)
+	if len(terms) == 0 {
+		return nil, nil, nil
+	}
+	covers = make(map[string][]string, len(terms))
+	asked = make(map[string]string)
+	for _, t := range terms {
+		covers[t] = []string{t}
+	}
+	for _, e := range expandTerms(ordered) {
+		if _, dup := covers[e.term]; dup {
+			continue
+		}
+		terms = append(terms, e.term)
+		covers[e.term] = e.covers
+		asked[e.term] = e.asked
+	}
+	return terms, covers, asked
+}
+
+// applyExpansionPenalty discounts the resolved expansions, so a synonym never
+// outranks the words the person actually used.
+func applyExpansionPenalty(resolved map[string]termHit, asked map[string]string) {
+	for term := range asked {
+		if hit, ok := resolved[term]; ok {
+			hit.penalty *= expansionPenalty
+			resolved[term] = hit
+		}
+	}
+}
+
+// coveredShare is how much of the asked question a match answered: the share of
+// original terms covered by anything it matched, synonyms included.
+func coveredShare(matched map[string]bool, covers map[string][]string, originals int) float64 {
+	if originals == 0 {
+		return 0
+	}
+	hit := make(map[string]bool, originals)
+	for term := range matched {
+		for _, orig := range covers[term] {
+			hit[orig] = true
+		}
+	}
+	return float64(len(hit)) / float64(originals)
+}
+
 // Search ranks people for query and returns up to limit matches. A non-positive
 // limit returns all matches.
 func (ix *Index) Search(query string, limit int) []model.Match {
-	terms := distinct(tokenize(query))
+	terms, covers, asked := expandedQuery(query)
 	if len(terms) == 0 {
 		return nil
 	}
+	originals := 0
+	for _, t := range terms {
+		if _, isExp := asked[t]; !isExp {
+			originals++
+		}
+	}
 	resolved := resolveTerms(ix.postings, ix.personVocab, terms)
+	applyExpansionPenalty(resolved, asked)
 	scores, matched := scoreByTerms(ix.postings, terms, resolved, len(ix.Graph.People), ix.personLens)
 	nets := ix.feedbackNets(terms, false)
 
@@ -694,12 +755,12 @@ func (ix *Index) Search(query string, limit int) []model.Match {
 	// ranking, which is by score, so deferring it changes no result.
 	for i := range matches {
 		pid := matches[i].Person.ID
-		reasons, evidence := ix.reasons(pid, matched[pid], resolved)
+		reasons, evidence := ix.reasons(pid, matched[pid], resolved, asked)
 		if net := nets[pid]; net != 0 {
 			reasons = append(reasons, feedbackReason(net))
 		}
 		matches[i].Reasons = reasons
-		matches[i].Confidence = evidence * float64(len(matched[pid])) / float64(len(terms))
+		matches[i].Confidence = evidence * coveredShare(matched[pid], covers, originals)
 	}
 	return matches
 }
@@ -707,11 +768,18 @@ func (ix *Index) Search(query string, limit int) []model.Match {
 // SearchChannels ranks channels for query and returns up to limit matches, each
 // carrying the most relevant active members. A non-positive limit returns all.
 func (ix *Index) SearchChannels(query string, limit int) []model.ChannelMatch {
-	terms := distinct(tokenize(query))
+	terms, covers, asked := expandedQuery(query)
 	if len(terms) == 0 {
 		return nil
 	}
+	originals := 0
+	for _, t := range terms {
+		if _, isExp := asked[t]; !isExp {
+			originals++
+		}
+	}
 	resolved := resolveTerms(ix.channelPostings, ix.channelVocab, terms)
+	applyExpansionPenalty(resolved, asked)
 	scores, matched := scoreByTerms(
 		ix.channelPostings, terms, resolved, len(ix.Graph.Channels), ix.channelLens)
 	nets := ix.feedbackNets(terms, true)
@@ -722,12 +790,12 @@ func (ix *Index) SearchChannels(query string, limit int) []model.ChannelMatch {
 		if ch == nil {
 			continue
 		}
-		reasons, evidence := ix.channelReasons(cid, matched[cid], resolved)
+		reasons, evidence := ix.channelReasons(cid, matched[cid], resolved, asked)
 		if net := nets[cid]; net != 0 {
 			sc *= ix.feedbackFactor(net)
 			reasons = append(reasons, feedbackReason(net))
 		}
-		coverage := float64(len(matched[cid])) / float64(len(terms))
+		coverage := coveredShare(matched[cid], covers, originals)
 		matches = append(matches, model.ChannelMatch{
 			Channel:    ch,
 			Score:      sc,
@@ -1024,7 +1092,7 @@ func distinct(terms []string) []string {
 // and returns the strongest evidence among those hits. A fuzzily corrected
 // term classifies by its resolved stem and says so.
 func (ix *Index) reasons(
-	pid model.ID, terms map[string]bool, resolved map[string]termHit,
+	pid model.ID, terms map[string]bool, resolved map[string]termHit, asked map[string]string,
 ) ([]string, float64) {
 	pt := ix.texts[pid]
 	out := make([]string, 0, len(terms))
@@ -1041,6 +1109,13 @@ func (ix *Index) reasons(
 			field, strength = "team", evidenceTeam
 		}
 		evidence = max(evidence, strength)
+		// A synonym arrives with a deliberate discount, which must not read as a
+		// typo correction: the "for" clause already says why the word differs
+		// from the question.
+		if from := asked[term]; from != "" && from != term {
+			out = append(out, fmt.Sprintf("%s (%s) for %q", term, field, from))
+			continue
+		}
 		if hit.fuzzy() {
 			field += ", fuzzy"
 		}
@@ -1054,7 +1129,7 @@ func (ix *Index) reasons(
 // it hit, and returns the strongest evidence among those hits. A fuzzily
 // corrected term classifies by its resolved stem and says so.
 func (ix *Index) channelReasons(
-	cid model.ID, terms map[string]bool, resolved map[string]termHit,
+	cid model.ID, terms map[string]bool, resolved map[string]termHit, asked map[string]string,
 ) ([]string, float64) {
 	ct := ix.channelTexts[cid]
 	out := make([]string, 0, len(terms))
@@ -1071,6 +1146,10 @@ func (ix *Index) channelReasons(
 			field, strength = "name", evidenceTopic
 		}
 		evidence = max(evidence, strength)
+		if from := asked[term]; from != "" && from != term {
+			out = append(out, fmt.Sprintf("%s (%s) for %q", term, field, from))
+			continue
+		}
 		if hit.fuzzy() {
 			field += ", fuzzy"
 		}

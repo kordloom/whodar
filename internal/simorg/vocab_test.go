@@ -67,8 +67,14 @@ func TestSubjectVocabulariesAreDisjoint(t *testing.T) {
 		}
 	}
 
-	// Job titles are matched too, for the same reason.
-	for _, title := range []string{"Engineer", "Senior Engineer", "Staff Engineer", "Manager"} {
+	// Job titles are matched too, for the same reason, and a title is the most
+	// dangerous of these: it applies to everyone holding it at once.
+	titles := []string{"Engineer", "Senior Engineer", "Staff Engineer", "Manager"}
+	titles = append(titles, icTitles...)
+	for _, pool := range titlesByTeam {
+		titles = append(titles, pool...)
+	}
+	for _, title := range titles {
 		for _, stem := range text.Terms(title) {
 			if subject, taken := owner[stem]; taken {
 				t.Errorf("title %q shares the stem %q with subject %q", title, stem, subject)

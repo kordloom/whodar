@@ -172,6 +172,29 @@ var subjects = []struct {
 		"we keep hitting ratelimits", "too many requests are being rejected"},
 	{"image uploads", []string{"image", "uploads", "thumbnail", "resize", "presigned", "exif"},
 		"uploads come out broken", "pictures people attach are broken"},
+	// Not everything a company knows is engineering, and the everyday questions
+	// are the ones people actually ask first. A company that can only answer
+	// about kafka is not a company. Vocabularies stay disjoint from each other
+	// and from the team names for the same reason the rest do: so exactly one
+	// person is the right answer.
+	{"vacation", []string{"vacation", "pto", "holiday", "leave", "accrual", "unpaid"},
+		"how vacation days work here", "taking a few weeks off in the summer"},
+	{"health benefits", []string{"benefits", "health", "insurance", "dental", "enrollment", "premiums"},
+		"the benefits enrollment window", "adding a newborn to the family plan"},
+	{"payroll taxes", []string{"payroll", "taxes", "paycheck", "withholding", "stub", "w2"},
+		"something looks wrong on my paycheck", "the money that arrives every two weeks"},
+	{"expense reports", []string{"expenses", "reports", "reimbursement", "receipts", "mileage", "perdiem"},
+		"getting expenses reimbursed", "paying myself back for a work trip"},
+	{"laptop hardware", []string{"laptop", "hardware", "keyboard", "warranty", "loaner", "docking"},
+		"my laptop needs replacing", "the machine on my desk died"},
+	{"onboarding paperwork", []string{"onboarding", "paperwork", "orientation", "badge", "buddy", "checklist"},
+		"what a new hire does on day one", "somebody starting next monday"},
+	{"hiring interviews", []string{"hiring", "interviews", "candidates", "recruiter", "offers", "panel"},
+		"running an interview loop", "picking between two people we want"},
+	{"office facilities", []string{"office", "facilities", "parking", "desks", "kitchen", "visitors"},
+		"booking a desk in the office", "where guests check in when they arrive"},
+	{"contract review", []string{"contracts", "review", "nda", "clause", "redline", "indemnity"},
+		"getting a contract looked over", "the signoff before we can share anything"},
 }
 
 // teams are the organizational units people are sorted into. None of them
@@ -183,6 +206,9 @@ var subjects = []struct {
 var teams = []string{
 	"Ledger", "Insights", "Infrastructure", "Security",
 	"Discovery", "Devices", "Growth", "Developer Experience",
+	// The rest of a company. Without these the org chart is all engineers and
+	// nobody can answer where the vacation policy lives.
+	"People", "Finance", "Workplace", "Talent", "Legal",
 }
 
 // givenNames and familyNames build people, including non-ASCII names so
