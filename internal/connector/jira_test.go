@@ -14,6 +14,28 @@ import (
 	"github.com/kordloom/whodar/internal/jira"
 )
 
+// TestJQLUsesUserTimezone verifies the incremental clause renders the watermark
+// in the timezone JQL will be read in. An instant late on March 4 UTC is the
+// morning of March 5 on Kiritimati, and formatting it any other way would shift
+// the incremental window by the whole offset.
+func TestJQLUsesUserTimezone(t *testing.T) {
+	t.Parallel()
+	loc, err := time.LoadLocation("Pacific/Kiritimati")
+	if err != nil {
+		t.Fatalf("LoadLocation: %v", err)
+	}
+	since := time.Date(2026, 3, 4, 20, 0, 0, 0, time.UTC)
+	j := &Jira{opts: JiraOptions{Since: since}.withDefaults()}
+	got := j.jql(loc)
+	if want := `updated >= "2026/03/05 09:58"`; !strings.Contains(got, want) {
+		t.Errorf("jql = %q, want it to contain %q", got, want)
+	}
+	// A nil location keeps the old rendering.
+	if got := j.jql(nil); !strings.Contains(got, `updated >= "2026/03/04 19:58"`) {
+		t.Errorf("jql(nil) = %q, want the unconverted wall clock", got)
+	}
+}
+
 // TestJiraFetch verifies the assignee and reporter get topics from components,
 // labels, summary words, and project name, with email and account-id identity.
 func TestJiraFetch(t *testing.T) {
@@ -134,7 +156,7 @@ func TestJiraJQL(t *testing.T) {
 		t.Run(test.Name, func(t *testing.T) {
 			t.Parallel()
 			j := &Jira{opts: test.Opts.withDefaults()}
-			got := j.jql()
+			got := j.jql(nil)
 			for _, s := range test.WantHas {
 				if !strings.Contains(got, s) {
 					t.Errorf("jql = %q, want it to contain %q", got, s)

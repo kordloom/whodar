@@ -50,6 +50,13 @@ type Client struct {
 	// searchPath is the v1 content search endpoint, used by Server and Data
 	// Center and by Cloud only when the caller supplies a raw CQL query.
 	searchPath string
+	// userPath is the current-user endpoint, which carries the profile
+	// timezone CQL dates are interpreted in.
+	userPath string
+	// loc is the user's CQL timezone, fetched once by userLocation.
+	loc *time.Location
+	// locOnce guards the single fetch behind userLocation.
+	locOnce sync.Once
 	// pingPath verifies reachability and, when authenticated, credentials.
 	pingPath string
 	// http performs requests.
@@ -92,6 +99,7 @@ func New(siteURL, email, token string, opts ...Option) *Client {
 		auth:       "Basic " + base64.StdEncoding.EncodeToString([]byte(email+":"+token)),
 		cloud:      true,
 		searchPath: apiBaseCloud + "/content/search",
+		userPath:   apiBaseCloud + "/user/current",
 		pingPath:   apiBaseCloud + "/user/current",
 		http:       &http.Client{Timeout: apiTimeout},
 		maxRetries: 3,
@@ -119,6 +127,7 @@ func NewServer(siteURL, token string, opts ...Option) *Client {
 		baseURL:    strings.TrimRight(siteURL, "/"),
 		auth:       auth,
 		searchPath: apiBaseServer + "/content/search",
+		userPath:   apiBaseServer + "/user/current",
 		pingPath:   apiBaseServer + "/space?limit=1",
 		http:       &http.Client{Timeout: apiTimeout},
 		maxRetries: 3,
@@ -290,6 +299,15 @@ func (c *Client) Pages(ctx context.Context, q Query) ([]Page, error) {
 	if c.cloud && strings.TrimSpace(q.CQL) == "" && q.Since.IsZero() {
 		return c.enumerateV2(ctx, q.Spaces, q.Max)
 	}
+	// An incremental read formats its watermark as a wall-clock the server
+	// reads in the user's profile timezone, so convert the instant into that
+	// zone first. Failing to learn the zone leaves the time as given, which is
+	// the old behavior.
+	if !q.Since.IsZero() {
+		if loc := c.userLocation(ctx); loc != nil {
+			q.Since = q.Since.In(loc)
+		}
+	}
 	return c.searchCQL(ctx, buildCQL(q), q.Max)
 }
 
@@ -315,10 +333,33 @@ func buildCQL(q Query) string {
 	return cql
 }
 
-// confluenceCQLTime formats t as a CQL absolute timestamp, backed off by a small
-// margin so minor clock or timezone skew re-reads a little rather than skips.
+// confluenceCQLTime formats t as a CQL absolute timestamp in t's own location,
+// backed off by a small margin so minor clock skew re-reads a little rather
+// than skips. The caller converts t into the timezone Confluence interprets
+// CQL dates in; the margin only has to cover clock drift, never a zone offset.
 func confluenceCQLTime(t time.Time) string {
 	return t.Add(-2 * time.Minute).Format("2006/01/02 15:04")
+}
+
+// userLocation returns the timezone Confluence interprets CQL date literals in:
+// the authenticated user's profile timezone, read once from the current-user
+// endpoint and cached. CQL has no timezone syntax, so a watermark formatted in
+// any other zone shifts the incremental window by the whole offset. It returns
+// nil when the timezone cannot be learned, and the caller keeps the time as it
+// was given.
+func (c *Client) userLocation(ctx context.Context) *time.Location {
+	c.locOnce.Do(func() {
+		var me struct {
+			TimeZone string `json:"timeZone"`
+		}
+		if err := c.get(ctx, c.userPath, url.Values{}, &me); err != nil || me.TimeZone == "" {
+			return
+		}
+		if loc, err := time.LoadLocation(me.TimeZone); err == nil {
+			c.loc = loc
+		}
+	})
+	return c.loc
 }
 
 // searchResponse decodes the v1 content search endpoint.
@@ -329,6 +370,14 @@ type searchResponse struct {
 	Size int `json:"size"`
 	// Limit is the requested page size.
 	Limit int `json:"limit"`
+	// Links carries the cursor to the next page. Its presence, not the page
+	// size, is what says whether more results exist: permission filtering
+	// removes results after the window is cut, so a short or even empty page
+	// can sit in the middle of a longer result set.
+	Links struct {
+		// Next is the relative URL of the next page, empty on the last.
+		Next string `json:"next"`
+	} `json:"_links"`
 }
 
 // searchCQL reads pages through the v1 content search, paginating in pages of
@@ -357,8 +406,14 @@ func (c *Client) searchCQL(ctx context.Context, cql string, max int) ([]Page, er
 		}
 		all = append(all, resp.Results...)
 		c.progress.Report(len(all))
-		start += resp.Size
-		if resp.Size == 0 || resp.Size < limit {
+		// The window advances by what was asked for, not by what came back:
+		// permission filtering shrinks a page after the window is cut, so a
+		// short page does not mean the results are over, and advancing by the
+		// filtered size would re-read rows. The server says whether more exist
+		// through the next link; a response without one falls back to the size
+		// heuristic for servers old enough to omit it.
+		start += limit
+		if resp.Links.Next == "" && (resp.Size == 0 || resp.Size < limit) {
 			break
 		}
 		if max > 0 && len(all) >= max {

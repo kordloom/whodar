@@ -184,3 +184,120 @@ func TestNewServerBearerToken(t *testing.T) {
 		t.Errorf("Authorization = %q, want Bearer PAT9", gotAuth)
 	}
 }
+
+// TestSearchCQLPermissionFilteredPages verifies pagination survives the pages
+// permission filtering shortens: a short page in the middle of the results,
+// with a next link present, must not end the read, and the window advances by
+// what was requested rather than by the filtered size. Server and Data Center
+// hit this on any instance with restricted spaces.
+func TestSearchCQLPermissionFilteredPages(t *testing.T) {
+	t.Parallel()
+	var starts []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/rest/api/content/search", func(w http.ResponseWriter, r *http.Request) {
+		start := r.URL.Query().Get("start")
+		starts = append(starts, start)
+		switch start {
+		case "0":
+			// 100 requested, 1 visible after filtering, more exist.
+			io.WriteString(w, `{"results":[{"id":"1","title":"visible one"}],`+
+				`"size":1,"limit":100,"_links":{"next":"/rest/api/content/search?start=100"}}`)
+		case "100":
+			// Empty window entirely filtered away, but still not the end.
+			io.WriteString(w, `{"results":[],"size":0,"limit":100,`+
+				`"_links":{"next":"/rest/api/content/search?start=200"}}`)
+		default:
+			// The real last page: short and no next link.
+			io.WriteString(w, `{"results":[{"id":"3","title":"visible two"}],`+
+				`"size":1,"limit":100,"_links":{}}`)
+		}
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	pages, err := NewServer(srv.URL, "token").searchCQL(context.Background(), "type = page", 0)
+	if err != nil {
+		t.Fatalf("searchCQL: %v", err)
+	}
+	if len(pages) != 2 {
+		t.Fatalf("pages = %d, want both visible pages despite the filtered windows", len(pages))
+	}
+	if want := []string{"0", "100", "200"}; !slices.Equal(starts, want) {
+		t.Errorf("start params = %v, want %v: the window advances by the requested limit", starts, want)
+	}
+}
+
+// TestSearchCQLLegacyShortPageStops verifies the old behavior still terminates
+// on servers that omit the next link: a short page with no link is the end.
+func TestSearchCQLLegacyShortPageStops(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/rest/api/content/search", func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		io.WriteString(w, `{"results":[{"id":"1","title":"only"}],"size":1,"limit":100}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	pages, err := NewServer(srv.URL, "token").searchCQL(context.Background(), "type = page", 0)
+	if err != nil {
+		t.Fatalf("searchCQL: %v", err)
+	}
+	if len(pages) != 1 || calls != 1 {
+		t.Errorf("pages = %d after %d calls, want one page from one call", len(pages), calls)
+	}
+}
+
+// TestSearchCQLUsesUserTimezone verifies an incremental read renders its
+// watermark in the timezone the server reads CQL dates in, learned from the
+// current-user endpoint. Three in the morning UTC on January 15 is the evening
+// of January 14 in Chicago; formatting it any other way shifts the incremental
+// window by the whole offset.
+func TestSearchCQLUsesUserTimezone(t *testing.T) {
+	t.Parallel()
+	var cqls []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/rest/api/user/current", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"username":"doug","timeZone":"America/Chicago"}`)
+	})
+	mux.HandleFunc("/rest/api/content/search", func(w http.ResponseWriter, r *http.Request) {
+		cqls = append(cqls, r.URL.Query().Get("cql"))
+		io.WriteString(w, `{"results":[],"size":0,"limit":100,"_links":{}}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	since := time.Date(2026, 1, 15, 3, 0, 0, 0, time.UTC)
+	if _, err := NewServer(srv.URL, "token").Pages(context.Background(), Query{Since: since}); err != nil {
+		t.Fatalf("Pages: %v", err)
+	}
+	if len(cqls) == 0 || !strings.Contains(cqls[0], `lastmodified >= "2026/01/14 20:58"`) {
+		t.Errorf("cql = %q, want the watermark rendered in America/Chicago", cqls)
+	}
+}
+
+// TestSearchCQLTimezoneFallback verifies a server that reports no timezone
+// leaves the watermark exactly as it was given, the old behavior.
+func TestSearchCQLTimezoneFallback(t *testing.T) {
+	t.Parallel()
+	var cqls []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/rest/api/user/current", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"username":"doug"}`)
+	})
+	mux.HandleFunc("/rest/api/content/search", func(w http.ResponseWriter, r *http.Request) {
+		cqls = append(cqls, r.URL.Query().Get("cql"))
+		io.WriteString(w, `{"results":[],"size":0,"limit":100,"_links":{}}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	since := time.Date(2026, 1, 15, 3, 0, 0, 0, time.UTC)
+	if _, err := NewServer(srv.URL, "token").Pages(context.Background(), Query{Since: since}); err != nil {
+		t.Fatalf("Pages: %v", err)
+	}
+	if len(cqls) == 0 || !strings.Contains(cqls[0], `lastmodified >= "2026/01/15 02:58"`) {
+		t.Errorf("cql = %q, want the unconverted watermark", cqls)
+	}
+}

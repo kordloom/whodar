@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kordloom/whodar/internal/httputil"
@@ -47,6 +48,13 @@ type Client struct {
 	pingPath string
 	// http performs requests.
 	http httputil.Doer
+	// userPath is the current-user endpoint, which carries the profile
+	// timezone JQL dates are interpreted in.
+	userPath string
+	// loc is the user's JQL timezone, fetched once by UserLocation.
+	loc *time.Location
+	// locOnce guards the single fetch behind UserLocation.
+	locOnce sync.Once
 	// maxRetries bounds retries on HTTP 429.
 	maxRetries int
 	// progress, when set, is called after each page with the running count.
@@ -77,6 +85,7 @@ func New(baseURL, email, token string, opts ...Option) *Client {
 		searchPath:  apiBaseCloud + "/search/jql",
 		tokenPaging: true,
 		pingPath:    apiBaseCloud + "/myself",
+		userPath:    apiBaseCloud + "/myself",
 		http:        &http.Client{Timeout: apiTimeout},
 		maxRetries:  3,
 	}
@@ -103,6 +112,7 @@ func NewServer(baseURL, token string, opts ...Option) *Client {
 		auth:       auth,
 		searchPath: apiBaseServer + "/search",
 		pingPath:   apiBaseServer + "/serverInfo",
+		userPath:   apiBaseServer + "/myself",
 		http:       &http.Client{Timeout: apiTimeout},
 		maxRetries: 3,
 	}
@@ -350,6 +360,27 @@ func (c *Client) searchOffset(ctx context.Context, jql string, max int) ([]Issue
 		}
 	}
 	return all, nil
+}
+
+// UserLocation returns the timezone Jira interprets JQL date literals in: the
+// authenticated user's profile timezone, read once from the current-user
+// endpoint and cached. JQL has no timezone syntax, so a watermark formatted in
+// any other zone shifts the incremental window by the whole offset. It returns
+// nil when the timezone cannot be learned, such as an anonymous connection or
+// a name the zone database does not know, and the caller keeps its fallback.
+func (c *Client) UserLocation(ctx context.Context) *time.Location {
+	c.locOnce.Do(func() {
+		var me struct {
+			TimeZone string `json:"timeZone"`
+		}
+		if err := c.get(ctx, c.userPath, url.Values{}, &me); err != nil || me.TimeZone == "" {
+			return
+		}
+		if loc, err := time.LoadLocation(me.TimeZone); err == nil {
+			c.loc = loc
+		}
+	})
+	return c.loc
 }
 
 // Ping verifies the site is reachable and, when authenticated, that the

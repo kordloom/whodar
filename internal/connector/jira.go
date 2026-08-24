@@ -95,7 +95,7 @@ func (j *Jira) Ping(ctx context.Context) error {
 // Fetch searches issues and returns one record per person, weighted by topic.
 func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 	j.episodes = nil
-	query := j.jql()
+	query := j.jql(j.client.UserLocation(ctx))
 	issues, err := j.client.Search(ctx, query, j.opts.MaxIssues)
 	if err != nil {
 		return nil, fmt.Errorf("jira search: %w", err)
@@ -180,7 +180,7 @@ func jiraTime(s string) time.Time {
 // watermark and orders them oldest first, so a capped read leaves the newest
 // issues for the next run and never skips a gap; a full read keeps the
 // newest-first order that best fills a fresh index up to the cap.
-func (j *Jira) jql() string {
+func (j *Jira) jql(loc *time.Location) string {
 	if strings.TrimSpace(j.opts.JQL) != "" {
 		return j.opts.JQL
 	}
@@ -193,7 +193,16 @@ func (j *Jira) jql() string {
 		scope = "project in (" + strings.Join(quoted, ",") + ")"
 	}
 	if !j.opts.Since.IsZero() {
-		clause := fmt.Sprintf(`updated >= "%s"`, jiraJQLTime(j.opts.Since))
+		// JQL reads the wall-clock below in the user's profile timezone, so the
+		// instant is converted into that zone first. Without the zone the whole
+		// window shifts by the user's UTC offset, and a watermark that advances
+		// past the shift skips items for good. A nil location keeps the time as
+		// given, the old behavior.
+		since := j.opts.Since
+		if loc != nil {
+			since = since.In(loc)
+		}
+		clause := fmt.Sprintf(`updated >= "%s"`, jiraJQLTime(since))
 		if scope != "" {
 			scope += " AND " + clause
 		} else {
@@ -207,8 +216,10 @@ func (j *Jira) jql() string {
 	return "ORDER BY updated DESC"
 }
 
-// jiraJQLTime formats t as a JQL absolute timestamp, backed off by a small
-// margin so minor clock or timezone skew re-reads a little rather than skips.
+// jiraJQLTime formats t as a JQL absolute timestamp in t's own location, backed
+// off by a small margin so minor clock skew re-reads a little rather than
+// skips. The caller converts t into the user's JQL timezone; the margin only
+// has to cover clock drift, never a zone offset.
 func jiraJQLTime(t time.Time) string {
 	return t.Add(-2 * time.Minute).Format("2006/01/02 15:04")
 }
