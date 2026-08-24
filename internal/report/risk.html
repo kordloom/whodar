@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Knowledge risk brief</title>
+<style>
+:root {
+	--bg: #f6f7f9;
+	--panel: #ffffff;
+	--ink: #12161c;
+	--muted: #5a6472;
+	--line: #dde1e7;
+	--accent: #0f6f4d;
+	--accent-soft: #e6f2ec;
+	--critical: #a11f2c;
+	--critical-soft: #fbe9eb;
+	--elevated: #8a5a00;
+	--elevated-soft: #fdf1de;
+	--ok: #3f6b52;
+	--ok-soft: #ecf3ee;
+}
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #0d1117;
+		--panel: #151b23;
+		--ink: #e6eaf0;
+		--muted: #9aa5b4;
+		--line: #262d38;
+		--accent: #4bd0a0;
+		--accent-soft: #12261f;
+		--critical: #ff8a95;
+		--critical-soft: #2a1418;
+		--elevated: #e8b562;
+		--elevated-soft: #2a2113;
+		--ok: #8fd3ae;
+		--ok-soft: #16241c;
+	}
+}
+* { box-sizing: border-box; }
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--ink);
+	font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+a { color: var(--accent); }
+.layout { display: flex; align-items: flex-start; gap: 32px; max-width: 1400px; margin: 0 auto; padding: 32px; }
+nav {
+	position: sticky; top: 32px; flex: 0 0 300px; width: 300px;
+	background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px;
+}
+nav h2 { margin: 0 0 4px; font-size: 15px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+nav ul { list-style: none; margin: 12px 0 0; padding: 0; }
+nav li { margin: 0 0 2px; }
+nav button {
+	display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 6px;
+	background: transparent; color: var(--ink); font: inherit; font-size: 15px; cursor: pointer;
+}
+nav button:hover, nav button:focus-visible { background: var(--accent-soft); color: var(--accent); outline: none; }
+main { flex: 1 1 auto; min-width: 0; }
+header.brief { margin-bottom: 24px; }
+h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: -.01em; }
+.provenance { color: var(--muted); font-size: 14px; margin: 0; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 24px; margin: 0 0 24px; scroll-margin-top: 24px; }
+section h2 { margin: 0 0 6px; font-size: 21px; }
+section p.desc { margin: 0 0 18px; color: var(--muted); font-size: 15px; max-width: 72ch; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 24px; }
+.card {
+	background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+	border-radius: 10px; padding: 16px 18px; cursor: pointer; text-align: left; font: inherit; color: inherit;
+}
+.card:hover, .card:focus-visible { border-color: var(--accent); outline: none; }
+.card.crit { border-left-color: var(--critical); }
+.card.elev { border-left-color: var(--elevated); }
+.card .n { display: block; font-size: 34px; font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.card .k { display: block; font-size: 14px; color: var(--muted); margin-top: 4px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+input[type=search] {
+	flex: 1 1 240px; min-width: 180px; padding: 8px 11px; font: inherit; font-size: 15px;
+	background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 7px;
+}
+button.action {
+	padding: 8px 13px; font: inherit; font-size: 14px; cursor: pointer;
+	background: var(--accent-soft); color: var(--accent); border: 1px solid var(--line); border-radius: 7px;
+}
+button.action:hover { border-color: var(--accent); }
+.scroller { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 13px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+th[data-sort] { cursor: pointer; user-select: none; }
+th[data-sort]:hover { color: var(--accent); }
+th .arrow { opacity: .45; font-size: 11px; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+tbody tr:hover { background: var(--accent-soft); }
+.pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.pill.critical { background: var(--critical-soft); color: var(--critical); }
+.pill.elevated { background: var(--elevated-soft); color: var(--elevated); }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.also { color: var(--muted); font-size: 14px; }
+details { border-top: 1px solid var(--line); padding: 12px 0; }
+details:first-of-type { border-top: 0; }
+summary { cursor: pointer; font-size: 16px; font-weight: 600; }
+summary::marker { color: var(--muted); }
+details .body { padding: 10px 0 4px 18px; }
+details h4 { margin: 12px 0 4px; font-size: 14px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+details p { margin: 0; font-size: 15px; }
+.count { color: var(--muted); font-weight: 400; font-size: 15px; }
+.empty { color: var(--muted); font-size: 15px; margin: 0; }
+footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 1400px; margin: 0 auto; }
+@media print {
+	nav, .toolbar, .card { display: none !important; }
+	body { background: #fff; color: #000; }
+	section { border: 0; padding: 0; margin: 0 0 22px; break-inside: avoid; }
+	details { break-inside: avoid; }
+	details[open] .body, details .body { display: block; }
+	.layout { display: block; padding: 0; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+	<h2>Knowledge risk</h2>
+	<p class="provenance">{{ .People }} people, {{ .Scored }} scored {{ plural .Scored "subject" "subjects" }}</p>
+	<ul>
+		<li><button type="button" data-jump="summary">Summary</button></li>
+		<li><button type="button" data-jump="topics">Concentrated subjects</button></li>
+		<li><button type="button" data-jump="people">Who is exposed</button></li>
+		<li><button type="button" data-jump="method">How this was measured</button></li>
+	</ul>
+</nav>
+<main>
+<header class="brief">
+	<h1>Knowledge risk brief</h1>
+	<p class="provenance">
+		Generated {{ date .Generated }} across {{ .People }} {{ plural .People "person" "people" }}{{ if .Sources }},
+		indexed from {{ join .Sources }}{{ end }}.
+	</p>
+</header>
+
+{{ $c := .Totals }}
+<section id="summary">
+	<h2>Summary</h2>
+	<p class="desc">Where this company's knowledge rests on too few people. Each figure below jumps to the detail behind it.</p>
+	<div class="cards">
+		<button type="button" class="card crit" data-jump="topics">
+			<span class="n">{{ $c.Critical }}</span>
+			<span class="k">Critical {{ plural $c.Critical "subject" "subjects" }}</span>
+		</button>
+		<button type="button" class="card elev" data-jump="topics">
+			<span class="n">{{ $c.Elevated }}</span>
+			<span class="k">Elevated {{ plural $c.Elevated "subject" "subjects" }}</span>
+		</button>
+		<button type="button" class="card" data-jump="topics">
+			<span class="n">{{ $c.SinglePoint }}</span>
+			<span class="k">Held by one person</span>
+		</button>
+		<button type="button" class="card" data-jump="people">
+			<span class="n">{{ $c.Exposed }}</span>
+			<span class="k">People holding knowledge alone</span>
+		</button>
+	</div>
+</section>
+
+<section id="topics">
+	<h2>Concentrated subjects <span class="count">({{ if lt (len .Risks) .Scored }}worst {{ len .Risks }} of {{ .Scored }}{{ else }}all {{ .Scored }}{{ end }})</span></h2>
+	{{ if lt (len .Risks) .Scored }}<p class="desc">This table was capped with --limit and lists the worst {{ len .Risks }} of {{ .Scored }} scored subjects. The figures above count all {{ .Scored }}.</p>{{ end }}
+	<p class="desc">A subject is concentrated when most of its expertise sits with one or two people. Bus factor is how few people together hold the majority of it, so a bus factor of one means a single departure takes the topic with it.</p>
+	{{ if .Risks }}
+	<div class="toolbar">
+		<input type="search" id="topic-filter" placeholder="Filter topics, people, or levels" aria-label="Filter topics">
+		<button type="button" class="action" id="topic-csv">Export CSV</button>
+	</div>
+	<div class="scroller">
+	<table id="topic-table">
+		<thead>
+			<tr>
+				<th data-sort="text">Topic <span class="arrow">&#9662;</span></th>
+				<th data-sort="rank">Level <span class="arrow">&#9662;</span></th>
+				<th data-sort="num">Bus factor <span class="arrow">&#9662;</span></th>
+				<th data-sort="num">Top expert holds <span class="arrow">&#9662;</span></th>
+				<th data-sort="text">Who holds it <span class="arrow">&#9662;</span></th>
+				<th>Also covers</th>
+			</tr>
+		</thead>
+		<tbody>
+		{{ range .Risks }}
+			<tr>
+				<td>{{ .Topic }}</td>
+				<td><span class="pill {{ .Level }}" data-rank="{{ if eq .Level "critical" }}3{{ else if eq .Level "elevated" }}2{{ else }}1{{ end }}">{{ .Level }}</span></td>
+				<td class="num">{{ .BusFactor }}</td>
+				<td class="num">{{ pct .Concentration }}</td>
+				<td>{{ range $i, $e := .Experts }}{{ if $i }}, {{ end }}{{ $e.Name }} ({{ pct $e.Share }}){{ end }}</td>
+				<td class="also">{{ join .Includes }}</td>
+			</tr>
+		{{ end }}
+		</tbody>
+	</table>
+	</div>
+	{{ else }}
+	<p class="empty">No subjects scored. The index may not hold enough activity yet.</p>
+	{{ end }}
+</section>
+
+<section id="people">
+	<h2>Who is exposed <span class="count">({{ len .Exposed }})</span></h2>
+	<p class="desc">The same finding read by person rather than by topic. Sole knowledge has no cover behind it at all. Led knowledge has others contributing, so it degrades rather than disappears.</p>
+	{{ if .Exposed }}
+		{{ range .Exposed }}
+		<details>
+			<summary>{{ .Name }} <span class="count">&mdash; {{ len .Sole }} sole, {{ len .Leading }} led</span></summary>
+			<div class="body">
+				{{ if .Sole }}
+				<h4>Would leave with them</h4>
+				<p>{{ join .Sole }}</p>
+				{{ end }}
+				{{ if .Leading }}
+				<h4>Would lose its lead</h4>
+				<p>{{ join .Leading }}</p>
+				{{ end }}
+			</div>
+		</details>
+		{{ end }}
+	{{ else }}
+	<p class="empty">Nobody holds a topic alone. Knowledge is spread across the people indexed.</p>
+	{{ end }}
+</section>
+
+<section id="method">
+	<h2>How this was measured</h2>
+	<p class="desc">Every figure here is arithmetic over the indexed graph, with no model involved and no judgement applied. A person's share of a topic is their weight in it against everyone else's. Bus factor counts the fewest people whose combined share passes a majority. A topic is critical when one person holds most of it, and elevated when two do.</p>
+	<p class="desc">The finding only sees what was indexed{{ if .Sources }}, which here was {{ join .Sources }}{{ end }}. Knowledge that lives somewhere whodar was not pointed at does not appear, so this is a floor on concentration rather than a complete picture.</p>
+</section>
+</main>
+</div>
+<footer>Generated by whodar. Deterministic, offline, and self-contained: this file needs nothing to open.</footer>
+
+<script>
+(function () {
+	"use strict";
+	// Jump by script rather than by anchor href, because a file:// URL will not
+	// follow a fragment link.
+	document.querySelectorAll("[data-jump]").forEach(function (el) {
+		el.addEventListener("click", function () {
+			var target = document.getElementById(el.getAttribute("data-jump"));
+			if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+		});
+	});
+
+	var table = document.getElementById("topic-table");
+	if (!table) return;
+	var body = table.tBodies[0];
+
+	var filter = document.getElementById("topic-filter");
+	filter.addEventListener("input", function () {
+		var q = filter.value.trim().toLowerCase();
+		Array.prototype.forEach.call(body.rows, function (row) {
+			row.style.display = !q || row.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+		});
+	});
+
+	function cellKey(row, i, kind) {
+		var cell = row.cells[i];
+		if (kind === "rank") {
+			var pill = cell.querySelector("[data-rank]");
+			return pill ? Number(pill.getAttribute("data-rank")) : 0;
+		}
+		if (kind === "num") return parseFloat(cell.textContent.replace(/[^0-9.\-]/g, "")) || 0;
+		return cell.textContent.trim().toLowerCase();
+	}
+
+	Array.prototype.forEach.call(table.tHead.rows[0].cells, function (th, i) {
+		var kind = th.getAttribute("data-sort");
+		if (!kind) return;
+		var descending = true;
+		th.addEventListener("click", function () {
+			var rows = Array.prototype.slice.call(body.rows);
+			rows.sort(function (a, b) {
+				var x = cellKey(a, i, kind), y = cellKey(b, i, kind);
+				if (x < y) return descending ? 1 : -1;
+				if (x > y) return descending ? -1 : 1;
+				return 0;
+			});
+			rows.forEach(function (r) { body.appendChild(r); });
+			descending = !descending;
+		});
+	});
+
+	document.getElementById("topic-csv").addEventListener("click", function () {
+		var lines = [];
+		function quote(s) { return '"' + String(s).replace(/"/g, '""') + '"'; }
+		function push(row, tag) {
+			var cells = Array.prototype.map.call(row.cells, function (c) { return quote(c.textContent.trim()); });
+			lines.push(cells.join(","));
+		}
+		push(table.tHead.rows[0]);
+		Array.prototype.forEach.call(body.rows, function (row) {
+			if (row.style.display !== "none") push(row);
+		});
+		var blob = new Blob([lines.join("\n")], { type: "text/csv" });
+		var a = document.createElement("a");
+		a.href = URL.createObjectURL(blob);
+		a.download = "whodar-knowledge-risk.csv";
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(a.href);
+	});
+})();
+</script>
+</body>
+</html>
