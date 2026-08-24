@@ -205,7 +205,7 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 		Related: func(topic string, limit int) []resolve.TopicRelation {
 			return resolve.Related(ix, topic, limit)
 		},
-		CLI:   cliFn(ix, attestFn(ix, opts, cmd.ErrOrStderr())),
+		CLI:   cliFn(ix, ask, attestFn(ix, opts, cmd.ErrOrStderr())),
 		Log:   cmd.ErrOrStderr(),
 		Ready: func() bool { return ix != nil && len(ix.Graph.People) > 0 },
 	})
@@ -253,16 +253,27 @@ func isLoopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// cliAskQuery is the question the command line view answers, chosen so the same
+// question can sit beside a recorded run that had a model, showing what the
+// model adds rather than claiming it finds someone the words alone would miss.
+const cliAskQuery = "kafka consumer lag keeps climbing, who can help"
+
 // cliFn renders what the command line prints for this same index, through the
 // very renderers the terminal uses, with color turned off. The web views answer
 // these questions in their own way; this exists so a reader can see the tool as
 // an engineer would run it, against the data in front of them, rather than take
 // a screenshot's word for it.
-func cliFn(ix *index.Index, seal web.AttestFunc) web.CLIFunc {
+func cliFn(ix *index.Index, ask web.AskFunc, seal web.AttestFunc) web.CLIFunc {
 	var plain style
 	return func(name string) (string, bool) {
 		var b strings.Builder
 		switch name {
+		case "ask":
+			answer, err := ask(context.Background(), cliAskQuery, "keyword", "", 5)
+			if err != nil {
+				return "", false
+			}
+			renderAsk(&b, cliAskQuery, answer.View(cliAskQuery), plain)
 		case "risk":
 			renderRisk(&b, resolve.Risk(ix, 12), plain)
 		case "ownership":

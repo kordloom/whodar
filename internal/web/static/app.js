@@ -40,8 +40,11 @@ const cliView = document.getElementById("view-cli");
 const cliTabs = document.getElementById("cli-tabs");
 const cliOut = document.getElementById("cli-out");
 const cliStatus = document.getElementById("cli-status");
+const cliNote = document.getElementById("cli-note");
 // The commands the demo can print, in the order somebody would run them.
 const CLI_COMMANDS = [
+  { cmd: "ask", label: "whodar ask" },
+  { cmd: "ask-llm", label: "whodar ask --mode llm", recorded: true },
   { cmd: "risk", label: "whodar risk" },
   { cmd: "ownership", label: "whodar ownership" },
   { cmd: "related", label: "whodar related" },
@@ -539,7 +542,8 @@ function showView(view) {
     return;
   }
   if (view === "cli") {
-    renderCLI(cliCurrent || CLI_COMMANDS[0].cmd);
+    const want = new URLSearchParams(location.search).get("cmd");
+    renderCLI(want || cliCurrent || CLI_COMMANDS[0].cmd);
     return;
   }
   if (view !== "ask") {
@@ -1147,6 +1151,18 @@ async function sealFinding() {
 }
 
 
+// recordedRuns loads the transcripts of commands this demo cannot run itself,
+// fetched once. A run that needs a model is recorded rather than faked, so what
+// is on screen is what the command actually printed somewhere.
+let recordedCache = null;
+async function recordedRuns() {
+  if (recordedCache) return recordedCache;
+  const res = await fetch("/static/recorded.json", { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  recordedCache = await res.json();
+  return recordedCache;
+}
+
 // renderCLI prints one command's real terminal output. The tabs are built once
 // and the selected one is fetched fresh, so what appears is what the command
 // prints right now against this index.
@@ -1154,8 +1170,9 @@ async function renderCLI(cmd) {
   cliCurrent = cmd;
   if (!cliTabs.childElementCount) {
     for (const c of CLI_COMMANDS) {
-      const b = el("button", "cli-tab", c.label);
+      const b = el("button", "cli-tab" + (c.recorded ? " cli-tab-rec" : ""), c.label);
       b.type = "button";
+      if (c.recorded) b.title = "Recorded: this run needed a model, which the demo does not run";
       b.dataset.cmd = c.cmd;
       b.addEventListener("click", () => renderCLI(c.cmd));
       cliTabs.appendChild(b);
@@ -1166,6 +1183,24 @@ async function renderCLI(cmd) {
   }
   cliStatus.textContent = "Running...";
   cliOut.textContent = "";
+  cliNote.textContent = "";
+  cliNote.hidden = true;
+  const spec = CLI_COMMANDS.find((c) => c.cmd === cmd) || {};
+  if (spec.recorded) {
+    try {
+      const rec = await recordedRuns();
+      const run = rec[cmd];
+      if (!run) throw new Error("not recorded");
+      if (cliCurrent !== cmd) return;
+      cliOut.textContent = run.text;
+      cliNote.textContent = run.note;
+      cliNote.hidden = false;
+      cliStatus.textContent = "recorded, not live";
+    } catch (err) {
+      cliStatus.textContent = "Could not load that: " + err.message;
+    }
+    return;
+  }
   try {
     const res = await fetch("/api/cli?cmd=" + encodeURIComponent(cmd), {
       headers: { Accept: "text/plain" },

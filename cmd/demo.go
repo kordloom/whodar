@@ -5,12 +5,15 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/feedback"
+	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/simorg"
 )
 
@@ -27,6 +30,8 @@ const demoQuery = "who do I talk to about billing retries"
 func newDemoCmd(opts *options) *cobra.Command {
 	var cfg webConfig
 	var big bool
+	var saveIndex string
+	var embed bool
 	open := true
 	cmd := &cobra.Command{
 		Use:   "demo",
@@ -68,6 +73,9 @@ set becomes an open relay to your paid account.`,
 			if cfg.episodes, err = buildEpisodes(ix); err != nil {
 				return err
 			}
+			if saveIndex != "" {
+				return saveDemo(cmd, ix, cfg.episodes, saveIndex, embed, cfg)
+			}
 			// The demo is public sample data, so it serves open with no token
 			// and, having no real user, starts recall as the person the sample
 			// conversations were had with.
@@ -89,7 +97,41 @@ set becomes an open relay to your paid account.`,
 	cmd.Flags().BoolVar(&big, "big", false,
 		"Serve a large simulated company of 200+ people instead of the small sample")
 	cmd.Flags().BoolVar(&open, "open", true, "Open the demo in a browser on start")
+	cmd.Flags().StringVar(&saveIndex, "save-index", "",
+		"Write the simulated company to this directory as a real index, then exit")
+	cmd.Flags().BoolVar(&embed, "embed", false,
+		"Generate embeddings while saving, so the saved index answers in semantic mode. Needs Ollama.")
 	return cmd
+}
+
+// saveDemo writes the simulated company to dir as a real index, so the same
+// sample data the web demo serves can be driven from the command line: ask,
+// risk, ownership, related, and attest all read an index from a data directory.
+// Embedding is opt-in because it needs a local model and takes a while.
+func saveDemo(
+	cmd *cobra.Command, ix *index.Index, eps *episode.Store, dir string, embed bool, cfg webConfig,
+) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("demo: %w", err)
+	}
+	if embed {
+		fmt.Fprintln(cmd.ErrOrStderr(), "whodar demo: embedding, this takes a minute")
+		if err := ix.Embed(cmd.Context(), newDocOllama(cfg.embedModel, cfg.ollamaURL)); err != nil {
+			return fmt.Errorf("demo: embed: %w", err)
+		}
+	}
+	if err := ix.Save(filepath.Join(dir, "index.json")); err != nil {
+		return fmt.Errorf("demo: save index: %w", err)
+	}
+	if eps != nil {
+		if err := eps.Save(filepath.Join(dir, "episodes.json")); err != nil {
+			return fmt.Errorf("demo: save episodes: %w", err)
+		}
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(),
+		"whodar demo: wrote the sample company to %s\nwhodar demo: try whodar --data-dir %s risk\n",
+		dir, dir)
+	return nil
 }
 
 // openBrowser makes a best-effort attempt to open link in the default

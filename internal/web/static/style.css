@@ -1159,3 +1159,22 @@ section h2 {
   white-space: pre;
   tab-size: 2;
 }
+
+/* A recorded run is marked so it is never mistaken for something this demo ran. */
+.cli-tab-rec::after {
+  content: "rec";
+  margin-left: 7px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--chip);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.cli-tab-rec.active::after { background: var(--accent-soft); }
+.cli-note {
+  margin: 0 0 12px;
+  max-width: 72ch;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
