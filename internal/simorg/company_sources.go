@@ -77,11 +77,11 @@ func (c *company) githubServer() (*httptest.Server, []string) {
 			for k := range 3 {
 				num := s*10 + k
 				pulls = append(pulls, map[string]any{
-					"number":   num,
-					"html_url": fmt.Sprintf("https://github.com/%s/pull/%d", full, num),
-					"title":    fmt.Sprintf("fix %s regression %d", topicSlug(s), k+1),
-					"user":     map[string]any{"login": exp[0].github},
-					"labels":   []map[string]any{{"name": topicSlug(s)}},
+					"number":     num,
+					"html_url":   fmt.Sprintf("https://github.com/%s/pull/%d", full, num),
+					"title":      fmt.Sprintf("fix %s regression %d", topicSlug(s), k+1),
+					"user":       map[string]any{"login": exp[0].github},
+					"labels":     []map[string]any{{"name": topicSlug(s)}},
 					"updated_at": isoDaysAgo(3 + k), "merged_at": isoDaysAgo(3 + k),
 				})
 			}
@@ -227,7 +227,7 @@ func (c *company) pagerdutyServer() *httptest.Server {
 				"title":      fmt.Sprintf("%s degraded", topicSlug(s)),
 				"html_url":   "https://corp.pagerduty.com/incidents/" + id,
 				"created_at": isoDaysAgo(20 + k), "resolved_at": isoDaysAgo(20 + k),
-				"service":    map[string]any{"id": sid, "summary": svcName},
+				"service": map[string]any{"id": sid, "summary": svcName},
 				"assignments": []map[string]any{
 					{"assignee": map[string]any{
 						"id": "P" + resp.id, "name": resp.name, "email": resp.email}},
@@ -271,11 +271,19 @@ func (c *company) buildGitRepo(dir string) error {
 	now := time.Now()
 	for s := range c.owners {
 		exp := c.experts(s)
-		rel := topicSlug(s) + "/main.tf"
+		// The directory carries the subject; the filename must not carry a
+		// second one. A real extension maps to a technology topic (.tf means
+		// terraform), so every subject sharing one filename would make the
+		// whole company expert in it.
+		// "main" is a generic path segment the connector already ignores, and the
+		// file carries no extension, so the directory is the only thing this
+		// path says: the subject. Anything else, a real extension or a novel
+		// stem, becomes a topic of its own held by everyone who ever committed.
+		rel := topicSlug(s) + "/main"
 		for k := range 3 {
 			owner := exp[k%len(exp)]
 			if err := commit(rel, fmt.Sprintf("v%d", k), owner.name, owner.email,
-				now.AddDate(0, 0, -(s*3 + k + 1))); err != nil {
+				now.AddDate(0, 0, -(s*3+k+1))); err != nil {
 				return fmt.Errorf("simorg: git commit: %w", err)
 			}
 		}

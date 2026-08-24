@@ -186,6 +186,10 @@ func buildBigPeople(spec Spec) []person {
 		dirs = append(dirs, i)
 	}
 	teamMgr := map[string]string{}
+	// isMgr records who runs a team by index. Recognizing them by title instead
+	// would miss every team whose manager is not titled "Engineering Manager",
+	// and those people would fall through and be made their own manager.
+	isMgr := make(map[int]bool)
 	di := 0
 	for i := 4; i < n; i++ {
 		if _, ok := teamMgr[people[i].team]; ok {
@@ -201,10 +205,11 @@ func buildBigPeople(spec Spec) []person {
 			people[i].manager = people[0].email
 		}
 		teamMgr[people[i].team] = people[i].email
+		isMgr[i] = true
 		di++
 	}
 	for i := 4; i < n; i++ {
-		if people[i].title == "Engineering Manager" {
+		if isMgr[i] {
 			continue
 		}
 		pool := titlePool(people[i].team)
@@ -312,8 +317,15 @@ func (c *company) codeOwners() string {
 // index under dir. It drives the org chart, expertise, and recall from one
 // generated organization at scale.
 func BuildBigIndex(dir string) (*index.Index, error) {
+	return buildIndexFor(dir, BigSpec())
+}
+
+// buildIndexFor indexes a generated company of any size through the same eight
+// connectors the demo uses, so the sources a scale run exercises are the ones
+// the product actually reads.
+func buildIndexFor(dir string, spec Spec) (*index.Index, error) {
 	ctx := context.Background()
-	c := buildCompany(BigSpec())
+	c := buildCompany(spec)
 
 	write := func(name, content string) (string, error) {
 		p := filepath.Join(dir, name)
