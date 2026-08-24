@@ -27,8 +27,10 @@ explicitly change the policy.
 
 ## Install
 
-Install with Homebrew:
+Install with Homebrew. Newer Homebrew requires trusting a third-party tap once
+before it will install from it:
 
+    brew trust kordloom/tap
     brew install kordloom/tap/whodar
 
 Or build from source, which needs Go 1.26 or newer:

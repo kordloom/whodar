@@ -36,6 +36,7 @@ whole graph: people, channels, teams, and topics:
 
 ## Install
 
+    brew trust kordloom/tap
     brew install kordloom/tap/whodar
 
 Or `go install github.com/kordloom/whodar@latest`, or grab a prebuilt binary

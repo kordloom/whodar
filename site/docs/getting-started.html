@@ -112,8 +112,10 @@ explicitly change the policy.</p>
 <li>Optional: Ollama if you want the LLM answer mode.</li>
 </ul>
 <h2 id="install">Install</h2>
-<p>Install with Homebrew:</p>
-<pre><code>brew install kordloom/tap/whodar
+<p>Install with Homebrew. Newer Homebrew requires trusting a third-party tap once
+before it will install from it:</p>
+<pre><code>brew trust kordloom/tap
+brew install kordloom/tap/whodar
 </code></pre>
 <p>Or build from source, which needs Go 1.26 or newer:</p>
 <pre><code>git clone https://github.com/kordloom/whodar.git
