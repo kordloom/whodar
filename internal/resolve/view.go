@@ -39,6 +39,29 @@ func roundConfidence(c float64) float64 {
 // topTopics returns up to n of a person's topic names, strongest first, ties
 // broken alphabetically. Topic identifiers are readable slugs, so they double
 // as display names.
+// salientTopics returns a person's strongest topics, keeping only the subjects
+// the organization actually has. Topic text is mined from prose as well as
+// declared, so an unfiltered list shows a person "knowing" words like
+// "regression" or "runbook" that were never a subject: fine as ranking signal,
+// embarrassing as an answer to what somebody is known for.
+func salientTopics(ix *index.Index, topics map[model.ID]float64, n int) []string {
+	if ix == nil {
+		return topTopics(topics, n)
+	}
+	kept := make(map[model.ID]float64, len(topics))
+	for id, w := range topics {
+		if ix.Graph.Topics[id].Salient() {
+			kept[id] = w
+		}
+	}
+	// A person whose every topic was mined from prose still deserves an answer,
+	// so fall back to the unfiltered list rather than showing nothing.
+	if len(kept) == 0 {
+		return topTopics(topics, n)
+	}
+	return topTopics(kept, n)
+}
+
 func topTopics(topics map[model.ID]float64, n int) []string {
 	if len(topics) == 0 {
 		return nil
@@ -166,13 +189,13 @@ type JSONProfile struct {
 }
 
 // ProfileView renders a profile for the web and CLI.
-func ProfileView(p index.Profile) JSONProfile {
+func ProfileView(ix *index.Index, p index.Profile) JSONProfile {
 	out := JSONProfile{
 		ID:     string(p.Person.ID),
 		Name:   p.Person.Name,
 		Email:  p.Person.Email,
 		Title:  p.Person.Title,
-		Topics: topTopics(p.Person.Topics, 32),
+		Topics: salientTopics(ix, p.Person.Topics, 32),
 	}
 	for _, id := range p.Person.Identities {
 		out.Identities = append(out.Identities, string(id))
@@ -208,7 +231,7 @@ func (a Answer) View(query string) JSONAnswer {
 			Name:       m.Person.Name,
 			Email:      m.Person.Email,
 			Title:      m.Person.Title,
-			Topics:     topTopics(m.Person.Topics, 8),
+			Topics:     salientTopics(a.ix, m.Person.Topics, 8),
 			Score:      m.Score,
 			Confidence: roundConfidence(m.Confidence),
 			Reasons:    m.Reasons,

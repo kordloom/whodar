@@ -80,7 +80,7 @@ func TestProfileViewJoins(t *testing.T) {
 	if !ok {
 		t.Fatal("profile not found")
 	}
-	view := ProfileView(profile)
+	view := ProfileView(ix, profile)
 	if len(view.Joins) != 1 || view.Joins[0].Alias != "github:kevinnovak" || view.Joins[0].Confidence != 0.9 {
 		t.Errorf("view.Joins = %+v, want the github join at 0.9", view.Joins)
 	}

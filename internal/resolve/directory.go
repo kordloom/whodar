@@ -83,7 +83,7 @@ func BuildDirectory(ix *index.Index) Directory {
 			Name:      p.Name,
 			Email:     p.Email,
 			Title:     p.Title,
-			Topics:    topTopics(p.Topics, 6),
+			Topics:    salientTopics(ix, p.Topics, 6),
 			ManagerID: string(p.ManagerID),
 		}
 		if row.Name == "" {
@@ -136,8 +136,38 @@ func BuildDirectory(ix *index.Index) Directory {
 		return d.Teams[i].Org < d.Teams[j].Org
 	})
 
-	for tid, count := range topicSize {
-		d.Topics = append(d.Topics, DirectoryTopic{Name: string(tid), People: count})
+	// The browsable list is the subjects the organization actually has, folded
+	// to one entry each. Topic text is mined from prose as well as declared, so
+	// the raw set is mostly words like "issue" and "runbook" alongside the same
+	// subject under several names: useful as ranking signal, useless as a list
+	// of what a company knows. Counting people per group rather than summing
+	// the parts keeps somebody who holds both "cdn" and "cdn-caching" counted
+	// once. If nothing survives, the unfiltered set is listed rather than an
+	// empty page.
+	groups := topicGroups(ix)
+	holders := make(map[string]map[model.ID]bool)
+	for id, p := range g.People {
+		for tid := range p.Topics {
+			if !g.Topics[tid].Salient() {
+				continue
+			}
+			name := groups[string(tid)]
+			if name == "" {
+				name = string(tid)
+			}
+			if holders[name] == nil {
+				holders[name] = make(map[model.ID]bool)
+			}
+			holders[name][id] = true
+		}
+	}
+	for name, people := range holders {
+		d.Topics = append(d.Topics, DirectoryTopic{Name: name, People: len(people)})
+	}
+	if len(d.Topics) == 0 {
+		for tid, count := range topicSize {
+			d.Topics = append(d.Topics, DirectoryTopic{Name: string(tid), People: count})
+		}
 	}
 	sort.Slice(d.Topics, func(i, j int) bool {
 		if d.Topics[i].People != d.Topics[j].People {

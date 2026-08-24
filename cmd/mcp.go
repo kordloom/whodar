@@ -186,7 +186,7 @@ func registerMCPTools(srv *mcp.Server, ix *index.Index, opts *options, embedMode
 		if !ok {
 			return "", fmt.Errorf("unknown person: %s", in.ID)
 		}
-		return marshalMCP(resolve.ProfileView(profile))
+		return marshalMCP(resolve.ProfileView(ix, profile))
 	})
 
 	srv.AddTool(mcp.Tool{

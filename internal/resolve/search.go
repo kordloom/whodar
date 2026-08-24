@@ -55,7 +55,7 @@ func Search(ix *index.Index, query string, limit int) []SearchResult {
 		}
 		out = append(out, SearchResult{
 			Kind: "person", ID: string(id), Name: nameOr(p.Name, string(id)),
-			Email: p.Email, Title: p.Title, Team: team, Topics: topTopics(p.Topics, 8),
+			Email: p.Email, Title: p.Title, Team: team, Topics: salientTopics(ix, p.Topics, 8),
 			Score: score, Matched: matched,
 		})
 	}

@@ -1,10 +1,10 @@
 package index
 
 import (
-	"unicode"
 	"math"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/util"
@@ -192,7 +192,11 @@ func (ix *Index) Near(focal model.ID, limit int) []Adjacent {
 		for tid, aff := range fp.Topics {
 			if a2, ok := p2.Topics[tid]; ok {
 				overlap += math.Min(aff, a2)
-				if len(shared) < maxReasonItems {
+				// Every shared topic counts toward how close two people are,
+				// but only real subjects are worth naming as the reason: a
+				// word mined out of prose says nothing about why these two
+				// work near each other.
+				if len(shared) < maxReasonItems && g.Topics[tid].Salient() {
 					shared = append(shared, topicName(g, tid))
 				}
 			}
