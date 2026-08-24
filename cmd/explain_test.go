@@ -21,16 +21,16 @@ func TestExplainSourceError(t *testing.T) {
 		WantAuth bool
 		WantHas  []string
 	}{{ // Test 0: 401 names the token.
-		In: fmt.Errorf("jira /rest/api/3/search: %w", &httputil.StatusError{Code: http.StatusUnauthorized}),
+		In:       fmt.Errorf("jira /rest/api/3/search: %w", &httputil.StatusError{Code: http.StatusUnauthorized}),
 		WantAuth: true, WantHas: []string{"Jira", "WHODAR_JIRA_TOKEN", "401"},
 	}, { // Test 1: 403 is also an auth fix.
-		In: fmt.Errorf("wrap: %w", &httputil.StatusError{Code: http.StatusForbidden}),
+		In:       fmt.Errorf("wrap: %w", &httputil.StatusError{Code: http.StatusForbidden}),
 		WantAuth: true, WantHas: []string{"Jira"},
 	}, { // Test 2: 404 points at the URL and scope.
-		In: fmt.Errorf("wrap: %w", &httputil.StatusError{Code: http.StatusNotFound}),
+		In:       fmt.Errorf("wrap: %w", &httputil.StatusError{Code: http.StatusNotFound}),
 		WantAuth: true, WantHas: []string{"404", "not found"},
 	}, { // Test 3: A 500 is not remapped; the caller sees the original.
-		In: fmt.Errorf("wrap: %w", &httputil.StatusError{Code: http.StatusInternalServerError}),
+		In:       fmt.Errorf("wrap: %w", &httputil.StatusError{Code: http.StatusInternalServerError}),
 		WantAuth: false,
 	}, { // Test 4: A non-status error passes through unchanged.
 		In: errors.New("dial tcp: connection refused"), WantAuth: false,

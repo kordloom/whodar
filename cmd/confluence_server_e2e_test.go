@@ -25,7 +25,7 @@ func TestConfluenceServerEndToEnd(t *testing.T) {
 		pages = append(pages, fakeapi.ConfluencePage{
 			Title: title, SpaceKey: "KAFKA", SpaceName: "Kafka", Labels: labels,
 			CreatedByEmail: author + "@apache.invalid", CreatedAt: "2026-06-01T09:30:00.000Z",
-			EditedByEmail:  author + "@apache.invalid", EditedAt: "2026-06-20T09:30:00.000Z",
+			EditedByEmail: author + "@apache.invalid", EditedAt: "2026-06-20T09:30:00.000Z",
 		})
 	}
 	srv := (&fakeapi.Confluence{ServerMode: true, Pages: pages}).Server()
