@@ -13,6 +13,7 @@ import (
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/recall"
 	"github.com/kordloom/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/text"
 )
 
 // rank formats a one-based position in a result list, right-aligned so single
@@ -42,7 +43,8 @@ func renderAsk(w io.Writer, query string, view resolve.JSONAnswer, s style) {
 		fmt.Fprintf(w, "%s\n", s.dim(view.Summary))
 	}
 	if len(view.People) == 0 && len(view.Channels) == 0 {
-		fmt.Fprintf(w, "\n  %s\n\n", s.dim("No match yet. Run `whodar index` against a source, or ask more broadly."))
+		fmt.Fprintf(w, "\n  %s\n\n", s.dim(
+			"Nothing matched. Try the words your team would use, or `whodar directory` to see what is indexed."))
 		return
 	}
 	if len(view.People) > 0 {
@@ -187,6 +189,13 @@ func renderRecall(w io.Writer, ans recall.Answer, s style) {
 			fmt.Fprintf(w, "  %s\n", s.bold(place))
 		}
 		fmt.Fprintf(w, "  %s\n", s.dim(recallWith(ep.People)))
+		// Every other answer whodar gives says why it surfaced, and a recalled
+		// conversation needs it most: without the matched words, a thread from
+		// an unrelated-looking channel reads as a random result rather than the
+		// one place the asked-about word was actually said.
+		if words := recallMatchedWords(ans.Query, ep.Matched); len(words) > 0 {
+			fmt.Fprintf(w, "  %s\n", s.dim("matched "+strings.Join(words, ", ")))
+		}
 		if ep.Solution != nil {
 			if ep.Solution.Summary != "" {
 				fmt.Fprintf(w, "  %s\n", ep.Solution.Summary)
@@ -208,6 +217,42 @@ func renderRecall(w io.Writer, ans recall.Answer, s style) {
 	}
 }
 
+// recallMatchedWords turns the matched search keys back into the words the
+// person typed. Matching runs on stems, so the raw keys read as misspellings:
+// asking about "vacation" and being told the match was "vacat" looks like a
+// bug rather than an explanation. A key with no word behind it is shown as it
+// is rather than dropped, since a partial explanation beats none.
+func recallMatchedWords(query string, matched []string) []string {
+	if len(matched) == 0 {
+		return nil
+	}
+	byStem := make(map[string]string)
+	for _, word := range strings.Fields(query) {
+		word = strings.Trim(strings.ToLower(word), `"'.,?!`)
+		if word == "" {
+			continue
+		}
+		if stem := text.Stem(word); stem != "" {
+			if _, seen := byStem[stem]; !seen {
+				byStem[stem] = word
+			}
+		}
+	}
+	out := make([]string, 0, len(matched))
+	seen := make(map[string]bool, len(matched))
+	for _, key := range matched {
+		word := byStem[key]
+		if word == "" {
+			word = key
+		}
+		if !seen[word] {
+			seen[word] = true
+			out = append(out, word)
+		}
+	}
+	return out
+}
+
 // recallWith names who else was in a conversation.
 func recallWith(people []recall.Person) string {
 	names := make([]string, 0, len(people))
@@ -219,15 +264,25 @@ func recallWith(people []recall.Person) string {
 			names = append(names, p.Email)
 		}
 	}
-	switch len(names) {
-	case 0:
+	switch {
+	case len(names) == 0:
 		return "on your own"
-	case 1:
+	case len(names) == 1:
 		return "with " + names[0]
-	default:
+	case len(names) <= recallNamesShown+1:
 		return "with " + strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+	default:
+		// A busy channel puts everyone who spoke in the room, and printing all
+		// of them buries the conversation under a wall of names. The first few
+		// are who a person would recognize; the rest is a count.
+		return fmt.Sprintf("with %s and %d others",
+			strings.Join(names[:recallNamesShown], ", "), len(names)-recallNamesShown)
 	}
 }
+
+// recallNamesShown is how many people a recalled conversation names before it
+// counts the rest.
+const recallNamesShown = 3
 
 // renderDirectory prints the requested directory section, or every section when
 // none was named, each as a titled, counted list.
