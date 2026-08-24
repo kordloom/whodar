@@ -116,7 +116,57 @@
 		nodes.forEach(function (n) { n.childIds.sort(byName); });
 		roots.sort(byName);
 		rootSet = new Set(roots);
-		if (nodes.size > 55) nodes.forEach(function (n, id) { if (depthOf(id) >= 1 && n.childIds.length) collapsed.add(id); });
+		collapseToBudget();
+	}
+	// FIRST_PAINT is how many cards a chart may open with. A chart that opens
+	// showing everything is not an overview: 220 people in one row fits the
+	// screen only at a zoom where nobody can read a name.
+	var FIRST_PAINT = 40;
+	// MIN_FIT is the smallest scale fit may choose, matching the zoom floor.
+	var MIN_FIT = 0.25;
+
+	// collapseToBudget folds the chart down until the first paint is readable,
+	// collapsing the deepest branches first so the top of the org survives.
+	// Depth alone is not enough: an org whose people hang off a dozen managers
+	// and a team-grouped chart, which has no managers to hang off at all, both
+	// leave far too much showing after a fixed-depth pass.
+	function collapseToBudget() {
+		if (nodes.size <= FIRST_PAINT) return;
+		var byDepth = [];
+		nodes.forEach(function (n, id) {
+			if (!n.childIds.length) return;
+			var d = depthOf(id);
+			(byDepth[d] = byDepth[d] || []).push(id);
+		});
+		// Depth 0 is only worth folding when there are several tops to fold to,
+		// as in a team-grouped chart. Folding a lone root hides the whole chart.
+		var floor = roots.length > 1 ? 0 : 1;
+		var vis = visibleCount();
+		for (var d = byDepth.length - 1; d >= floor; d--) {
+			// Biggest branch first, so the fewest folds buy the most room and
+			// the chart stops folding the moment it is readable.
+			var level = byDepth[d].slice().sort(function (a, b) { return visibleUnder(b) - visibleUnder(a); });
+			for (var i = 0; i < level.length; i++) {
+				if (vis <= FIRST_PAINT) return;
+				var under = visibleUnder(level[i]);
+				if (!under) continue;
+				collapsed.add(level[i]);
+				vis -= under;
+			}
+		}
+	}
+	// visibleUnder is how many cards would disappear if this node folded.
+	function visibleUnder(id) {
+		if (collapsed.has(id)) return 0;
+		var n = 0;
+		nodes.get(id).childIds.forEach(function (c) { n += 1 + visibleUnder(c); });
+		return n;
+	}
+	// visibleCount is how many cards the chart would paint right now.
+	function visibleCount() {
+		var n = 0;
+		(function walk(ids) { ids.forEach(function (id) { n++; walk(visibleChildren(id)); }); })(roots);
+		return n;
 	}
 	function parentOf(id) {
 		if (_parent == null) { _parent = new Map(); nodes.forEach(function (n) { n.childIds.forEach(function (c) { _parent.set(c, n.id); }); }); }
@@ -225,7 +275,9 @@
 		var w = el.canvas.offsetWidth, h = el.canvas.offsetHeight;
 		if (!w || !h) { view.scale = 1; view.tx = 40; view.ty = 30; applyView(); return; }
 		var sw = Math.max(100, el.stage.clientWidth - 80), sh = Math.max(100, el.stage.clientHeight - 80);
-		var s = Math.min(1, Math.min(sw / w, sh / h));
+		// Clamped at the low end: a chart scaled to fit 200 cards across is a row
+		// of unreadable hairlines, and below the zoom floor the buttons cannot undo it.
+		var s = Math.min(1, Math.max(MIN_FIT, Math.min(sw / w, sh / h)));
 		view.scale = (isFinite(s) && s > 0) ? s : 1;
 		view.tx = Math.max(24, (el.stage.clientWidth - w * view.scale) / 2);
 		view.ty = 30;
