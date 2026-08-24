@@ -76,11 +76,14 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 	counts := make(map[string]map[string]int)
 	names := make(map[string]string)
 	latest := make(map[string]time.Time)
+	// Tokens taken from a file path, which is where work demonstrably landed.
+	// Commit subject words stay weak.
+	curated := make(map[string]bool)
 	for _, path := range g.opts.Paths {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		read, err := g.readRepo(ctx, path, counts, names, latest)
+		read, err := g.readRepo(ctx, path, counts, names, latest, curated)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return nil, err
@@ -99,9 +102,11 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 			Weight: 1,
 			Email:  email,
 			Name:   names[email],
-			Topics: expandTopics(c),
 			Time:   latest[email],
 		}
+		// A file path is where work demonstrably landed, so it establishes a
+		// subject; a commit subject is prose and only corroborates one.
+		rec.Topics, rec.WeakTopics = splitCurated(expandTopics(c), curated)
 		// A GitHub noreply commit email encodes the author's login, so key the
 		// person by that login to join their commits to their GitHub reviews
 		// and pull requests. Without this the same engineer appears once from
@@ -124,6 +129,7 @@ func (g *GitHistory) readRepo(
 	counts map[string]map[string]int,
 	names map[string]string,
 	latest map[string]time.Time,
+	curated map[string]bool,
 ) (int, error) {
 	repo, err := git.PlainOpen(path)
 	if err != nil {

@@ -47,11 +47,13 @@ func TestPagerDutyFetch(t *testing.T) {
 		byKey[key] = r
 	}
 
-	if jane := byKey["jane@x.com"]; !slices.Contains(jane.Topics, "billing") ||
-		!slices.Contains(jane.Topics, "api") {
-		t.Errorf("jane topics = %v, want billing and api", jane.Topics)
+	// PagerDuty has no label field, so every topic it produces is mined from a
+	// service name or description and arrives as a weak topic.
+	if jane := byKey["jane@x.com"]; !slices.Contains(jane.WeakTopics, "billing") ||
+		!slices.Contains(jane.WeakTopics, "api") {
+		t.Errorf("jane weak topics = %v, want billing and api", jane.WeakTopics)
 	}
-	if bob := byKey["pagerduty:U2"]; !slices.Contains(bob.Topics, "infra") {
-		t.Errorf("bob topics = %v, want infra", bob.Topics)
+	if bob := byKey["pagerduty:U2"]; !slices.Contains(bob.WeakTopics, "infra") {
+		t.Errorf("bob weak topics = %v, want infra", bob.WeakTopics)
 	}
 }

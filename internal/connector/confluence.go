@@ -94,6 +94,8 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 	fmt.Fprintf(c.opts.Log, "confluence: %d pages for %q\n", len(pages), confluenceQueryLabel(q))
 
 	counts := make(map[string]map[string]int)
+	// Tokens a page stated as a label. Title, space, and body words stay weak.
+	curated := make(map[string]bool)
 	users := make(map[string]confluence.User)
 	latest := make(map[string]time.Time)
 	bump := func(u *confluence.User, tokens []string, t time.Time) {
@@ -122,6 +124,11 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 
 	for _, page := range pages {
 		tokens := pageTopics(page)
+		for _, tok := range page.LabelNames() {
+			if tok = strings.ToLower(strings.TrimSpace(tok)); tok != "" {
+				curated[tok] = true
+			}
+		}
 		creator, editor := page.History.CreatedBy, page.Version.By
 		// Credit the creator at creation time and the last editor at edit time,
 		// so an old page edited yesterday does not make its author look recently
@@ -142,7 +149,8 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 
 	records := make([]Record, 0, len(counts))
 	for key, m := range counts {
-		rec := confluencePersonRecord(users[key], expandTopics(m))
+		rec := confluencePersonRecord(users[key], nil)
+		rec.Topics, rec.WeakTopics = splitCurated(expandTopics(m), curated)
 		rec.Time = latest[key]
 		records = append(records, rec)
 	}

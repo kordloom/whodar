@@ -71,9 +71,15 @@ func TestGitHistoryFetch(t *testing.T) {
 		t.Fatalf("authors = %d (%v), want 2 with the bot skipped", len(byEmail), recs)
 	}
 
+	// Path tokens establish a subject and land in Topics; commit subject words
+	// are prose and arrive as weak topics. Both carry affinity.
+	all := func(r Record) []string {
+		return append(append([]string(nil), r.Topics...), r.WeakTopics...)
+	}
 	alice := byEmail["alice@corp.com"]
-	if !slices.Contains(alice.Topics, "terraform") || !slices.Contains(alice.Topics, "infra") {
-		t.Errorf("alice topics = %v, want terraform and infra", alice.Topics)
+	if !slices.Contains(all(alice), "terraform") || !slices.Contains(all(alice), "infra") {
+		t.Errorf("alice topics = %v, weak = %v, want terraform and infra",
+			alice.Topics, alice.WeakTopics)
 	}
 	if alice.Name != "Alice Smith" {
 		t.Errorf("alice name = %q", alice.Name)
@@ -84,8 +90,8 @@ func TestGitHistoryFetch(t *testing.T) {
 	}
 
 	bob := byEmail["bob@corp.com"]
-	if !slices.Contains(bob.Topics, "python") || !slices.Contains(bob.Topics, "serve") {
-		t.Errorf("bob topics = %v, want python and serve", bob.Topics)
+	if !slices.Contains(all(bob), "python") || !slices.Contains(all(bob), "serve") {
+		t.Errorf("bob topics = %v, weak = %v, want python and serve", bob.Topics, bob.WeakTopics)
 	}
 }
 
@@ -170,8 +176,10 @@ func TestGitHistoryMailmap(t *testing.T) {
 	if recs[0].Email != "alice@corp.com" || recs[0].Name != "Alice Smith" {
 		t.Errorf("record = %+v, want canonical alice@corp.com / Alice Smith", recs[0])
 	}
-	if !slices.Contains(recs[0].Topics, "terraform") {
-		t.Errorf("topics = %v, want terraform from both commits", recs[0].Topics)
+	merged := append(append([]string(nil), recs[0].Topics...), recs[0].WeakTopics...)
+	if !slices.Contains(merged, "terraform") {
+		t.Errorf("topics = %v, weak = %v, want terraform from both commits",
+			recs[0].Topics, recs[0].WeakTopics)
 	}
 }
 

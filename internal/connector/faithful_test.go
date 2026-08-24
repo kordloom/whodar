@@ -336,7 +336,9 @@ func TestConfluenceAgainstFaithfulSite(t *testing.T) {
 		switch r.Email {
 		case "jane@x.com":
 			sawCreator = true
-			for _, tp := range r.Topics {
+			// Body words are mined as weak topics: they still carry affinity, but
+			// only a stated label establishes a subject on its own.
+			for _, tp := range append(append([]string(nil), r.Topics...), r.WeakTopics...) {
 				if tp == "idempotently" {
 					sawBodyTopic = true
 				}
@@ -344,7 +346,7 @@ func TestConfluenceAgainstFaithfulSite(t *testing.T) {
 		case "bob@x.com":
 			sawEditor = true
 		}
-		if r.Team == "" && r.Text == "" && len(r.Topics) == 0 {
+		if r.Team == "" && r.Text == "" && len(r.Topics) == 0 && len(r.WeakTopics) == 0 {
 			t.Errorf("record %+v carries nothing from the expanded page", r)
 		}
 	}

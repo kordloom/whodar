@@ -537,17 +537,24 @@ func (ix *Index) buildPerson(rec connector.Record) {
 		pt.Teams = appendUnique(pt.Teams, strings.ToLower(rec.Team))
 		add(rec.Team, weightTeam)
 	}
-	for _, top := range rec.Topics {
+	addTopic := func(top string, curated bool) {
 		tid := topicID(top)
-		if g.Topics[tid] == nil {
-			g.Topics[tid] = &model.Topic{ID: tid, Name: strings.ToLower(top)}
+		if tid == "" {
+			return
 		}
+		noteTopic(g, tid, top, rec.Source, curated)
 		p.Topics[tid] += weightTopic * w
 		pt.Topics = append(pt.Topics, strings.ToLower(top))
 		add(top, weightTopic)
-		if rec.Source == "codeowners" && !slices.Contains(p.Owns, tid) {
+		if curated && rec.Source == "codeowners" && !slices.Contains(p.Owns, tid) {
 			p.Owns = append(p.Owns, tid)
 		}
+	}
+	for _, top := range rec.Topics {
+		addTopic(top, true)
+	}
+	for _, top := range rec.WeakTopics {
+		addTopic(top, false)
 	}
 	// Fresh ingest carries readable Text, kept in memory for embedding and
 	// merge and tokenized into postings. A record rebuilt from a saved index
@@ -612,14 +619,21 @@ func (ix *Index) buildChannel(rec connector.Record) {
 	if rec.Title != "" {
 		add(rec.Title, weightTopic)
 	}
-	for _, top := range rec.Topics {
+	addTopic := func(top string, curated bool) {
 		tid := topicID(top)
-		if g.Topics[tid] == nil {
-			g.Topics[tid] = &model.Topic{ID: tid, Name: strings.ToLower(top)}
+		if tid == "" {
+			return
 		}
+		noteTopic(g, tid, top, rec.Source, curated)
 		ch.Topics[tid] += weightTopic * d
 		ct.Topics = append(ct.Topics, strings.ToLower(top))
 		add(top, weightTopic)
+	}
+	for _, top := range rec.Topics {
+		addTopic(top, true)
+	}
+	for _, top := range rec.WeakTopics {
+		addTopic(top, false)
 	}
 	// Fresh ingest tokenizes readable Text; a rebuilt record replays its
 	// stored stemmed Terms, so a channel's sampled chatter never reaches disk.
@@ -1345,9 +1359,10 @@ func personID(rec connector.Record) model.ID {
 	}
 }
 
-// topicID returns the identifier for a topic name.
+// topicID returns the canonical identifier for a topic name, folding synonyms
+// and abbreviations onto one topic so the same concept is not split across forms.
 func topicID(name string) model.ID {
-	return model.ID(slug(name))
+	return model.ID(canonicalTopic(name))
 }
 
 // betterName reports whether name should replace current. A handle-like

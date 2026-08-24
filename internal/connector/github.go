@@ -110,6 +110,18 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 
 	counts := make(map[string]map[string]int) // login -> token -> count
 	latest := make(map[string]time.Time)      // login -> most recent activity
+	// Tokens some repository, pull request, or issue stated as a topic or label.
+	// Everything else mined from a name, title, or description stays weak.
+	curated := make(map[string]bool)
+	markCurated := func(tokens []string) {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, tok := range tokens {
+			if tok = strings.ToLower(strings.TrimSpace(tok)); tok != "" {
+				curated[tok] = true
+			}
+		}
+	}
 	bump := func(login string, tokens []string, t time.Time) {
 		if login == "" || len(tokens) == 0 || strings.HasSuffix(login, "[bot]") {
 			return
@@ -153,7 +165,7 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 		go func(full, owner, name string) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			recs, eps, err := g.indexRepo(ctx, full, owner, name, bump)
+			recs, eps, err := g.indexRepo(ctx, full, owner, name, bump, markCurated)
 			mu.Lock()
 			codeOwnerRecords = append(codeOwnerRecords, recs...)
 			g.episodes = append(g.episodes, eps...)
@@ -172,7 +184,8 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 
 	records := make([]Record, 0, len(counts)+len(codeOwnerRecords))
 	for login, tokenCounts := range counts {
-		rec := githubPersonRecord(login, expandTopics(tokenCounts), accounts[login])
+		rec := githubPersonRecord(login, nil, accounts[login])
+		rec.Topics, rec.WeakTopics = splitCurated(expandTopics(tokenCounts), curated)
 		rec.Time = latest[login]
 		records = append(records, rec)
 	}
@@ -187,6 +200,7 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 // discarding the repos already indexed.
 func (g *GitHub) indexRepo(
 	ctx context.Context, full, owner, name string, bump func(string, []string, time.Time),
+	markCurated func([]string),
 ) ([]Record, []episode.Episode, error) {
 	repo, err := g.client.Repo(ctx, owner, name)
 	if err != nil {
@@ -199,6 +213,7 @@ func (g *GitHub) indexRepo(
 	var conCount int
 	if g.opts.Since.IsZero() {
 		repoTokens := repoTopicSet(repo)
+		markCurated(repo.Topics)
 		cons, err := g.client.Contributors(ctx, owner, name)
 		if e := g.usable(full, "contributors", len(cons), err); e != nil {
 			return nil, nil, fmt.Errorf("contributors: %w", e)
@@ -220,6 +235,7 @@ func (g *GitHub) indexRepo(
 		if !g.opts.Since.IsZero() && pr.UpdatedAt.Before(g.opts.Since) {
 			break
 		}
+		markCurated(pr.LabelNames())
 		tokens := append(pr.LabelNames(), titleTokens(pr.Title)...)
 		bump(pr.Author(), tokens, pr.UpdatedAt)
 		for _, u := range pr.Reviewers() {
@@ -258,6 +274,7 @@ func (g *GitHub) indexRepo(
 			continue
 		}
 		issueCount++
+		markCurated(is.LabelNames())
 		tokens := append(is.LabelNames(), titleTokens(is.Title)...)
 		bump(is.Author(), tokens, is.UpdatedAt)
 		for _, u := range is.AssigneeLogins() {
@@ -477,6 +494,21 @@ func titleTokens(s string) []string {
 		}
 	}
 	return out
+}
+
+// splitCurated divides topic tokens into the ones some source stated outright
+// and the ones inferred from prose, so the index can tell a declared subject
+// apart from a word that happened to appear in a title. Order is preserved and
+// repeats are kept, because repetition is how volume of work raises a score.
+func splitCurated(tokens []string, curated map[string]bool) (strong, weak []string) {
+	for _, t := range tokens {
+		if curated[strings.ToLower(strings.TrimSpace(t))] {
+			strong = append(strong, t)
+			continue
+		}
+		weak = append(weak, t)
+	}
+	return strong, weak
 }
 
 // expandTopics turns per-token counts into a topic slice with each token

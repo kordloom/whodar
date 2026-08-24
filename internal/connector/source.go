@@ -34,8 +34,15 @@ type Record struct {
 	Org string
 	// Manager is the manager's email or identifier, if known.
 	Manager string
-	// Topics are explicit expertise tags for the person or channel.
+	// Topics are explicit expertise tags for the person or channel: a label, a
+	// repository topic, an owned path, or an org-chart column. Something stated
+	// deliberately, which makes it the strongest topic evidence a source can give.
 	Topics []string
+	// WeakTopics are topics inferred from prose rather than declared, such as the
+	// words of an issue title. They contribute the same affinity but do not, on
+	// their own, establish a subject: a topic seen only this way has to recur
+	// across sources before it counts as one.
+	WeakTopics []string
 	// Members lists person references active in a KindChannel record.
 	Members []string
 	// Link is the web URL of a KindChannel record, used to open the channel in

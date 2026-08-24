@@ -48,12 +48,29 @@ func TestJiraFetch(t *testing.T) {
 		byKey[key] = r
 	}
 
-	if jane := byKey["jane@x.com"]; !slices.Contains(jane.Topics, "wiz") ||
-		!slices.Contains(jane.Topics, "scan") || !slices.Contains(jane.Topics, "scanning") {
-		t.Errorf("jane topics = %v, want wiz, scan, scanning", jane.Topics)
+	// Topics carries what an issue stated as a label or component; everything
+	// mined from a summary or description arrives as a weak topic. Both still
+	// count toward affinity, so check the union for presence and the split for
+	// which side each one landed on.
+	jane := byKey["jane@x.com"]
+	janeAll := append(append([]string(nil), jane.Topics...), jane.WeakTopics...)
+	if !slices.Contains(janeAll, "wiz") ||
+		!slices.Contains(janeAll, "scan") || !slices.Contains(janeAll, "scanning") {
+		t.Errorf("jane topics = %v, weak = %v, want wiz, scan, scanning",
+			jane.Topics, jane.WeakTopics)
 	}
-	if bob := byKey["jira:b1"]; !slices.Contains(bob.Topics, "dashboard") {
-		t.Errorf("bob topics = %v, want dashboard", bob.Topics)
+	// The wiz label and the scanning component were stated by the issue, so both
+	// are curated; scan is only a summary word, so it stays weak.
+	if !slices.Contains(jane.Topics, "wiz") || !slices.Contains(jane.Topics, "scanning") {
+		t.Errorf("jane curated topics = %v, want the wiz label and scanning component", jane.Topics)
+	}
+	if !slices.Contains(jane.WeakTopics, "scan") {
+		t.Errorf("jane weak topics = %v, want the summary word scan", jane.WeakTopics)
+	}
+	bob := byKey["jira:b1"]
+	bobAll := append(append([]string(nil), bob.Topics...), bob.WeakTopics...)
+	if !slices.Contains(bobAll, "dashboard") {
+		t.Errorf("bob topics = %v, weak = %v, want dashboard", bob.Topics, bob.WeakTopics)
 	}
 	zone := time.FixedZone("", -5*3600)
 	if want := time.Date(2026, 6, 20, 9, 30, 0, 0, zone); !byKey["jane@x.com"].Time.Equal(want) {

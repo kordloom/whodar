@@ -48,6 +48,12 @@ func Risk(ix *index.Index, limit int) []TopicRisk {
 			if w <= 0 {
 				continue
 			}
+			// Knowledge risk is only meaningful for a subject the organization
+			// actually has. A word mined once out of a title is not one, and
+			// reporting it as critical would bury the topics that matter.
+			if !ix.Graph.Topics[tid].Salient() {
+				continue
+			}
 			m := byTopic[string(tid)]
 			if m == nil {
 				m = make(map[model.ID]float64)

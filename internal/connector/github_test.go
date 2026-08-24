@@ -58,9 +58,16 @@ func TestGitHubFetch(t *testing.T) {
 		byID[r.PersonID] = r
 	}
 
-	if jane := byID["github:jane"]; !slices.Contains(jane.Topics, "wiz") ||
-		!slices.Contains(jane.Topics, "scan") || !slices.Contains(jane.Topics, "retries") {
-		t.Errorf("jane topics = %v, want wiz, scan, retries", jane.Topics)
+	// Topics carries what a repo, pull request, or issue stated as a topic or
+	// label; title words arrive as weak topics. Both count toward affinity, so
+	// check the union for presence and the split for which side each landed on.
+	all := func(r Record) []string {
+		return append(append([]string(nil), r.Topics...), r.WeakTopics...)
+	}
+	if jane := byID["github:jane"]; !slices.Contains(all(jane), "wiz") ||
+		!slices.Contains(all(jane), "scan") || !slices.Contains(all(jane), "retries") {
+		t.Errorf("jane topics = %v, weak = %v, want wiz, scan, retries",
+			jane.Topics, jane.WeakTopics)
 	}
 	if want := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC); !byID["github:jane"].Time.Equal(want) {
 		t.Errorf("jane time = %v, want the PR update time %v", byID["github:jane"].Time, want)
@@ -68,15 +75,23 @@ func TestGitHubFetch(t *testing.T) {
 	if want := time.Date(2026, 6, 15, 8, 0, 0, 0, time.UTC); !byID["github:dan"].Time.Equal(want) {
 		t.Errorf("dan time = %v, want the issue update time %v", byID["github:dan"].Time, want)
 	}
-	if bob := byID["github:bob"]; !slices.Contains(bob.Topics, "wiz") {
-		t.Errorf("reviewer bob topics = %v, want wiz", bob.Topics)
+	if bob := byID["github:bob"]; !slices.Contains(all(bob), "wiz") {
+		t.Errorf("reviewer bob topics = %v, weak = %v, want wiz", bob.Topics, bob.WeakTopics)
 	}
-	if carol := byID["github:carol"]; !slices.Contains(carol.Topics, "wiz") {
-		t.Errorf("assignee carol topics = %v, want wiz", carol.Topics)
+	if carol := byID["github:carol"]; !slices.Contains(all(carol), "wiz") {
+		t.Errorf("assignee carol topics = %v, weak = %v, want wiz", carol.Topics, carol.WeakTopics)
 	}
-	if dan := byID["github:dan"]; !slices.Contains(dan.Topics, "dashboard") ||
-		!slices.Contains(dan.Topics, "wiz") {
-		t.Errorf("issue author dan topics = %v, want dashboard, wiz", dan.Topics)
+	dan := byID["github:dan"]
+	if !slices.Contains(all(dan), "dashboard") || !slices.Contains(all(dan), "wiz") {
+		t.Errorf("issue author dan topics = %v, weak = %v, want dashboard, wiz",
+			dan.Topics, dan.WeakTopics)
+	}
+	// The dashboard label was stated by the issue; wiz only appears in its title.
+	if !slices.Contains(dan.Topics, "dashboard") {
+		t.Errorf("dan curated topics = %v, want the dashboard label", dan.Topics)
+	}
+	if !slices.Contains(dan.WeakTopics, "wiz") {
+		t.Errorf("dan weak topics = %v, want the title word wiz", dan.WeakTopics)
 	}
 	if _, ok := byID["github:ghost"]; ok {
 		t.Error("pull request returned by the issues endpoint should be skipped")

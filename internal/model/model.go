@@ -57,6 +57,24 @@ type Topic struct {
 	ID ID
 	// Name is the normalized topic text.
 	Name string
+	// Curated marks a topic that some source stated explicitly, such as a GitHub
+	// topic, a Jira label, a CODEOWNERS path, or an org-chart topics column. A
+	// topic only ever mined out of prose is not curated, which is how an
+	// incidental word is told apart from a subject somebody declared.
+	Curated bool
+	// Sources names the connectors that produced this topic. Breadth across
+	// sources is the strongest evidence a topic is real rather than a stray word.
+	Sources []string
+}
+
+// Salient reports whether a topic is established enough to present as a subject
+// in its own right. A curated topic always counts; a topic only mined from prose
+// has to show up in more than one source to earn it.
+func (t *Topic) Salient() bool {
+	if t == nil {
+		return false
+	}
+	return t.Curated || len(t.Sources) > 1
 }
 
 // Channel is a place to ask, such as a Slack channel.

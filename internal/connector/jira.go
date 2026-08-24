@@ -105,6 +105,9 @@ func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 	counts := make(map[string]map[string]int)
 	users := make(map[string]jira.User)
 	latest := make(map[string]time.Time)
+	// Tokens any issue stated as a label or component. Everything else mined from
+	// a summary or description stays a weak topic.
+	curated := make(map[string]bool)
 	bump := func(u *jira.User, tokens []string, t time.Time) {
 		if u == nil {
 			return
@@ -139,10 +142,16 @@ func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 		updated := jiraTime(is.Fields.Updated)
 		bump(is.Fields.Assignee, tokens, updated)
 		bump(is.Fields.Reporter, tokens, updated)
+		for _, tok := range issueCuratedTopics(is) {
+			if tok = strings.ToLower(strings.TrimSpace(tok)); tok != "" {
+				curated[tok] = true
+			}
+		}
 	}
 	records := make([]Record, 0, len(counts))
 	for key, c := range counts {
-		rec := jiraPersonRecord(users[key], expandTopics(c))
+		rec := jiraPersonRecord(users[key], nil)
+		rec.Topics, rec.WeakTopics = splitCurated(expandTopics(c), curated)
 		rec.Time = latest[key]
 		records = append(records, rec)
 	}
@@ -202,6 +211,18 @@ func (j *Jira) jql() string {
 // margin so minor clock or timezone skew re-reads a little rather than skips.
 func jiraJQLTime(t time.Time) string {
 	return t.Add(-2 * time.Minute).Format("2006/01/02 15:04")
+}
+
+// issueCuratedTopics returns the topics an issue states outright: its labels and
+// its components. Somebody chose these, which makes them the strongest evidence
+// the issue is about that subject.
+func issueCuratedTopics(is jira.Issue) []string {
+	f := is.Fields
+	out := append([]string(nil), f.Labels...)
+	for _, c := range f.Components {
+		out = append(out, c.Name)
+	}
+	return out
 }
 
 // issueTopics derives topic tokens from an issue's components, labels, summary,

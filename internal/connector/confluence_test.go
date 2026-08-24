@@ -68,12 +68,23 @@ func TestConfluenceFetch(t *testing.T) {
 		byKey[key] = r
 	}
 
-	if jane := byKey["jane@x.com"]; !slices.Contains(jane.Topics, "wiz") ||
-		!slices.Contains(jane.Topics, "scanning") {
-		t.Errorf("jane topics = %v, want wiz, scanning", jane.Topics)
+	// A page's labels are curated topics; its title, space, and body words are
+	// weak. Both carry affinity, so check the union for presence.
+	all := func(r Record) []string {
+		return append(append([]string(nil), r.Topics...), r.WeakTopics...)
 	}
-	if bob := byKey["confluence:b1"]; !slices.Contains(bob.Topics, "dashboard") {
-		t.Errorf("bob topics = %v, want dashboard", bob.Topics)
+	jane := byKey["jane@x.com"]
+	if !slices.Contains(all(jane), "wiz") || !slices.Contains(all(jane), "scanning") {
+		t.Errorf("jane topics = %v, weak = %v, want wiz, scanning", jane.Topics, jane.WeakTopics)
+	}
+	if !slices.Contains(jane.Topics, "wiz") {
+		t.Errorf("jane curated topics = %v, want the wiz label", jane.Topics)
+	}
+	if !slices.Contains(jane.WeakTopics, "scanning") {
+		t.Errorf("jane weak topics = %v, want the title word scanning", jane.WeakTopics)
+	}
+	if bob := byKey["confluence:b1"]; !slices.Contains(all(bob), "dashboard") {
+		t.Errorf("bob topics = %v, weak = %v, want dashboard", bob.Topics, bob.WeakTopics)
 	}
 	if want := time.Date(2026, 6, 25, 14, 0, 0, 0, time.UTC); !byKey["jane@x.com"].Time.Equal(want) {
 		t.Errorf("jane time = %v, want the page edit time %v", byKey["jane@x.com"].Time, want)
