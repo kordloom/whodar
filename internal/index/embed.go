@@ -222,6 +222,9 @@ func (ix *Index) topicEmbedText(tid model.ID, vocab map[model.ID][]string) strin
 // describes one thing.
 func (ix *Index) SemanticTopics(query []float32, limit int) []model.ID {
 	ranked := rankByCosine(ix.topicVecs, query, limit)
+	if !discriminating(ranked) {
+		return nil
+	}
 	out := make([]model.ID, 0, len(ranked))
 	for _, r := range ranked {
 		out = append(out, r.id)
@@ -229,14 +232,17 @@ func (ix *Index) SemanticTopics(query []float32, limit int) []model.ID {
 	return out
 }
 
-// TopicSimilarity returns the cosine similarity between the query vector and a
-// topic, or zero when the topic has no vector.
+// TopicSimilarity reports how far a subject stands out from the other subjects
+// for this query, on the same scale people are scored by, so a question that
+// suits every subject equally reports confidence in none of them.
 func (ix *Index) TopicSimilarity(query []float32, tid model.ID) float64 {
 	vec, ok := ix.topicVecs[tid]
 	if !ok {
 		return 0
 	}
-	return cosine(query, vec)
+	ranked := rankByCosine(ix.topicVecs, query, 0)
+	median, ok := fieldMedian(ranked)
+	return standout(cosine(query, vec), median, ok)
 }
 
 // TopicExperts returns the people with the strongest affinity for a topic,
@@ -275,14 +281,82 @@ func (ix *Index) TopicExperts(tid model.ID, limit int) []*model.Person {
 // and a frozen line.
 func (ix *Index) SetEmbedProgress(p util.Progress) { ix.embedProgress = p }
 
+// standoutScale is the cosine margin over the middle of the field that counts as
+// a match standing fully on its own. Raw cosine is not a confidence: an
+// embedding model puts two unrelated pieces of engineering talk around 0.6 as a
+// matter of course, so reporting 0.6 as "fairly sure" states a certainty nothing
+// earned. What carries information is how far a match stands above the rest of
+// the field for the same question, which is what this scales.
+const standoutScale = 0.15
+
+// minStandout is the confidence below which a match is indistinguishable from
+// the field and is dropped rather than shown. A name offered with no real
+// evidence behind it is worse than no name, because it will be believed.
+const minStandout = 0.05
+
+// discriminating reports whether a ranking actually picked somebody out. The
+// test is the best score against the middle of the field rather than against the
+// tail, because a tail always slopes away on its own, and rather than against
+// second place, because two people genuinely sharing a subject should not read
+// as no answer.
+//
+// A flat ranking is not a weak answer to show with a low score, it is the
+// absence of one. Presenting it names a person at a confidence the evidence does
+// not support, which is worse than saying nothing at all. A list too short to
+// have a middle is left alone, since there is nothing there to mislead anyone.
+func discriminating(ranked []scoredID) bool {
+	if len(ranked) < minRankedToJudge {
+		return true
+	}
+	median, ok := fieldMedian(ranked)
+	return standout(ranked[0].score, median, ok) >= minStandout
+}
+
+// fieldMedian is the middle score of a ranking, the level a question places
+// everything at when it distinguishes nothing. It returns false when the
+// ranking is too short to have a middle worth measuring against.
+func fieldMedian(ranked []scoredID) (float64, bool) {
+	if len(ranked) < minRankedToJudge {
+		return 0, false
+	}
+	return ranked[len(ranked)/2].score, true
+}
+
+// standout converts a raw similarity into a confidence by measuring it against
+// the middle of its own field, so a match reports how far it rose above the
+// crowd rather than how large a number the model happened to return. With too
+// few results to make a field, there is nothing to stand out from and the
+// similarity is reported as it is.
+func standout(score, median float64, haveField bool) float64 {
+	if score <= 0 {
+		return 0
+	}
+	if !haveField {
+		return min(1, score)
+	}
+	return min(1, max(0, (score-median)/standoutScale))
+}
+
+// minRankedToJudge is how many results a ranking needs before its spread means
+// anything.
+const minRankedToJudge = 4
+
 // SemanticPeople ranks people by cosine similarity to the query vector. The
 // similarity doubles as the confidence, clamped at zero.
 func (ix *Index) SemanticPeople(query []float32, limit int) []model.Match {
 	ranked := rankByCosine(ix.personVecs, query, limit)
+	if !discriminating(ranked) {
+		return nil
+	}
+	median, haveField := fieldMedian(ranked)
 	out := make([]model.Match, 0, len(ranked))
 	for _, r := range ranked {
 		p := ix.Graph.People[r.id]
 		if p == nil {
+			continue
+		}
+		confidence := standout(r.score, median, haveField)
+		if confidence < minStandout {
 			continue
 		}
 		var team *model.Team
@@ -293,7 +367,7 @@ func (ix *Index) SemanticPeople(query []float32, limit int) []model.Match {
 			Person:     p,
 			Team:       team,
 			Score:      r.score,
-			Confidence: max(0, r.score),
+			Confidence: confidence,
 			Reasons:    []string{"semantic match"},
 		})
 	}
@@ -304,6 +378,9 @@ func (ix *Index) SemanticPeople(query []float32, limit int) []model.Match {
 // attaches the members most similar to the query.
 func (ix *Index) SemanticChannels(query []float32, limit int) []model.ChannelMatch {
 	ranked := rankByCosine(ix.channelVecs, query, limit)
+	if !discriminating(ranked) {
+		return nil
+	}
 	memberScores := cosineScores(ix.personVecs, query)
 	out := make([]model.ChannelMatch, 0, len(ranked))
 	for _, r := range ranked {

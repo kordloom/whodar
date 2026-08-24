@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -77,5 +78,53 @@ func TestEmbedSaveLoad(t *testing.T) {
 	q, _ := fakeEmbedder{}.Embed(context.Background(), "retries")
 	if got := loaded.SemanticPeople(q, 1); len(got) != 1 || got[0].Person.Email != "jane@x.com" {
 		t.Fatalf("after load, semantic top = %v, want jane@x.com", got)
+	}
+}
+
+// TestStandoutConfidence checks that a similarity is reported as how far a match
+// stands above its field, not as the raw number. A question that suits everyone
+// equally must not come back with a confident name attached.
+func TestStandoutConfidence(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		Name      string
+		Ranked    []scoredID
+		WantFirst float64
+		WantAny   bool
+	}{{ // Test 0: A flat field distinguishes nobody, so nobody is named.
+		Name: "flat field",
+		Ranked: []scoredID{
+			{id: "a", score: 0.638}, {id: "b", score: 0.637},
+			{id: "c", score: 0.636}, {id: "d", score: 0.635},
+			{id: "e", score: 0.634},
+		},
+		WantAny: false,
+	}, { // Test 1: A clear standout keeps a high confidence.
+		Name: "one clear match",
+		Ranked: []scoredID{
+			{id: "a", score: 0.90}, {id: "b", score: 0.62},
+			{id: "c", score: 0.61}, {id: "d", score: 0.60},
+			{id: "e", score: 0.59},
+		},
+		WantFirst: 1, WantAny: true,
+	}, { // Test 2: Too few results to form a field, so the score stands as it is.
+		Name:      "no field to judge",
+		Ranked:    []scoredID{{id: "a", score: 0.7}, {id: "b", score: 0.2}},
+		WantFirst: 0.7, WantAny: true,
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d %s", testNum, test.Name), func(t *testing.T) {
+			t.Parallel()
+			if got := discriminating(test.Ranked); got != test.WantAny {
+				t.Errorf("discriminating = %v, want %v", got, test.WantAny)
+			}
+			if !test.WantAny {
+				return
+			}
+			median, ok := fieldMedian(test.Ranked)
+			if got := standout(test.Ranked[0].score, median, ok); got != test.WantFirst {
+				t.Errorf("confidence = %v, want %v", got, test.WantFirst)
+			}
+		})
 	}
 }
