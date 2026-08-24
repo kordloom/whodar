@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/kordloom/whodar/internal/index"
@@ -52,5 +53,74 @@ func TestRelated(t *testing.T) {
 	}
 	if rel := Related(ix, "nonexistent", 0); rel != nil {
 		t.Errorf("Related(nonexistent) = %+v, want nil", rel)
+	}
+}
+
+// TestTopicGroups checks the two guards that keep folding honest: a fragment
+// folds into its compound only when the same people hold both, a lone expert's
+// unrelated topics never fuse, and a genuinely broader topic keeps its identity.
+func TestTopicGroups(t *testing.T) {
+	t.Parallel()
+	ix := index.New()
+	g := ix.Graph
+	topic := func(id string) {
+		g.Topics[model.ID(id)] = &model.Topic{ID: model.ID(id), Name: id, Curated: true}
+	}
+	person := func(id string, topics ...string) {
+		p := &model.Person{ID: model.ID(id), Topics: make(map[model.ID]float64)}
+		for _, tp := range topics {
+			p.Topics[model.ID(tp)] = 1
+		}
+		g.People[model.ID(id)] = p
+	}
+	for _, id := range []string{
+		"billing", "retries", "billing-retries",
+		"kubernetes", "kubernetes-deploys", "kafka",
+	} {
+		topic(id)
+	}
+	// The billing people all work on billing-retries, so those words are that
+	// subject said shorter. Kubernetes is broader: most of its experts never
+	// touch deploys. Zoe is the lone expert on two unrelated subjects.
+	person("a@x.com", "billing", "retries", "billing-retries", "kubernetes")
+	person("b@x.com", "billing", "retries", "billing-retries", "kubernetes")
+	person("c@x.com", "kubernetes")
+	person("d@x.com", "kubernetes")
+	person("e@x.com", "kubernetes", "kubernetes-deploys")
+	person("zoe@x.com", "kafka")
+
+	groups := topicGroups(ix)
+	if got := groups["billing"]; got != "billing-retries" {
+		t.Errorf("billing folded to %q, want billing-retries", got)
+	}
+	if got := groups["retries"]; got != "billing-retries" {
+		t.Errorf("retries folded to %q, want billing-retries", got)
+	}
+	if got := groups["billing-retries"]; got != "billing-retries" {
+		t.Errorf("billing-retries folded to %q, want itself", got)
+	}
+	// Only one of four kubernetes experts does deploys, so the broader topic
+	// keeps its own identity rather than collapsing into the narrower one.
+	if got := groups["kubernetes"]; got != "kubernetes" {
+		t.Errorf("kubernetes folded to %q, want itself: it is the broader subject", got)
+	}
+	// Kafka shares no word with anything, so it stands alone even though its
+	// only expert holds nothing else.
+	if got := groups["kafka"]; got != "kafka" {
+		t.Errorf("kafka folded to %q, want itself", got)
+	}
+
+	// Rolled up, the three billing names report as one risk rather than three.
+	var billing []TopicRisk
+	for _, r := range Risk(ix, 0) {
+		if r.Topic == "billing-retries" || r.Topic == "billing" || r.Topic == "retries" {
+			billing = append(billing, r)
+		}
+	}
+	if len(billing) != 1 {
+		t.Fatalf("billing risks = %+v, want one rolled-up entry", billing)
+	}
+	if want := []string{"billing", "retries"}; !slices.Equal(billing[0].Includes, want) {
+		t.Errorf("includes = %v, want %v", billing[0].Includes, want)
 	}
 }

@@ -504,6 +504,9 @@ func renderRisk(w io.Writer, topics []resolve.TopicRisk, s style) {
 		}
 		fmt.Fprintf(w, "  %s  %s  %s\n",
 			pad(s.bold(t.Topic), t.Topic, width), pct(t.Concentration), s.dim(fmt.Sprintf("bus factor %d", t.BusFactor)))
+		if len(t.Includes) > 0 {
+			fmt.Fprintf(w, "      %s\n", s.dim("also called "+strings.Join(t.Includes, ", ")))
+		}
 		for _, e := range t.Experts {
 			fmt.Fprintf(w, "      %s %s\n", pct(e.Share), s.dim(e.Name))
 		}

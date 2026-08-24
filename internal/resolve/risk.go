@@ -35,6 +35,9 @@ type TopicRisk struct {
 	BusFactor int `json:"busFactor"`
 	// Experts are the strongest people for the topic, strongest first.
 	Experts []RiskExpert `json:"experts"`
+	// Includes are the other names this same body of knowledge goes by, folded
+	// in so one subject is not reported as several risks.
+	Includes []string `json:"includes,omitempty"`
 }
 
 // Risk scores knowledge concentration for every topic across the graph: it is
@@ -42,7 +45,11 @@ type TopicRisk struct {
 // Results are risk-first; limit caps them, and a limit of zero or less returns
 // all of them.
 func Risk(ix *index.Index, limit int) []TopicRisk {
+	// Fragments of one compound subject are folded together first, so a body of
+	// knowledge is weighed once rather than once per name it goes by.
+	groups := topicGroups(ix)
 	byTopic := make(map[string]map[model.ID]float64)
+	aliases := make(map[string]map[string]bool)
 	for id, p := range ix.Graph.People {
 		for tid, w := range p.Topics {
 			if w <= 0 {
@@ -54,12 +61,20 @@ func Risk(ix *index.Index, limit int) []TopicRisk {
 			if !ix.Graph.Topics[tid].Salient() {
 				continue
 			}
-			m := byTopic[string(tid)]
+			key := groups[string(tid)]
+			if key == "" {
+				key = string(tid)
+			}
+			m := byTopic[key]
 			if m == nil {
 				m = make(map[model.ID]float64)
-				byTopic[string(tid)] = m
+				byTopic[key] = m
+				aliases[key] = make(map[string]bool)
 			}
 			m[id] += w
+			if string(tid) != key {
+				aliases[key][string(tid)] = true
+			}
 		}
 	}
 	var out []TopicRisk
@@ -98,8 +113,14 @@ func Risk(ix *index.Index, limit int) []TopicRisk {
 		if len(experts) > 5 {
 			experts = experts[:5]
 		}
+		includes := make([]string, 0, len(aliases[topic]))
+		for a := range aliases[topic] {
+			includes = append(includes, a)
+		}
+		sort.Strings(includes)
 		out = append(out, TopicRisk{
-			Topic: topic, Level: level, Concentration: experts[0].Share, BusFactor: bus, Experts: experts,
+			Topic: topic, Level: level, Concentration: experts[0].Share, BusFactor: bus,
+			Experts: experts, Includes: includes,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
