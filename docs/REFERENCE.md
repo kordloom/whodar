@@ -91,6 +91,7 @@ Builds or extends the index from one source per run.
 | `--repo-path`       |           | git        | Local repository root, repeatable.               |
 | `--git-since-days`  | `365`     | git        | History window in days.                          |
 | `--max-commits`     | `2000`    | git        | Commit cap per repository.                       |
+| `--git-workers`     | machine   | git        | Commits diffed at once; a walk's whole cost.     |
 
 ### Incremental re-indexing
 
@@ -234,6 +235,71 @@ shared topics. Co-membership is normalized by group size, so a small tight team
 counts for far more than a broad channel; groups that span most of the org are
 ignored as administrative; and permission tiers of one group (store-admin,
 store-write) fold together. PERSON is an email, an id, or an exact name.
+
+## whodar search
+
+    whodar search QUERY [--limit N]
+
+Find people and channels whose name, email, title, team, or topic contains
+QUERY, ranked by how directly they match. This is a direct lookup, so use it
+when you know what you are looking for; use `ask` when you want the people who
+know a subject ranked by expertise.
+
+## whodar related
+
+    whodar related TOPIC [--limit N]
+
+Report the topics whose experts overlap TOPIC's own. An organization names one
+subject several ways and usually has specialties underneath it, and overlap over
+the people who do the work finds both without a taxonomy anyone had to write: a
+topic held by the same people is the same body of knowledge, and one held by
+fewer of them is a specialty within it.
+
+## whodar risk
+
+    whodar risk [PERSON] [--limit N] [--html PATH]
+
+Score knowledge concentration across the graph: the subjects where one or two
+people hold most of the expertise, so a single departure is visible before it
+hurts. Name a person for the offboarding view instead: what leaves with them.
+
+`--html` writes a self-contained knowledge-risk brief to PATH rather than
+printing. The file needs no network, no server, and no whodar to open, so it can
+be forwarded to somebody who has neither. It leads with the headline counts,
+lists every scored subject in a sortable and filterable table with a CSV export,
+reads the same finding back per person as what would leave with them, and states
+which sources it saw so a reader can judge how much of the company it covered.
+The headline counts are taken over every scored subject, so capping the table
+with `--limit` never shrinks them.
+
+Deterministic arithmetic over the graph, no model needed.
+
+## whodar ownership
+
+    whodar ownership
+
+Compare declared ownership, from a source of record such as CODEOWNERS, against
+who actually has the expertise. A mismatch is ownership drift: the file says one
+person or team owns an area, but the work and the knowledge sit somewhere else.
+
+## whodar attest
+
+    whodar attest
+
+Produce a LoomSeal evidence bundle for the current knowledge-risk finding: the
+claim, a digest of the evidence behind it, and an ed25519 signature. Anyone can
+verify it offline with the loomseal verifier, with no account and nothing sent
+anywhere, so the finding can be trusted without trusting the machine that made
+it. The signing key is created once under the data directory and reused.
+
+## whodar identity
+
+    whodar identity [PERSON]
+
+List the inferred identity merges: each handle folded into a person, how
+confident the merge is, and the evidence for it. Joins by shared email or
+provider id are certain and are not listed. Correct a wrong merge by editing the
+[alias file](#identity-aliases) and re-indexing.
 
 ## whodar archive
 
@@ -457,8 +523,22 @@ answers under `identities`. See `examples/aliases.json`.
 Keyword scores weight rarer query terms higher, then cap and saturate each
 term's accumulated weight, so repeating a word in chat all day cannot outrank
 the person with the explicit topic, title, or ownership signal. People with
-far more indexed text than average are further discounted for verbosity.
-Recency decay and feedback votes then scale the result.
+far more indexed text than average are further discounted for verbosity, though
+only mildly, for a measured reason: the people who own the most of an
+organization are also the people who appear in the most of it, and discounting
+them heavily for that hands their own subjects to whoever passed through once.
+Removing the discount is worse again, since then whoever appears most often
+wins everything. Recency decay and feedback votes then scale the result.
+
+How often somebody touched a subject counts one for one at first and
+logarithmically after that, so an owner with three hundred commits in an area
+outranks somebody with four, while no single subject can run away with a
+person's whole profile.
+
+Both of those are tuned against real repositories rather than by taste. The
+measure is a project's own CODEOWNERS file: index only its commit history, hold
+the ownership file out, and ask whodar who knows each area. The labels are
+written by that project's maintainers, so the answer is not graded by us.
 
 A term that matches nothing falls back to fuzzy matching: the closest indexed
 term within one edit (four-letter terms and up) or two edits (seven and up)
