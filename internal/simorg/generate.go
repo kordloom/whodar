@@ -227,6 +227,63 @@ var (
 	}
 )
 
+// showCharacters are the people these two pools were taken apart from. The point
+// of the pools is a recombination, so a generated name that lands back on one of
+// the originals is a failure of the mixing rather than a bit of fun: the company
+// is meant to be populated by Walter Scott and Michael White, never by Michael
+// Scott. Any pairing listed here is skipped in favor of the next surname.
+var showCharacters = map[string]bool{
+	// The Office
+	"Michael Scott": true, "Jim Halpert": true, "Pam Beesly": true,
+	"Dwight Schrute": true, "Kevin Malone": true, "Oscar Martinez": true,
+	"Stanley Hudson": true, "Kelly Kapoor": true, "Andy Bernard": true,
+	"Meredith Palmer": true, "Phyllis Vance": true,
+	// Full House
+	"Danny Tanner": true, "Jesse Katsopolis": true, "Joey Gladstone": true,
+	"Kimmy Gibbler": true, "Stephanie Tanner": true, "Michelle Tanner": true,
+	"Steve Hale": true,
+	// Fresh Prince of Bel-Air
+	"Will Smith": true, "Carlton Banks": true, "Philip Banks": true,
+	"Vivian Banks": true, "Hilary Banks": true, "Ashley Banks": true,
+	"Geoffrey Butler": true,
+	// Silicon Valley
+	"Richard Hendricks": true, "Erlich Bachman": true, "Gavin Belson": true,
+	"Laurie Bream": true, "Russ Hanneman": true, "Jared Dunn": true,
+	// Breaking Bad
+	"Walter White": true, "Skyler White": true, "Hank Schrader": true,
+	"Marie Schrader": true, "Jesse Pinkman": true, "Saul Goodman": true,
+	"Gustavo Fring": true, "Mike Ehrmantraut": true, "Hector Salamanca": true,
+	"Gale Boetticher": true,
+	// Better Call Saul
+	"Jimmy McGill": true, "Kim Wexler": true, "Chuck McGill": true,
+	"Howard Hamlin": true, "Nacho Varga": true, "Lalo Salamanca": true,
+	// Boardwalk Empire
+	"Nucky Thompson": true, "Margaret Schroeder": true, "Chalky White": true,
+	"Gillian Darmody": true, "Jimmy Darmody": true, "Eli Thompson": true,
+	"Meyer Lansky": true, "Richard Harrow": true,
+}
+
+// mixName pairs the given name at i with a surname, striding through the family
+// pool rather than walking it in step so the two lists never line up, and
+// skipping any pairing that would rebuild one of the originals.
+func mixName(given, family []string, i int) (string, string) {
+	g := given[i%len(given)]
+	// A stride coprime with the pool length visits every surname before
+	// repeating, which keeps the mix even instead of favoring a few pairs.
+	start := (i*mixStride + i/len(given)) % len(family)
+	for k := range family {
+		f := family[(start+k)%len(family)]
+		if !showCharacters[g+" "+f] {
+			return g, f
+		}
+	}
+	return g, family[start]
+}
+
+// mixStride steps through the surname pool. It is coprime with the pool size, so
+// consecutive people do not draw neighboring surnames.
+const mixStride = 17
+
 // Generate synthesizes a company and the questions it answers. Nothing is
 // random about the answers: an owner is made fluent in one subject and nobody
 // else is, and every thread is planted with a person who resolves it, so a

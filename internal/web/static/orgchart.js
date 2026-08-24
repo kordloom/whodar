@@ -32,6 +32,11 @@
 	var searchMatches = [], searchIdx = -1;
 	var selection = new Set();
 	var view = { tx: 40, ty: 30, scale: 1 };
+	// How much a pinch zooms per wheel event, and the largest single delta that
+	// counts. Trackpads report wildly different magnitudes, so both are needed to
+	// keep the gesture steady across machines.
+	var ZOOM_SENSITIVITY = 0.0015;
+	var ZOOM_STEP_CAP = 40;
 
 	// Restrained, cool gradient pairs so avatars add life on-brand. Keyed by team.
 	var avatarPalette = [
@@ -536,8 +541,24 @@
 		window.addEventListener("mouseup", function () { drag = null; el.stage.classList.remove("panning"); });
 		el.stage.addEventListener("wheel", function (e) {
 			e.preventDefault();
+			// A pinch on a trackpad arrives as a wheel event with ctrlKey set, and
+			// that is the only wheel gesture that means zoom. A plain two-finger
+			// scroll means pan. Treating every wheel event as a zoom sent the chart
+			// flying, because one scroll delivers dozens of them and each one
+			// multiplied the scale again.
 			var r = el.stage.getBoundingClientRect();
-			zoomAround(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.1 : 1 / 1.1);
+			if (e.ctrlKey || e.metaKey) {
+				// Scale by how far the gesture actually moved, gently. A pinch
+				// delivers a stream of events, so a per-event step that feels right
+				// on its own compounds into a lurch across the whole gesture: the
+				// delta is capped and damped so the zoom tracks the fingers.
+				var step = Math.max(-ZOOM_STEP_CAP, Math.min(ZOOM_STEP_CAP, e.deltaY));
+				zoomAround(e.clientX - r.left, e.clientY - r.top, Math.exp(-step * ZOOM_SENSITIVITY));
+				return;
+			}
+			view.tx -= e.deltaX;
+			view.ty -= e.deltaY;
+			applyView();
 		}, { passive: false });
 	}
 

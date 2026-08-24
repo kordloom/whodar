@@ -123,8 +123,7 @@ func buildBigPeople(spec Spec) []person {
 	n := spec.People
 	people := make([]person, n)
 	for i := range n {
-		g := given[i%len(given)]
-		f := family[(i/len(given)+i)%len(family)]
+		g, f := mixName(given, family, i)
 		email := fmt.Sprintf("%s.%s%d@corp.com",
 			strings.ToLower(asciiFold(g)), strings.ToLower(asciiFold(f)), i)
 		people[i] = person{
