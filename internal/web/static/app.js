@@ -155,17 +155,28 @@ function showModeHint() {
   if (info && info.hint) statusEl.textContent = info.hint;
 }
 
-const EXAMPLE_QUERIES = [
-  "who do I talk to about billing retries",
-  "who knows terraform",
-  "kubernetes deploys",
-];
-
-for (const example of EXAMPLE_QUERIES) {
-  const b = el("button", "example", example);
-  b.type = "button";
-  b.addEventListener("click", () => runAsk(example));
-  examplesEl.appendChild(b);
+// showExamples offers a few questions this index can actually answer, taken
+// from the subjects the most people work on. Hardcoded examples go stale the
+// moment they name something the index does not have, and a suggested question
+// that returns nothing is the worst possible first impression.
+async function showExamples() {
+  let subjects = [];
+  try {
+    const dir = await directory();
+    subjects = (dir.topics || []).slice(0, 3).map((t) => String(t.name).replace(/-/g, " "));
+  } catch (err) {
+    // Fall through to the generic prompts below.
+  }
+  const queries = subjects.length
+    ? subjects.map((s, i) => (i === 0 ? "who do I talk to about " + s : "who knows " + s))
+    : ["who do I talk to about billing", "who knows kubernetes", "vacation policy"];
+  examplesEl.replaceChildren();
+  for (const example of queries) {
+    const b = el("button", "example", example);
+    b.type = "button";
+    b.addEventListener("click", () => runAsk(example));
+    examplesEl.appendChild(b);
+  }
 }
 
 form.addEventListener("submit", async (event) => {
@@ -1243,5 +1254,8 @@ if (linked.get("person")) {
   openProfile(linked.get("person"));
 }
 showView(viewFromHash());
+// Examples come from the index, so they run once the directory helpers below
+// exist: called any earlier they hit the uninitialized cache and fall back.
+showExamples();
 fillNavCounts();
 loadModes();
