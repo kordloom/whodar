@@ -93,6 +93,7 @@ func newIndexCmd(opts *options) *cobra.Command {
 		halfLifeDays     int
 		repoPaths        []string
 		gitSinceDays     int
+		gitWorkers       int
 		maxCommits       int
 		confluenceURL    string
 		confluenceSpaces []string
@@ -205,6 +206,7 @@ Start with the org chart, then merge everything else onto it:
 					Paths:      repoPaths,
 					SinceDays:  gitSinceDays,
 					MaxCommits: maxCommits,
+					Workers:    gitWorkers,
 					Log:        cmd.ErrOrStderr(),
 				}).Fetch(cmd.Context())
 			case "json":
@@ -272,6 +274,8 @@ Start with the org chart, then merge everything else onto it:
 	f.StringArrayVar(&repoPaths, "repo-path", nil, "Local repository root for the git source (repeatable).")
 	f.IntVar(&gitSinceDays, "git-since-days", 365, "Git history window in days.")
 	f.IntVar(&maxCommits, "max-commits", 2000, "Commit cap per repository for the git source.")
+	f.IntVar(&gitWorkers, "git-workers", 0,
+		"Commits to diff at once for the git source; 0 picks a default from the machine.")
 	f.BoolVar(&embed, "embed", false, "Generate embeddings via Ollama for semantic search.")
 	f.StringVar(&embedModel, "embed-model", "", "Ollama embed model (default nomic-embed-text).")
 	f.StringVar(&ollamaURL, "ollama-url", "http://localhost:11434", "Ollama base URL for --embed.")
