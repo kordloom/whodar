@@ -567,6 +567,37 @@ func renderDeparture(w io.Writer, query string, imp resolve.DepartureImpact, s s
 
 // renderOwnership prints where declared ownership has drifted from the person
 // who actually does the work.
+// renderRelated prints the topics that share a topic's experts.
+func renderRelated(w io.Writer, topic string, rel []resolve.TopicRelation, s style) {
+	if len(rel) == 0 {
+		fmt.Fprintln(w, s.dim(
+			"No related topics found. Either the topic is not indexed, or nobody holds it alongside another."))
+		return
+	}
+	fmt.Fprintln(w, s.bold(fmt.Sprintf(
+		"Related to %s  %d topic%s held by the same people",
+		topic, len(rel), plural(len(rel)))))
+	width := 0
+	for _, r := range rel {
+		if n := len([]rune(r.Topic)); n > width {
+			width = n
+		}
+	}
+	if width > 24 {
+		width = 24
+	}
+	for _, r := range rel {
+		kind := "same subject"
+		if r.Narrower {
+			kind = "specialty"
+		}
+		fmt.Fprintf(w, "  %s  %s  %s\n",
+			pad(s.bold(r.Topic), r.Topic, width),
+			s.accent(fmt.Sprintf("%3.0f%% shared", r.Overlap*100)),
+			s.dim(kind))
+	}
+}
+
 func renderOwnership(w io.Writer, drift []resolve.OwnerDrift, s style) {
 	if len(drift) == 0 {
 		fmt.Fprintln(w, s.dim(

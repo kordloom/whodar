@@ -189,7 +189,7 @@ func (g *GitHistory) readRepo(
 		// hide: "fix rate-limiter backoff" against a generically named limiter.go.
 		// Mine it once per commit, so it weighs less than the per-file paths but
 		// still lets ask match what the work was about, not just which files moved.
-		for _, tok := range titleTokens(commitSubject(c.Message)) {
+		for _, tok := range phraseTokens(commitSubject(c.Message)) {
 			m[tok]++
 		}
 		return nil

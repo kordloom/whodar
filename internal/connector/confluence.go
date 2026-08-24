@@ -182,7 +182,7 @@ const maxPageBodyText = 8000
 func pageTopics(p confluence.Page) []string {
 	var out []string
 	out = append(out, p.LabelNames()...)
-	out = append(out, titleTokens(p.Title)...)
+	out = append(out, phraseTokens(p.Title)...)
 	out = append(out, titleTokens(p.Space.Name)...)
 	if body := p.BodyText(); body != "" {
 		out = append(out, titleTokens(util.Truncate(body, maxPageBodyText))...)

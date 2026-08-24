@@ -234,7 +234,7 @@ func issueTopics(is jira.Issue) []string {
 		out = append(out, titleTokens(c.Name)...)
 	}
 	out = append(out, f.Labels...)
-	out = append(out, titleTokens(f.Summary)...)
+	out = append(out, phraseTokens(f.Summary)...)
 	out = append(out, titleTokens(f.Project.Name)...)
 	// The description is where the substance of a ticket lives, so mine it into
 	// the assignee's and reporter's topics too. Without this, ask can only match

@@ -87,7 +87,7 @@ func (p *PagerDuty) Fetch(ctx context.Context) ([]Record, error) {
 	}
 	policyTopics := make(map[string][]string)
 	for _, s := range services {
-		tokens := append(titleTokens(s.Name), titleTokens(s.Description)...)
+		tokens := append(phraseTokens(s.Name), titleTokens(s.Description)...)
 		policyTopics[s.EscalationPolicy.ID] = append(policyTopics[s.EscalationPolicy.ID], tokens...)
 	}
 

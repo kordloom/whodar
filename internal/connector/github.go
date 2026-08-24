@@ -236,7 +236,7 @@ func (g *GitHub) indexRepo(
 			break
 		}
 		markCurated(pr.LabelNames())
-		tokens := append(pr.LabelNames(), titleTokens(pr.Title)...)
+		tokens := append(pr.LabelNames(), phraseTokens(pr.Title)...)
 		bump(pr.Author(), tokens, pr.UpdatedAt)
 		for _, u := range pr.Reviewers() {
 			bump(u, tokens, pr.UpdatedAt)
@@ -275,7 +275,7 @@ func (g *GitHub) indexRepo(
 		}
 		issueCount++
 		markCurated(is.LabelNames())
-		tokens := append(is.LabelNames(), titleTokens(is.Title)...)
+		tokens := append(is.LabelNames(), phraseTokens(is.Title)...)
 		bump(is.Author(), tokens, is.UpdatedAt)
 		for _, u := range is.AssigneeLogins() {
 			bump(u, tokens, is.UpdatedAt)
@@ -492,6 +492,25 @@ func titleTokens(s string) []string {
 		if len(f) >= 3 && !codeStop[f] && !noiseWords[f] {
 			out = append(out, f)
 		}
+	}
+	return out
+}
+
+// phraseTokens returns the tokens of s plus the two-word phrases formed by
+// adjacent surviving tokens, hyphenated. Expertise is often a compound
+// ("billing retries", "incident response"), and tokenizing alone shatters it
+// into words that each look like a subject of their own. Emitting the phrase
+// beside its words lets the compound accumulate its own weight while the single
+// words still match a question that only uses one of them.
+func phraseTokens(s string) []string {
+	words := titleTokens(s)
+	if len(words) < 2 {
+		return words
+	}
+	out := make([]string, 0, len(words)*2-1)
+	out = append(out, words...)
+	for i := 0; i+1 < len(words); i++ {
+		out = append(out, words[i]+"-"+words[i+1])
 	}
 	return out
 }
