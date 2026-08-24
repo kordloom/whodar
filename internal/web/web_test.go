@@ -4,14 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/kordloom/whodar/internal/report"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kordloom/whodar/internal/feedback"
 	"github.com/kordloom/whodar/internal/llm"
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/recall"
 	"github.com/kordloom/whodar/internal/resolve"
 )
 
@@ -535,5 +539,109 @@ func TestSearchAPI(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/search", nil))
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("/api/search with no q = %d, want 400", rec.Code)
+	}
+}
+
+// TestQueryLengthIsBounded checks an over-long question is refused rather than
+// answered. Without the bound one request buys an unbounded amount of ranking
+// work and an answer just as large, which a public instance pays for.
+func TestQueryLengthIsBounded(t *testing.T) {
+	t.Parallel()
+	long := strings.Repeat("kafka ", 200)
+	h, err := Handler(Config{
+		Ask: func(_ context.Context, _, _, _ string, _ int) (resolve.Answer, error) {
+			return resolve.Answer{}, nil
+		},
+		Search: func(_ string, _ int) []resolve.SearchResult { return nil },
+		Recall: func(_ context.Context, _, _ string, _ int) (recall.Answer, error) {
+			return recall.Answer{}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+
+	tests := []struct {
+		Name     string
+		Target   string
+		WantCode int
+	}{{ // Test 0: A question anybody would actually type.
+		Name: "normal ask", Target: "/api/ask?q=" + url.QueryEscape("who knows kafka"),
+		WantCode: http.StatusOK,
+	}, { // Test 1: Past the bound on ask.
+		Name: "long ask", Target: "/api/ask?q=" + url.QueryEscape(long), WantCode: http.StatusBadRequest,
+	}, { // Test 2: Past the bound on search.
+		Name: "long search", Target: "/api/search?q=" + url.QueryEscape(long), WantCode: http.StatusBadRequest,
+	}, { // Test 3: Past the bound on recall, which otherwise allows an empty query.
+		Name: "long recall", Target: "/api/recall?me=jane@x.com&q=" + url.QueryEscape(long),
+		WantCode: http.StatusBadRequest,
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d %s", testNum, test.Name), func(t *testing.T) {
+			t.Parallel()
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, test.Target, nil))
+			if rec.Code != test.WantCode {
+				t.Errorf("%s = %d, want %d (body %s)", test.Name, rec.Code, test.WantCode, rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestBriefEndpointServesAForwardableFile checks the served brief is the same
+// self-contained artifact the CLI writes. The whole point of the page is that
+// it survives being forwarded, so it must not depend on the server that made it.
+func TestBriefEndpointServesAForwardableFile(t *testing.T) {
+	t.Parallel()
+	risks := []resolve.TopicRisk{{
+		Topic: "billing", Level: "critical", Concentration: 1, BusFactor: 1,
+		Experts: []resolve.RiskExpert{{ID: "ada@x.io", Name: "Ada", Share: 1}},
+	}}
+	h, err := Handler(Config{
+		Ask: func(_ context.Context, _, _, _ string, _ int) (resolve.Answer, error) {
+			return resolve.Answer{}, nil
+		},
+		Brief: func() report.Brief {
+			exposed := report.Exposures(risks)
+			return report.Brief{
+				Generated: time.Now(), People: 3, Scored: len(risks), Sources: []string{"git"},
+				Risks: risks, Totals: report.Count(risks, exposed), Exposed: exposed,
+			}
+		},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/report/risk.html", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("brief = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+		t.Errorf("content type = %q, want html", got)
+	}
+	if got := rec.Header().Get("Content-Disposition"); !strings.Contains(got, "attachment") {
+		t.Errorf("content disposition = %q, want it offered as a download", got)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "billing") || !strings.Contains(body, "Ada") {
+		t.Error("the brief does not contain the finding it was built from")
+	}
+	for _, external := range []string{"src=\"http", "href=\"http", "fetch("} {
+		if strings.Contains(body, external) {
+			t.Errorf("the served brief reaches back to the server with %q", external)
+		}
+	}
+}
+
+// TestBriefRouteAbsentWithoutABriefFunc checks the route is not registered when
+// the server was not given a way to build one, rather than answering with a
+// broken page.
+func TestBriefRouteAbsentWithoutABriefFunc(t *testing.T) {
+	t.Parallel()
+	rec := httptest.NewRecorder()
+	testHandler(t).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/report/risk.html", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("brief without a Brief function = %d, want 404", rec.Code)
 	}
 }

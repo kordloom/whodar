@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>whodar</title>
   <script src="/static/theme.js?v=10"></script>
-  <link rel="stylesheet" href="/static/style.css?v=15">
+  <link rel="stylesheet" href="/static/style.css?v=16">
   <link rel="icon" type="image/png" href="/static/whodar-logo.png">
 </head>
 <body>
@@ -176,6 +176,20 @@
           <div id="exp-proof-out"></div>
         </div>
 
+        {{if .Brief}}
+        <div class="exp-proof">
+          <div class="exp-proof-head">
+            <h3 class="exp-head exp-head-flush">Send it up</h3>
+            <a id="exp-brief" href="/report/risk.html" download="whodar-knowledge-risk.html">Download the brief</a>
+          </div>
+          <p class="exp-note">The same finding as one page you can forward: the headline
+            counts, every scored subject in a sortable table with a CSV export, and what
+            would leave with each person. It carries its own styling and needs no network,
+            no server, and no whodar to open, so it still reads for somebody who has none
+            of them.</p>
+        </div>
+        {{end}}
+
         <h3 class="exp-head">Knowledge concentration</h3>
         <div id="exp-risk" class="exp-list"></div>
         <h3 class="exp-head">What walks out the door</h3>
@@ -214,6 +228,6 @@
     </main>
   </div>
 
-  <script src="/static/app.js?v=15"></script>
+  <script src="/static/app.js?v=16"></script>
 </body>
 </html>

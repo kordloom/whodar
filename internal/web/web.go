@@ -3,6 +3,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"embed"
@@ -21,6 +22,7 @@ import (
 	"github.com/kordloom/whodar/internal/feedback"
 	"github.com/kordloom/whodar/internal/llm"
 	"github.com/kordloom/whodar/internal/recall"
+	"github.com/kordloom/whodar/internal/report"
 	"github.com/kordloom/whodar/internal/resolve"
 )
 
@@ -103,6 +105,10 @@ type Config struct {
 	// the caller can change it, which is why recall is served on loopback
 	// only.
 	RecallMe string
+	// Brief renders the knowledge-risk brief as one self-contained page, at
+	// /report/risk.html, so the finding on screen can be handed to somebody
+	// who does not have whodar. Nil leaves the route unregistered.
+	Brief BriefFunc
 	// Exposure reports where the organization is exposed, at /api/exposure;
 	// nil disables it.
 	Exposure ExposureFunc
@@ -167,6 +173,9 @@ func Handler(cfg Config) (http.Handler, error) {
 	}
 	if cfg.Exposure != nil {
 		mux.HandleFunc("/api/exposure", exposureHandler(cfg.Exposure))
+	}
+	if cfg.Brief != nil {
+		mux.HandleFunc("/report/risk.html", briefHandler(cfg.Brief))
 	}
 	if cfg.Departure != nil {
 		mux.HandleFunc("/api/departure", departureHandler(cfg.Departure))
@@ -300,9 +309,11 @@ func indexHandler(tmpl *template.Template, cfg Config) http.HandlerFunc {
 		Exposure bool
 		// CLI reports whether the command line view is available.
 		CLI bool
+		// Brief reports whether the knowledge-risk brief can be downloaded.
+		Brief bool
 	}{
 		Version: cfg.Version, Recall: cfg.Recall != nil, RecallMe: cfg.RecallMe,
-		Exposure: cfg.Exposure != nil, CLI: cfg.CLI != nil,
+		Exposure: cfg.Exposure != nil, CLI: cfg.CLI != nil, Brief: cfg.Brief != nil,
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -352,6 +363,9 @@ func askHandler(ask AskFunc, logw io.Writer) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "missing q")
 			return
 		}
+		if tooLong(w, query) {
+			return
+		}
 		const maxLimit = 50
 		limit := 5
 		if v := r.URL.Query().Get("limit"); v != "" {
@@ -396,6 +410,9 @@ func recallHandler(fn RecallFunc, logw io.Writer) http.HandlerFunc {
 		// An empty query is valid: recall then returns the conversations you
 		// took part in, most recent first. A person is still required.
 		query := strings.TrimSpace(r.URL.Query().Get("q"))
+		if tooLong(w, query) {
+			return
+		}
 		person := strings.TrimSpace(r.URL.Query().Get("me"))
 		if person == "" {
 			writeError(w, http.StatusBadRequest,
@@ -459,8 +476,6 @@ func modesHandler(modes ModesFunc) http.HandlerFunc {
 	}
 }
 
-// directoryHandler serves the precomputed directory of people, channels,
-// teams, and topics for the browse views.
 // Exposure is what the exposure view reports: the topics where knowledge is
 // concentrated in too few people, and the areas whose declared owner is not the
 // one doing the work.
@@ -469,6 +484,28 @@ type Exposure struct {
 	Risk []resolve.TopicRisk `json:"risk"`
 	// Drift is where declared ownership and real expertise disagree.
 	Drift []resolve.OwnerDrift `json:"drift"`
+}
+
+// BriefFunc builds the knowledge-risk brief for the index being served.
+type BriefFunc func() report.Brief
+
+// briefHandler serves the knowledge-risk brief as a downloadable page. It
+// renders into memory first, so a failure mid-render is an error rather than
+// half a report delivered with a success code.
+func briefHandler(fn BriefFunc) http.HandlerFunc {
+	if fn == nil {
+		panic("web: briefHandler requires a Brief function")
+	}
+	return func(w http.ResponseWriter, _ *http.Request) {
+		var buf bytes.Buffer
+		if err := report.WriteRisk(&buf, fn()); err != nil {
+			writeError(w, http.StatusInternalServerError, "the brief could not be rendered")
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Content-Disposition", `attachment; filename="whodar-knowledge-risk.html"`)
+		_, _ = w.Write(buf.Bytes())
+	}
 }
 
 // ExposureFunc computes the current exposure.
@@ -575,6 +612,8 @@ func departureHandler(fn DepartureFunc) http.HandlerFunc {
 	}
 }
 
+// directoryHandler serves the precomputed directory of people, channels,
+// teams, and topics for the browse views.
 func directoryHandler(dir *resolve.Directory) http.HandlerFunc {
 	if dir == nil {
 		panic("web: directoryHandler requires a Directory")
@@ -595,6 +634,9 @@ func searchHandler(search SearchFunc) http.HandlerFunc {
 		q := strings.TrimSpace(r.URL.Query().Get("q"))
 		if q == "" {
 			writeError(w, http.StatusBadRequest, "name what to search for with ?q=")
+			return
+		}
+		if tooLong(w, q) {
 			return
 		}
 		limit := 20
@@ -687,6 +729,22 @@ func sameOrigin(origin, host string) bool {
 		return false
 	}
 	return u.Host == host
+}
+
+// maxQueryLen bounds how long a question may be. Nobody types more than a
+// couple of lines, and without a bound one request hands the ranker an
+// unbounded amount of work and gets an answer just as large back, which is a
+// cost a public instance pays on behalf of whoever sent it.
+const maxQueryLen = 512
+
+// tooLong answers an over-long query and reports that the caller should stop.
+func tooLong(w http.ResponseWriter, query string) bool {
+	if len(query) <= maxQueryLen {
+		return false
+	}
+	writeError(w, http.StatusBadRequest,
+		fmt.Sprintf("q is %d characters, longer than the %d allowed", len(query), maxQueryLen))
+	return true
 }
 
 // writeError writes a JSON error response with the given status. It sets the

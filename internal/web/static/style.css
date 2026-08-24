@@ -1081,7 +1081,8 @@ section h2 {
   flex-wrap: wrap;
 }
 .exp-head-flush { margin: 0; }
-.exp-proof-head button {
+.exp-proof-head button,
+.exp-proof-head a#exp-brief {
   margin-left: auto;
   padding: 8px 16px;
   background: var(--accent);
@@ -1092,7 +1093,9 @@ section h2 {
   font-weight: 600;
   cursor: pointer;
 }
-.exp-proof-head button:hover { filter: brightness(1.08); }
+.exp-proof-head button:hover,
+.exp-proof-head a#exp-brief:hover { filter: brightness(1.08); }
+.exp-proof-head a#exp-brief { text-decoration: none; display: inline-block; }
 .exp-proof .exp-note { margin: 10px 0 0; max-width: 72ch; }
 .exp-proof .exp-note a { color: var(--accent); }
 #exp-proof-out:not(:empty) { margin-top: 14px; }
