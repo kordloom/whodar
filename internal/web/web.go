@@ -103,6 +103,9 @@ type Config struct {
 	// the caller can change it, which is why recall is served on loopback
 	// only.
 	RecallMe string
+	// Exposure reports where the organization is exposed, at /api/exposure;
+	// nil disables it.
+	Exposure ExposureFunc
 	// Log receives server-side error detail kept out of client responses; nil
 	// discards it.
 	Log io.Writer
@@ -149,6 +152,9 @@ func Handler(cfg Config) (http.Handler, error) {
 	}
 	if cfg.Modes != nil {
 		mux.HandleFunc("/api/modes", modesHandler(cfg.Modes))
+	}
+	if cfg.Exposure != nil {
+		mux.HandleFunc("/api/exposure", exposureHandler(cfg.Exposure))
 	}
 	if cfg.Recall != nil {
 		mux.HandleFunc("/api/recall", recallHandler(cfg.Recall, logw))
@@ -266,7 +272,12 @@ func indexHandler(tmpl *template.Template, cfg Config) http.HandlerFunc {
 		// RecallMe is the identity the recall view starts with, which the
 		// person can change.
 		RecallMe string
-	}{Version: cfg.Version, Recall: cfg.Recall != nil, RecallMe: cfg.RecallMe}
+		// Exposure reports whether the exposure view is available.
+		Exposure bool
+	}{
+		Version: cfg.Version, Recall: cfg.Recall != nil, RecallMe: cfg.RecallMe,
+		Exposure: cfg.Exposure != nil,
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
@@ -424,6 +435,30 @@ func modesHandler(modes ModesFunc) http.HandlerFunc {
 
 // directoryHandler serves the precomputed directory of people, channels,
 // teams, and topics for the browse views.
+// Exposure is what the exposure view reports: the topics where knowledge is
+// concentrated in too few people, and the areas whose declared owner is not the
+// one doing the work.
+type Exposure struct {
+	// Risk is knowledge concentration per topic, most exposed first.
+	Risk []resolve.TopicRisk `json:"risk"`
+	// Drift is where declared ownership and real expertise disagree.
+	Drift []resolve.OwnerDrift `json:"drift"`
+}
+
+// ExposureFunc computes the current exposure.
+type ExposureFunc func() Exposure
+
+// exposureHandler serves the exposure view's data.
+func exposureHandler(fn ExposureFunc) http.HandlerFunc {
+	if fn == nil {
+		panic("web: exposureHandler requires an ExposureFunc")
+	}
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(fn())
+	}
+}
+
 func directoryHandler(dir *resolve.Directory) http.HandlerFunc {
 	if dir == nil {
 		panic("web: directoryHandler requires a Directory")

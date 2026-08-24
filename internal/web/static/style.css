@@ -904,3 +904,116 @@ section h2 {
 .join-bar-fill { display: block; height: 100%; background: var(--accent); }
 .join-pct { color: var(--muted); min-width: 32px; }
 .join-reason { color: var(--muted); }
+
+/* Exposure view: knowledge concentration and ownership drift. Severity is
+   carried by a left stripe and a badge, so what needs attention reads at a
+   glance rather than having to be compared number by number. */
+.exp-lede {
+  margin: 0 0 22px;
+  max-width: 68ch;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.exp-head {
+  margin: 28px 0 4px;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+.exp-note {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+.exp-list {
+  display: grid;
+  gap: 10px;
+}
+.exp-empty {
+  margin: 0;
+  color: var(--muted);
+}
+.exp-card {
+  padding: 13px 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 10px;
+}
+.exp-critical { border-left-color: #ff6b6b; }
+.exp-elevated { border-left-color: #f0b429; }
+.exp-ok { border-left-color: var(--accent); }
+.exp-drift-card { border-left-color: #f0b429; }
+.exp-card-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.exp-topic {
+  font-weight: 600;
+  font-family: var(--mono);
+}
+.exp-level {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.exp-critical .exp-level { background: rgba(255, 107, 107, 0.15); color: #ff8f8f; }
+.exp-elevated .exp-level { background: rgba(240, 180, 41, 0.15); color: #f0b429; }
+.exp-ok .exp-level { background: var(--accent-soft); color: var(--accent); }
+.exp-bus {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.exp-also {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.exp-expert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 13.5px;
+}
+.exp-share {
+  min-width: 42px;
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.exp-bar {
+  flex: 0 0 120px;
+  height: 6px;
+  background: var(--chip);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.exp-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+.exp-critical .exp-bar-fill { background: #ff6b6b; }
+.exp-elevated .exp-bar-fill { background: #f0b429; }
+.exp-name { color: var(--muted); }
+.exp-dim {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.exp-declared { color: #f0b429; font-family: var(--mono); font-size: 13px; }
+.exp-actual { color: var(--accent); font-family: var(--mono); font-size: 13px; }
+@media (max-width: 620px) {
+  .exp-bar { flex-basis: 60px; }
+  .exp-bus { margin-left: 0; }
+}

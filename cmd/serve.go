@@ -190,8 +190,11 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 		Ask: ask, Feedback: vote, Person: person, Version: version, AuthToken: token,
 		Directory: &dir, Modes: modes, Recall: recallFn(ix, cfg, token), RecallMe: cfg.recallMe,
 		Search: func(q string, limit int) []resolve.SearchResult { return resolve.Search(ix, q, limit) },
-		Log:    cmd.ErrOrStderr(),
-		Ready:  func() bool { return ix != nil && len(ix.Graph.People) > 0 },
+		Exposure: func() web.Exposure {
+			return web.Exposure{Risk: resolve.Risk(ix, 0), Drift: resolve.OwnershipDrift(ix)}
+		},
+		Log:   cmd.ErrOrStderr(),
+		Ready: func() bool { return ix != nil && len(ix.Graph.People) > 0 },
 	})
 	if err != nil {
 		return err

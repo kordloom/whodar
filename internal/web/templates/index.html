@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>whodar</title>
   <script src="/static/theme.js?v=10"></script>
-  <link rel="stylesheet" href="/static/style.css?v=10">
+  <link rel="stylesheet" href="/static/style.css?v=11">
   <link rel="icon" type="image/png" href="/static/whodar-logo.png">
 </head>
 <body>
@@ -26,6 +26,7 @@
           <span class="nav-count" data-count="teams"></span></a>
         <a href="#/topics" data-view="topics">Topics
           <span class="nav-count" data-count="topics"></span></a>
+        {{if .Exposure}}<a href="#/exposure" data-view="exposure">Exposure</a>{{end}}
         <a href="/orgchart">Org chart</a>
       </nav>
       <div class="side-foot">
@@ -152,9 +153,25 @@
         </div>
         <div id="dir-list" class="cards"></div>
       </section>
+
+      {{if .Exposure}}
+      <section id="view-exposure" hidden>
+        <div class="dir-head">
+          <h2>Where you are exposed</h2>
+          <p id="exp-status" class="dir-count" role="status"></p>
+        </div>
+        <p class="exp-lede">Deterministic over the graph, no model required. A topic is
+          critical when one person holds most of it, elevated when two do.</p>
+        <h3 class="exp-head">Knowledge concentration</h3>
+        <div id="exp-risk" class="exp-list"></div>
+        <h3 class="exp-head">Ownership drift</h3>
+        <p class="exp-note">Where the owner on paper is not the one doing the work.</p>
+        <div id="exp-drift" class="exp-list"></div>
+      </section>
+      {{end}}
     </main>
   </div>
 
-  <script src="/static/app.js?v=10"></script>
+  <script src="/static/app.js?v=11"></script>
 </body>
 </html>

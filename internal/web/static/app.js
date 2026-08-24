@@ -26,6 +26,10 @@ const recallSince = document.getElementById("recall-since");
 const recallSources = document.getElementById("recall-sources");
 const recallSlabel = document.getElementById("recall-slabel");
 const recallCount = document.getElementById("recall-count");
+const expView = document.getElementById("view-exposure");
+const expStatus = document.getElementById("exp-status");
+const expRisk = document.getElementById("exp-risk");
+const expDrift = document.getElementById("exp-drift");
 let recallData = null;
 let recallSourceFilter = null;
 let recallTimer = null;
@@ -490,6 +494,7 @@ let pendingTeamFacet = "";
 function viewFromHash() {
   const name = location.hash.replace(/^#\//, "");
   if (name === "recall" && recallView) return "recall";
+  if (name === "exposure" && expView) return "exposure";
   return DIR_VIEWS[name] ? name : "ask";
 }
 
@@ -497,8 +502,9 @@ function viewFromHash() {
 function showView(view) {
   currentView = view;
   askView.hidden = view !== "ask";
-  dirView.hidden = view === "ask" || view === "recall";
+  dirView.hidden = view === "ask" || view === "recall" || view === "exposure";
   if (recallView) recallView.hidden = view !== "recall";
+  if (expView) expView.hidden = view !== "exposure";
   for (const a of sideNav.querySelectorAll("a")) {
     a.classList.toggle("active", a.dataset.view === view);
   }
@@ -506,6 +512,10 @@ function showView(view) {
   facetOrg.hidden = view !== "people";
   if (view === "recall") {
     openRecall();
+    return;
+  }
+  if (view === "exposure") {
+    renderExposure();
     return;
   }
   if (view !== "ask") {
@@ -882,6 +892,83 @@ function recallPeople(ep) {
   if (!names.length) return "On your own";
   if (names.length === 1) return "With " + names[0];
   return "With " + names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+}
+
+
+// renderExposure draws where the organization is exposed: topics whose
+// knowledge sits in too few people, and areas whose declared owner is not the
+// one doing the work. Both come from /api/exposure, computed over the graph.
+async function renderExposure() {
+  expStatus.textContent = "Loading...";
+  expRisk.replaceChildren();
+  expDrift.replaceChildren();
+  let data;
+  try {
+    const res = await fetch("/api/exposure", { headers: { Accept: "application/json" } });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    data = await res.json();
+  } catch (err) {
+    expStatus.textContent = "Could not load exposure: " + err.message;
+    return;
+  }
+  if (currentView !== "exposure") return;
+
+  const risk = data.risk || [];
+  const drift = data.drift || [];
+  const crit = risk.filter((r) => r.level === "critical").length;
+  expStatus.textContent =
+    risk.length + " topics scored, " + crit + " critical, " + drift.length + " drifting";
+
+  if (risk.length) {
+    for (const r of risk) expRisk.appendChild(riskCard(r));
+  } else {
+    expRisk.appendChild(el("p", "exp-empty", "No topics scored yet. Index a source with expertise signal first."));
+  }
+  if (drift.length) {
+    for (const d of drift) expDrift.appendChild(driftCard(d));
+  } else {
+    expDrift.appendChild(el("p", "exp-empty", "No ownership drift found, or no declared ownership indexed."));
+  }
+}
+
+// riskCard draws one topic's knowledge concentration with its experts.
+function riskCard(r) {
+  const card = el("div", "exp-card exp-" + (r.level || "ok"));
+  const head = el("div", "exp-card-head");
+  head.appendChild(el("span", "exp-topic", r.topic));
+  head.appendChild(el("span", "exp-level", r.level || "ok"));
+  head.appendChild(el("span", "exp-bus", "bus factor " + r.busFactor));
+  card.appendChild(head);
+  if (r.includes && r.includes.length) {
+    card.appendChild(el("p", "exp-also", "also called " + r.includes.join(", ")));
+  }
+  for (const e of r.experts || []) {
+    const row = el("div", "exp-expert");
+    row.appendChild(el("span", "exp-share", Math.round(e.share * 100) + "%"));
+    const bar = el("span", "exp-bar");
+    const fill = el("span", "exp-bar-fill");
+    fill.style.width = Math.round(e.share * 100) + "%";
+    bar.appendChild(fill);
+    row.appendChild(bar);
+    row.appendChild(el("span", "exp-name", e.name));
+    card.appendChild(row);
+  }
+  return card;
+}
+
+// driftCard draws one area where the declared owner is not the real expert.
+function driftCard(d) {
+  const card = el("div", "exp-card exp-drift-card");
+  const head = el("div", "exp-card-head");
+  head.appendChild(el("span", "exp-topic", d.topic));
+  card.appendChild(head);
+  const row = el("div", "exp-expert");
+  row.appendChild(el("span", "exp-dim", "declared"));
+  row.appendChild(el("span", "exp-declared", (d.declared || []).join(", ")));
+  row.appendChild(el("span", "exp-dim", "actual"));
+  row.appendChild(el("span", "exp-actual", d.actual));
+  card.appendChild(row);
+  return card;
 }
 
 window.addEventListener("hashchange", () => showView(viewFromHash()));
