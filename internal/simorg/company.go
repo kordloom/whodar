@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kordloom/whodar/internal/confluence"
 	"github.com/kordloom/whodar/internal/connector"
@@ -111,7 +112,8 @@ func buildCompany(spec Spec) *company {
 // risk view shows a real spread of critical, elevated, and ok rather than every
 // topic sitting at bus factor one.
 func (c *company) addSecondaryExperts(rng *rand.Rand) {
-	ts := 1_700_000_000
+	// Recent, like the rest of the history: see generateHistory on decay.
+	ts := int(time.Now().Unix()) - 60*24*3600
 	for s := range c.owners {
 		extra := s % 3 // 0 critical, 1 elevated, 2 ok
 		channelID := c.owners[s].channel

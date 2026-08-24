@@ -462,7 +462,13 @@ func generateHistory(
 	history := make(map[string][]map[string]any, len(channels))
 	var threads []thread
 	count := 0
-	ts := 1_600_000_000
+	// History runs up to the present. An index decays what it reads by age, so
+	// a corpus stamped years in the past tests how whodar treats abandoned
+	// archives rather than a living company: fluency written in 2020 loses to
+	// a stray mention written a year later on decay alone.
+	var ts int
+	span := len(channels)*(spec.ChatterPerChannel+spec.ThreadsPerChannel*6+spec.Topics) + 64
+	ts = int(time.Now().Unix()) - span*600 - 3600
 
 	for i := range channels {
 		channelID := fmt.Sprintf("C%03d", i)
@@ -481,26 +487,34 @@ func generateHistory(
 
 		// Each owner is fluent in their own subject and says its words often,
 		// which is the signal ranking is supposed to find. They speak their
-		// own vocabulary, not the channel's.
+		// own vocabulary, not the channel's, and they cover the whole of it:
+		// random sampling can leave an owner never saying one of their own
+		// words, at which point any chatterer who used it twice outranks them
+		// on that word, which is not what fluency looks like anywhere real.
 		for _, o := range owners {
 			if o.channel != channelID {
 				continue
 			}
 			ownWords := subjects[o.subject].Words
-			for range 6 {
+			for k := range ownerFluency {
 				ts += 600
 				msgs = append(msgs, slackMessageAt(o.who.id,
-					sentence(rng, fillers.Owner, ownWords), ts))
+					sentenceCovering(rng, fillers.Owner, ownWords, k), ts))
 				count++
 			}
 		}
 
-		// Everyone else talks about everything, shallowly. This is the
-		// chatterbox noise an owner has to beat.
-		for range spec.ChatterPerChannel {
+		// Everyone else talks, shallowly. Half of it borrows some subject's
+		// words, which is the chatterbox noise an owner has to beat; the rest
+		// is the small talk of any workplace, which keeps the noise from
+		// containing more domain vocabulary than the experts produce.
+		for k := range spec.ChatterPerChannel {
 			ts += 600
 			p := people[rng.Intn(len(people))]
-			other := subjects[rng.Intn(len(subjects))].Words
+			other := smallTalk
+			if k%2 == 0 {
+				other = subjects[rng.Intn(len(subjects))].Words
+			}
 			msgs = append(msgs, slackMessageAt(p.id, sentence(rng, fillers.Chatter, other), ts))
 			count++
 		}
@@ -536,6 +550,14 @@ func generateHistory(
 	return history, threads, count
 }
 
+// smallTalk is what chatter says when it is not borrowing a subject's words:
+// the office noise of any company. None of these words shares a stem with any
+// subject vocabulary, team, or title, for the same reason the fillers do not.
+var smallTalk = []string{
+	"coffee", "lunch", "weekend", "snacks", "elevator",
+	"playlist", "weather", "birthday", "puzzle", "stairs",
+}
+
 // fillers are the connective words generated messages are phrased with. None
 // of them shares a stem with any subject vocabulary, any team name, or any
 // title, so they add sentence shape without adding signal: they are uniform
@@ -557,6 +579,23 @@ var fillers = struct {
 		"no idea about the %s, maybe ask whoever owns the %s",
 		"saw something odd with the %s %s, ignoring it now",
 	},
+}
+
+// ownerFluency is how many messages an owner writes about their own subject.
+const ownerFluency = 12
+
+// sentenceCovering renders a filler template like sentence, but fills the
+// slots by rotating through the vocabulary from position k instead of sampling
+// it, so across an owner's messages every word of their subject is guaranteed
+// to be said several times.
+func sentenceCovering(rng *rand.Rand, templates []string, words []string, k int) string {
+	tpl := templates[rng.Intn(len(templates))]
+	n := strings.Count(tpl, "%s")
+	args := make([]any, n)
+	for j := range n {
+		args[j] = words[(k*2+j)%len(words)]
+	}
+	return fmt.Sprintf(tpl, args...)
 }
 
 // sentence renders a filler template with words from a vocabulary, so a

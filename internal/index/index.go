@@ -652,6 +652,21 @@ func (ix *Index) buildChannel(rec connector.Record) {
 	}
 }
 
+// evidenceBoost turns the kind of evidence behind a match into a score
+// multiplier. Accumulated weight measures how often the words appear, which a
+// prolific poster can supply endlessly; the kind of field they appear in is
+// what repetition cannot buy. A passing mention stays where its weight put it,
+// and a declared topic, title, or team lifts the score, so the person who owns
+// a subject beats the person who merely talks about it by construction rather
+// than by accident of the tuning constants.
+func evidenceBoost(evidence float64) float64 {
+	return 0.4 + 0.9*evidence
+}
+
+// boostWindowCap bounds how many leading candidates are re-ranked by evidence,
+// so an unlimited search does not pay the reason lookup for every match.
+const boostWindowCap = 64
+
 // expandedQuery grows the tokenized query with its synonyms and returns the
 // full term list, the per-term coverage back to the words actually asked, and
 // the asked expression behind each expansion for the reason line. Every
@@ -669,12 +684,22 @@ func expandedQuery(query string) (terms []string, covers map[string][]string, as
 	for _, t := range terms {
 		covers[t] = []string{t}
 	}
-	for _, e := range expandTerms(ordered) {
+	for _, e := range expandTerms(query) {
 		if _, dup := covers[e.term]; dup {
 			continue
 		}
+		// An expansion may cover a word the tokenizer dropped, such as the "in"
+		// of "sign in". Coverage is measured over the searched terms, so only
+		// those count; a phrase whose every word was dropped still covers
+		// something by standing in for the whole question.
+		kept := make([]string, 0, len(e.covers))
+		for _, orig := range e.covers {
+			if _, real := covers[orig]; real {
+				kept = append(kept, orig)
+			}
+		}
 		terms = append(terms, e.term)
-		covers[e.term] = e.covers
+		covers[e.term] = kept
 		asked[e.term] = e.asked
 	}
 	return terms, covers, asked
@@ -740,6 +765,22 @@ func (ix *Index) Search(query string, limit int) []model.Match {
 		matches = append(matches, model.Match{Person: p, Team: team, Score: sc})
 	}
 	sort.Slice(matches, func(i, j int) bool {
+		if matches[i].Score != matches[j].Score {
+			return matches[i].Score > matches[j].Score
+		}
+		return matches[i].Person.ID < matches[j].Person.ID
+	})
+	// Re-rank the leading candidates by the kind of evidence behind them, so
+	// declared ownership outranks accumulated chatter no matter how the raw
+	// weights land. Only the window that could plausibly hold the answer is
+	// examined, since judging evidence means reading each candidate's fields.
+	window := min(len(matches), boostWindowCap)
+	for i := range window {
+		pid := matches[i].Person.ID
+		_, evidence := ix.reasons(pid, matched[pid], resolved, asked)
+		matches[i].Score *= evidenceBoost(evidence)
+	}
+	sort.SliceStable(matches[:window], func(i, j int) bool {
 		if matches[i].Score != matches[j].Score {
 			return matches[i].Score > matches[j].Score
 		}
@@ -1053,7 +1094,16 @@ func scoreByTerms(
 			idf = 1 + math.Log(float64(universe)/float64(len(posting)))
 		}
 		for id, w := range posting {
-			w = min(w, termWeightCap)
+			// Weight saturates past the cap logarithmically instead of being cut
+			// off. A hard cut made every strong profile identical up there, and
+			// the verbosity normalizer below then handed the win to whoever had
+			// the thinnest profile overall: the person with one line in a
+			// CODEOWNERS file outranked the owner with years of work. Log growth
+			// keeps the guarantee both directions: more real evidence never
+			// scores less, and no amount of repetition can run away with it.
+			if w > termWeightCap {
+				w = termWeightCap * (1 + math.Log(w/termWeightCap))
+			}
 			// The normalizer floors at one: an above-average profile is
 			// discounted for verbosity, but a sparse or decayed profile gets
 			// no boost, since its raw weight already says how little is there.

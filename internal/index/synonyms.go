@@ -58,7 +58,8 @@ var (
 	synOnce sync.Once
 	// wordGroup maps a single word's stem to its group.
 	wordGroup map[string]int
-	// phraseGroup maps a two-word phrase, as joined stems, to its group.
+	// phraseGroup maps a phrase of two or three words, as joined stems, to its
+	// group.
 	phraseGroup map[string]int
 	// groupSingles lists each group's single-word members, the only ones that
 	// can be searched.
@@ -73,53 +74,71 @@ func buildSynonyms() {
 	for g, group := range synonymGroups {
 		for _, member := range group {
 			parts := strings.Fields(member)
-			switch len(parts) {
-			case 1:
+			if len(parts) == 1 {
 				wordGroup[stem(parts[0])] = g
 				groupSingles[g] = append(groupSingles[g], parts[0])
-			case 2:
-				phraseGroup[stem(parts[0])+" "+stem(parts[1])] = g
+				continue
 			}
+			stems := make([]string, len(parts))
+			for i, part := range parts {
+				stems[i] = stem(part)
+			}
+			phraseGroup[strings.Join(stems, " ")] = g
 		}
 	}
 }
 
+// rawWords splits a question into lowercased words with nothing removed.
+// Phrase detection has to see the question as typed: the search tokenizer
+// strips stopwords, and "sign in" or "out of office" are exactly the phrases
+// whose identifying words a stopword list eats.
+func rawWords(query string) []string {
+	return strings.FieldsFunc(strings.ToLower(query), func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
+	})
+}
+
 // expandTerms returns the synonyms a question brings in: every single-word
 // member of every group the question touches, minus the words already asked.
-// Ordered tokens are scanned so a two-word expression is recognized as the
-// adjacent pair the person typed, not as two unrelated words.
-func expandTerms(ordered []string) []expTerm {
+// The raw question is scanned for phrases, words and stopwords alike, so an
+// expression is recognized as the person typed it: the tokenizer's stopword
+// list would otherwise eat the middle of "sign in" and "out of office".
+func expandTerms(query string) []expTerm {
 	synOnce.Do(buildSynonyms)
+	words := rawWords(query)
 	type trigger struct {
 		covers []string
 		asked  string
 	}
 	triggered := make(map[int]trigger)
-	for i := 0; i+1 < len(ordered); i++ {
-		key := stem(ordered[i]) + " " + stem(ordered[i+1])
-		if g, ok := phraseGroup[key]; ok {
-			if _, seen := triggered[g]; !seen {
-				triggered[g] = trigger{
-					covers: []string{ordered[i], ordered[i+1]},
-					asked:  ordered[i] + " " + ordered[i+1],
-				}
+	note := func(g int, parts []string) {
+		if _, seen := triggered[g]; !seen {
+			triggered[g] = trigger{covers: parts, asked: strings.Join(parts, " ")}
+		}
+	}
+	for n := 3; n >= 2; n-- {
+		for i := 0; i+n <= len(words); i++ {
+			stems := make([]string, n)
+			for j := range n {
+				stems[j] = stem(words[i+j])
+			}
+			if g, ok := phraseGroup[strings.Join(stems, " ")]; ok {
+				note(g, words[i:i+n])
 			}
 		}
 	}
-	for _, tok := range ordered {
-		if g, ok := wordGroup[stem(tok)]; ok {
-			if _, seen := triggered[g]; !seen {
-				triggered[g] = trigger{covers: []string{tok}, asked: tok}
-			}
+	for _, w := range words {
+		if g, ok := wordGroup[stem(w)]; ok {
+			note(g, []string{w})
 		}
 	}
 	if len(triggered) == 0 {
 		return nil
 	}
 
-	present := make(map[string]bool, len(ordered))
-	for _, tok := range ordered {
-		present[stem(tok)] = true
+	present := make(map[string]bool, len(words))
+	for _, w := range words {
+		present[stem(w)] = true
 	}
 	var out []expTerm
 	for g, trig := range triggered {
