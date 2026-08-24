@@ -468,9 +468,48 @@ func (s *Semantic) Resolve(ctx context.Context, query string, limit int) (Answer
 	if limit > 0 {
 		pool = max(limit*3, 15)
 	}
-	people := fusePeople(s.ix.Search(query, pool), s.ix.SemanticPeople(vec, pool), limit)
+	people := fusePeople(s.ix.Search(query, pool),
+		s.ix.SemanticPeople(vec, pool), s.topicPeople(vec, pool), limit)
 	channels := fuseChannels(s.ix.SearchChannels(query, pool), s.ix.SemanticChannels(vec, pool), limit)
 	return Answer{People: people, Channels: channels}, nil
+}
+
+// topicSubjects is how many subjects a question is matched against, and
+// topicSubjectExperts how many people each of them contributes.
+const (
+	topicSubjects       = 3
+	topicSubjectExperts = 4
+)
+
+// topicPeople answers by way of the subject rather than the person: it matches
+// the question to the subjects the organization works on, then names the people
+// the graph already says own them. A person's vector is the average of
+// everything they ever said, so a question in somebody else's words lands
+// nowhere near it; a subject's vector describes one thing, and who owns that
+// subject is a fact the index computed without any model at all.
+func (s *Semantic) topicPeople(vec []float32, limit int) []model.Match {
+	var out []model.Match
+	seen := make(map[model.ID]bool)
+	for _, tid := range s.ix.SemanticTopics(vec, topicSubjects) {
+		sim := s.ix.TopicSimilarity(vec, tid)
+		name := strings.ReplaceAll(string(tid), "-", " ")
+		for _, p := range s.ix.TopicExperts(tid, topicSubjectExperts) {
+			if seen[p.ID] {
+				continue
+			}
+			seen[p.ID] = true
+			out = append(out, model.Match{
+				Person:     p,
+				Score:      sim,
+				Confidence: sim,
+				Reasons:    []string{"works on " + name},
+			})
+			if limit > 0 && len(out) >= limit {
+				return out
+			}
+		}
+	}
+	return out
 }
 
 // rrfK dampens rank differences in reciprocal rank fusion. The standard value
@@ -481,7 +520,7 @@ const rrfK = 60
 // fusePeople merges the word ranking and the meaning ranking of people by
 // reciprocal rank fusion, keeping each person's best reasons and confidence
 // from whichever list explained them better.
-func fusePeople(words, meaning []model.Match, limit int) []model.Match {
+func fusePeople(words, meaning, subjects []model.Match, limit int) []model.Match {
 	type fused struct {
 		match model.Match
 		score float64
@@ -511,6 +550,7 @@ func fusePeople(words, meaning []model.Match, limit int) []model.Match {
 	}
 	fold(words)
 	fold(meaning)
+	fold(subjects)
 
 	out := make([]model.Match, 0, len(byID))
 	scores := make(map[model.ID]float64, len(byID))

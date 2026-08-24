@@ -101,6 +101,10 @@ type Index struct {
 	personVecs map[model.ID][]float32
 	// channelVecs holds per-channel embedding vectors when present.
 	channelVecs map[model.ID][]float32
+	// topicVecs holds per-topic embedding vectors when present. A topic vector
+	// describes a subject rather than a person, which is what a question
+	// paraphrased in someone's own words is really about.
+	topicVecs map[model.ID][]float32
 	// resolver maps the identifiers a person accumulates across sources to one
 	// canonical identifier.
 	resolver *identity.Resolver
@@ -152,6 +156,7 @@ func New() *Index {
 		channelTexts:    make(map[model.ID]*channelText),
 		personVecs:      make(map[model.ID][]float32),
 		channelVecs:     make(map[model.ID][]float32),
+		topicVecs:       make(map[model.ID][]float32),
 		resolver:        identity.NewResolver(),
 		halfLife:        DefaultHalfLife,
 		now:             time.Now,
@@ -195,6 +200,7 @@ func (ix *Index) Build(records []connector.Record) {
 	ix.sourceCounts = make(map[string]int)
 	ix.personVecs = make(map[model.ID][]float32)
 	ix.channelVecs = make(map[model.ID][]float32)
+	ix.topicVecs = make(map[model.ID][]float32)
 	ix.take(records)
 	ix.rebuild()
 }
@@ -1094,6 +1100,8 @@ type snapshot struct {
 	PersonVecs map[model.ID][]int8 `json:"person_vecs,omitempty"`
 	// ChannelVecs holds per-channel embedding vectors, quantized the same way.
 	ChannelVecs map[model.ID][]int8 `json:"channel_vecs,omitempty"`
+	// TopicVecs holds per-topic embedding vectors, quantized the same way.
+	TopicVecs map[model.ID][]int8 `json:"topic_vecs,omitempty"`
 	// Aliases maps each known alias identifier to its canonical form.
 	Aliases map[model.ID]model.ID `json:"aliases,omitempty"`
 	// Joins records the inferred identity merges with their confidence and
@@ -1167,6 +1175,7 @@ func (ix *Index) Save(path string, opts ...Option) error {
 		ChannelTexts:    ix.channelTexts,
 		PersonVecs:      quantizeVecs(ix.personVecs),
 		ChannelVecs:     quantizeVecs(ix.channelVecs),
+		TopicVecs:       quantizeVecs(ix.topicVecs),
 		Aliases:         ix.identityResolver().Pairs(),
 		Joins:           ix.joins,
 		SourceCounts:    ix.sourceCounts,
@@ -1244,6 +1253,7 @@ func Load(path string, opts ...Option) (*Index, error) {
 		channelTexts:    snap.ChannelTexts,
 		personVecs:      dequantizeVecs(snap.PersonVecs),
 		channelVecs:     dequantizeVecs(snap.ChannelVecs),
+		topicVecs:       dequantizeVecs(snap.TopicVecs),
 		// sources stays nil: a loaded index answers queries, which never read
 		// the records. A merge calls LoadSources to bring them in from the
 		// sidecar before rebuilding.
@@ -1287,6 +1297,9 @@ func Load(path string, opts ...Option) (*Index, error) {
 	}
 	if ix.personVecs == nil {
 		ix.personVecs = make(map[model.ID][]float32)
+	}
+	if ix.topicVecs == nil {
+		ix.topicVecs = make(map[model.ID][]float32)
 	}
 	if ix.channelVecs == nil {
 		ix.channelVecs = make(map[model.ID][]float32)

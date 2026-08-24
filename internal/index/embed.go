@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/text"
 	"github.com/kordloom/whodar/internal/util"
 	"github.com/kordloom/whodar/internal/vector"
 )
@@ -61,9 +62,211 @@ func (ix *Index) Embed(ctx context.Context, e Embedder) error {
 		done++
 		ix.embedProgress.Report(done)
 	}
+	vocab := ix.topicVocab()
+	tv := make(map[model.ID][]float32, len(ix.Graph.Topics))
+	for id, t := range ix.Graph.Topics {
+		// Only subjects the organization actually has are worth a vector. A word
+		// mined once out of a title, such as "issue" or "runbook", would other-
+		// wise become something a question could match, and it would carry
+		// whoever happens to hold it into the answer.
+		if !t.Salient() {
+			continue
+		}
+		text := ix.topicEmbedText(id, vocab)
+		if text == "" {
+			continue
+		}
+		vec, err := e.Embed(ctx, text)
+		if err != nil {
+			return fmt.Errorf("index: embed topic %s: %w", id, err)
+		}
+		tv[id] = vec
+		done++
+		ix.embedProgress.Report(done)
+	}
 	ix.personVecs = pv
 	ix.channelVecs = cv
+	ix.topicVecs = tv
 	return nil
+}
+
+// topicVocabWords is how many distinctive words describe a subject, and
+// topicVocabFloor is how often a word must appear in that subject's work before
+// it can be called distinctive of it rather than a coincidence.
+const (
+	topicVocabWords = 6
+	topicVocabFloor = 3
+	// topicVocabSpreadPct is the share of subjects a word may be prominent in
+	// before it counts as filler rather than description.
+	topicVocabSpreadPct = 25
+)
+
+// topicVocab returns, for every salient subject, the words that distinguish it
+// from the rest of the organization's talk. A subject is described by the words
+// its work is done in, so a question asked in somebody else's vocabulary can
+// still land on it. Selecting by raw frequency would return "the" and "deploy"
+// for every subject alike, so a word counts only when it appears far more often
+// in this subject's work than across everyone's, which is what makes the short
+// list actually describe the thing.
+func (ix *Index) topicVocab() map[model.ID][]string {
+	global := make(map[string]float64)
+	var globalTotal float64
+	perTopic := make(map[model.ID]map[string]float64)
+	totals := make(map[model.ID]float64)
+
+	for id, p := range ix.Graph.People {
+		pt := ix.texts[id]
+		if pt == nil || pt.Text == "" {
+			continue
+		}
+		words := text.Tokenize(pt.Text)
+		for _, w := range words {
+			global[w]++
+			globalTotal++
+		}
+		for tid, affinity := range p.Topics {
+			if affinity <= 0 {
+				continue
+			}
+			if t := ix.Graph.Topics[tid]; t == nil || !t.Salient() {
+				continue
+			}
+			counts := perTopic[tid]
+			if counts == nil {
+				counts = make(map[string]float64)
+				perTopic[tid] = counts
+			}
+			for _, w := range words {
+				counts[w] += affinity
+				totals[tid] += affinity
+			}
+		}
+	}
+
+	// A word that turns up in most subjects describes none of them. Filler
+	// phrasing is shared by everyone who writes about their own work, so it
+	// clears a lift test measured against the whole company while pulling every
+	// subject's vector toward the same middle. Count how many subjects each word
+	// is prominent in and drop the ones that are everywhere.
+	spread := make(map[string]int)
+	for tid, counts := range perTopic {
+		if totals[tid] <= 0 {
+			continue
+		}
+		for w, c := range counts {
+			if (c/totals[tid])/(global[w]/globalTotal) > 1 {
+				spread[w]++
+			}
+		}
+	}
+	maxSubjects := max(1, len(perTopic)*topicVocabSpreadPct/100)
+
+	out := make(map[model.ID][]string, len(perTopic))
+	for tid, counts := range perTopic {
+		if totals[tid] <= 0 {
+			continue
+		}
+		type scored struct {
+			word string
+			lift float64
+		}
+		var ranked []scored
+		for w, c := range counts {
+			if global[w] < topicVocabFloor || spread[w] > maxSubjects {
+				continue
+			}
+			lift := (c / totals[tid]) / (global[w] / globalTotal)
+			if lift <= 1 {
+				continue
+			}
+			ranked = append(ranked, scored{word: w, lift: lift})
+		}
+		sort.Slice(ranked, func(i, j int) bool {
+			if ranked[i].lift != ranked[j].lift {
+				return ranked[i].lift > ranked[j].lift
+			}
+			return ranked[i].word < ranked[j].word
+		})
+		words := make([]string, 0, topicVocabWords)
+		for i, r := range ranked {
+			if i >= topicVocabWords {
+				break
+			}
+			words = append(words, r.word)
+		}
+		out[tid] = words
+	}
+	return out
+}
+
+// topicEmbedText describes a subject as its name followed by the words that
+// distinguish its work, which is what a question phrased in somebody else's
+// words has to match against.
+func (ix *Index) topicEmbedText(tid model.ID, vocab map[model.ID][]string) string {
+	t := ix.Graph.Topics[tid]
+	if t == nil {
+		return ""
+	}
+	name := t.Name
+	if name == "" {
+		name = string(tid)
+	}
+	parts := append([]string{strings.ReplaceAll(name, "-", " ")}, vocab[tid]...)
+	return strings.TrimSpace(strings.Join(parts, " "))
+}
+
+// SemanticTopics ranks subjects by similarity to the query vector. Matching a
+// question to a subject and then naming that subject's people, rather than
+// matching the question straight to a person, is what lets a paraphrase land:
+// one person's vector averages everything they ever said, while a subject's
+// describes one thing.
+func (ix *Index) SemanticTopics(query []float32, limit int) []model.ID {
+	ranked := rankByCosine(ix.topicVecs, query, limit)
+	out := make([]model.ID, 0, len(ranked))
+	for _, r := range ranked {
+		out = append(out, r.id)
+	}
+	return out
+}
+
+// TopicSimilarity returns the cosine similarity between the query vector and a
+// topic, or zero when the topic has no vector.
+func (ix *Index) TopicSimilarity(query []float32, tid model.ID) float64 {
+	vec, ok := ix.topicVecs[tid]
+	if !ok {
+		return 0
+	}
+	return cosine(query, vec)
+}
+
+// TopicExperts returns the people with the strongest affinity for a topic,
+// most expert first. It is the deterministic half of a semantic answer: the
+// vector picks the subject, the graph picks who owns it.
+func (ix *Index) TopicExperts(tid model.ID, limit int) []*model.Person {
+	type scored struct {
+		p *model.Person
+		w float64
+	}
+	var out []scored
+	for _, p := range ix.Graph.People {
+		if w := p.Topics[tid]; w > 0 {
+			out = append(out, scored{p: p, w: w})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].w != out[j].w {
+			return out[i].w > out[j].w
+		}
+		return out[i].p.ID < out[j].p.ID
+	})
+	people := make([]*model.Person, 0, len(out))
+	for i, s := range out {
+		if limit > 0 && i >= limit {
+			break
+		}
+		people = append(people, s.p)
+	}
+	return people
 }
 
 // SetEmbedProgress sets a callback invoked after each entity is embedded with
