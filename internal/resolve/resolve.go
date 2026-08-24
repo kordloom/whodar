@@ -26,6 +26,11 @@ type Answer struct {
 	Channels []model.ChannelMatch
 	// Summary is a short written recommendation; empty in keyword mode.
 	Summary string
+	// ix is the index this answer came from, carried so the view can tell a
+	// real subject from a word mined out of prose when it lists what somebody
+	// knows. It is nil on an answer built without one, and the view falls back
+	// to the unfiltered list.
+	ix *index.Index
 }
 
 // Resolver answers a natural-language query.
@@ -60,8 +65,9 @@ func NewKeyword(ix *index.Index) *Keyword {
 // Resolve ranks people and channels for query using the index.
 func (k *Keyword) Resolve(_ context.Context, query string, limit int) (Answer, error) {
 	return Answer{
-		People:   k.ix.Search(query, limit),
+		People:   withNamed(nameMatch(k.ix, query, limit), k.ix.Search(query, limit), limit),
 		Channels: k.ix.SearchChannels(query, limit),
+		ix:       k.ix,
 	}, nil
 }
 
@@ -468,10 +474,11 @@ func (s *Semantic) Resolve(ctx context.Context, query string, limit int) (Answer
 	if limit > 0 {
 		pool = max(limit*3, 15)
 	}
-	people := fusePeople(s.ix.Search(query, pool),
-		s.ix.SemanticPeople(vec, pool), s.topicPeople(vec, pool), limit)
+	people := withNamed(nameMatch(s.ix, query, limit),
+		fusePeople(s.ix.Search(query, pool),
+			s.ix.SemanticPeople(vec, pool), s.topicPeople(vec, pool), limit), limit)
 	channels := fuseChannels(s.ix.SearchChannels(query, pool), s.ix.SemanticChannels(vec, pool), limit)
-	return Answer{People: people, Channels: channels}, nil
+	return Answer{People: people, Channels: channels, ix: s.ix}, nil
 }
 
 // topicSubjects is how many subjects a question is matched against, and

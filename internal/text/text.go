@@ -24,6 +24,18 @@ var stopwords = map[string]bool{
 	"help": true, "have": true, "has": true, "get": true, "got": true,
 	"know": true, "knows": true, "handle": true, "handles": true,
 	"where": true, "when": true, "which": true, "why": true,
+	// Conversational filler. These carry no subject on their own, and left in
+	// they are worse than noise: fuzzy matching will bend a short common word
+	// into a real topic, so a question containing "here" confidently answers
+	// with whoever works on hiring.
+	"here": true, "there": true, "anyone": true, "anybody": true,
+	"someone": true, "somebody": true, "please": true, "thanks": true,
+	"hey": true, "hi": true, "hello": true, "should": true, "would": true,
+	"could": true, "will": true, "was": true, "were": true, "been": true,
+	"but": true, "not": true, "any": true, "all": true, "some": true,
+	"good": true, "best": true, "better": true, "really": true, "just": true,
+	"ask": true, "asking": true, "asked": true, "tell": true, "find": true,
+	"looking": true, "trying": true, "wondering": true,
 }
 
 // Tokenize folds and lowercases text, then splits it into searchable tokens,
