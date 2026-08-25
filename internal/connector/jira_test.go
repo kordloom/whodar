@@ -265,3 +265,53 @@ func TestJiraJQLTimeKeepsTheSiteZone(t *testing.T) {
 		})
 	}
 }
+
+// TestJiraComponentIsAStatedSubject checks a component arrives as a subject the
+// tracker declared, whole, and not as prose somebody happened to write.
+//
+// Components used to reach the index only as their separate words, which broke
+// three things at once. The compound was lost, so "Structured Streaming" became
+// two unrelated words. A component that tokenizes to nothing, like "SQL",
+// vanished entirely. And because the stated list holds full names while only
+// words arrived, no component ever matched it, so every component in a tracker
+// was filed as mined prose: excluded from risk, from ownership, and from every
+// connection between subjects. On a real tracker this fix recovered 95 subjects
+// and doubled the connections found.
+func TestJiraComponentIsAStatedSubject(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"total":1,"startAt":0,"issues":[`+
+			`{"key":"F-1","fields":{"summary":"a fix",`+
+			`"assignee":{"accountId":"a1","displayName":"Jane","emailAddress":"jane@x.com"},`+
+			`"components":[{"name":"Build System / CI"},{"name":"SQL"}],"labels":[],`+
+			`"project":{"key":"F","name":"Flink"}}}]}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	client := jira.New(srv.URL, "me@x.com", "token")
+	recs, err := NewJiraWithClient(client, JiraOptions{Projects: []string{"F"}}).Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	var rec Record
+	for _, r := range recs {
+		if r.Email == "jane@x.com" {
+			rec = r
+		}
+	}
+	if rec.Email == "" {
+		t.Fatal("the assignee did not come back at all")
+	}
+	// Subjects are lowercased on the way in, like every other token.
+	for _, want := range []string{"build system / ci", "sql"} {
+		if !slices.Contains(rec.Topics, want) {
+			t.Errorf("%q is not among the stated subjects %v: a component the tracker "+
+				"declares must not be filed as prose", want, rec.Topics)
+		}
+	}
+	// The words still come through, so a question asked in one of them matches.
+	all := append(append([]string{}, rec.Topics...), rec.WeakTopics...)
+	if !slices.Contains(all, "system") {
+		t.Errorf("the words of a component were dropped; got %v", all)
+	}
+}

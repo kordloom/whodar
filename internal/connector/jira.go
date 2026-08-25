@@ -274,6 +274,15 @@ func issueTopics(is jira.Issue) []string {
 	f := is.Fields
 	var out []string
 	for _, c := range f.Components {
+		// The component itself is the subject, and it goes in whole. Only its
+		// words used to, which threw away the compound and left nothing at all
+		// for a component like "SQL" that tokenizes to nothing: the words of
+		// "Build System / CI" are just "system". It also meant no component
+		// ever matched the stated list, since that holds full names, so every
+		// component in the tracker was filed as prose somebody happened to
+		// write rather than a subject the tracker declares.
+		out = append(out, c.Name)
+		// The words as well, so a question asked in one of them still matches.
 		out = append(out, titleTokens(c.Name)...)
 	}
 	out = append(out, f.Labels...)
