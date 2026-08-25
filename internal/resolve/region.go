@@ -36,15 +36,7 @@ const minRegion = 3
 // Regions finds the connected bodies of work that rest on a single person,
 // largest first. A limit of zero or less returns all of them.
 func Regions(ix *index.Index, limit int) []Region {
-	lead := make(map[model.ID]model.ID)
-	for tid, topic := range ix.Graph.Topics {
-		if !topic.Salient() {
-			continue
-		}
-		if who := leadOf(ix, tid); who != "" {
-			lead[tid] = who
-		}
-	}
+	lead := leads(ix)
 
 	// Adjacency between subjects, kept to those a person actually leads so the
 	// walk below only crosses ties inside one person's work.
@@ -106,21 +98,20 @@ func Regions(ix *index.Index, limit int) []Region {
 	return out
 }
 
-// leadOf names the person a subject rests on. It is the same judgement
-// ownership drift makes, and deliberately the same arithmetic: raw weight hands
-// every subject in a code base to whoever touches everything, which turned a
-// maintainer's own region over to a passer-by in four separate places before
-// this was written down once. Weight is discounted by the square root of
-// everything that person does, and only work counts, never a subject a source
-// of record assigned them.
-func leadOf(ix *index.Index, topic model.ID) model.ID {
-	var best model.ID
-	bestScore := 0.0
+// leads names the person every real subject rests on, in one pass.
+//
+// It is deliberately not the largest raw weight. Every code base has a few
+// people who touch all of it, and by raw weight they out-hold the owner of
+// almost every subject at once, which handed a maintainer's own work to a
+// passer-by in five separate places before this was written down once: the
+// holdout metric, ownership drift, the risk tie-break, joined work, and the
+// departure view. Weight is discounted by the square root of everything that
+// person does, and only work counts, never a subject a source of record merely
+// assigned them.
+func leads(ix *index.Index) map[model.ID]model.ID {
+	out := make(map[model.ID]model.ID)
+	best := make(map[model.ID]float64)
 	for id, p := range ix.Graph.People {
-		here := p.Topics[topic] - p.Stated[topic]
-		if here <= 0 {
-			continue
-		}
 		var total float64
 		for tid, w := range p.Topics {
 			if work := w - p.Stated[tid]; work > 0 {
@@ -130,13 +121,18 @@ func leadOf(ix *index.Index, topic model.ID) model.ID {
 		if total <= 0 {
 			continue
 		}
-		score := here / math.Sqrt(total)
-		if score > bestScore || (score == bestScore && id < best) {
-			best, bestScore = id, score
+		root := math.Sqrt(total)
+		canon := ix.CanonicalID(id)
+		for tid, w := range p.Topics {
+			here := w - p.Stated[tid]
+			if here <= 0 || !ix.Graph.Topics[tid].Salient() {
+				continue
+			}
+			score := here / root
+			if score > best[tid] || (score == best[tid] && canon < out[tid]) {
+				best[tid], out[tid] = score, canon
+			}
 		}
 	}
-	if best == "" {
-		return ""
-	}
-	return ix.CanonicalID(best)
+	return out
 }

@@ -112,3 +112,38 @@ func TestRegionsIgnoreThePersonWhoTouchesEverything(t *testing.T) {
 		t.Errorf("lead = %q, want Owner, who does this work rather than all work", got[0].Lead)
 	}
 }
+
+// TestDepartureNamesTheWholeRegion checks what leaves with somebody is measured
+// against who leads the work, not who has the most raw weight in it. Reading it
+// off raw weight let the people who touch everything out-weigh a maintainer on
+// their own subjects, so the report named one subject where the person really
+// led nine, which is the opposite of useful in an offboarding conversation.
+func TestDepartureNamesTheWholeRegion(t *testing.T) {
+	t.Parallel()
+	recs := []connector.Record{
+		held("Owner", "owner@x.com", "dlna", "dlna", "dmr", "dmr", "dms", "dms"),
+		tied("dlna", "dmr", "dms"),
+		tied("dmr", "dlna"),
+		tied("dms", "dlna"),
+	}
+	sweep := []string{"dlna", "dlna", "dlna", "dmr", "dmr", "dmr", "dms", "dms", "dms"}
+	for i := range 80 {
+		sweep = append(sweep, fmt.Sprintf("area%d", i), fmt.Sprintf("area%d", i))
+	}
+	recs = append(recs, held("Sweeper", "sweeper@x.com", sweep...))
+
+	ix := index.New()
+	ix.Build(recs)
+	ix.Canonicalize()
+
+	imp := Departure(ix, "Owner")
+	if len(imp.Regions) != 1 {
+		t.Fatalf("regions = %+v, want the joined work named as one thing", imp.Regions)
+	}
+	if imp.Regions[0].Size() != 3 {
+		t.Errorf("region spans %d subjects, want all 3 they lead", imp.Regions[0].Size())
+	}
+	if len(imp.Sole)+len(imp.Top) == 0 {
+		t.Error("nothing at all was reported as leaving with them")
+	}
+}

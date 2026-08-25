@@ -605,9 +605,16 @@ func renderDeparture(w io.Writer, query string, imp resolve.DepartureImpact, s s
 		name = imp.Person
 	}
 	fmt.Fprintln(w, s.bold("If "+name+" leaves"))
-	if len(imp.Sole) == 0 && len(imp.Top) == 0 {
+	if len(imp.Sole) == 0 && len(imp.Top) == 0 && len(imp.Regions) == 0 {
 		fmt.Fprintln(w, s.dim("  No topic depends on them as the top expert."))
 		return
+	}
+	// The joined work goes first because it is the heaviest thing they take
+	// with them: a region has to be picked up whole, not a subject at a time.
+	for _, r := range imp.Regions {
+		fmt.Fprintf(w, "\n  %s\n", s.bad(fmt.Sprintf(
+			"A joined body of work goes with them (%d subjects)", r.Size())))
+		fmt.Fprintf(w, "    %s\n", strings.Join(r.Topics, ", "))
 	}
 	if len(imp.Sole) > 0 {
 		fmt.Fprintf(w, "\n  %s\n", s.bad(fmt.Sprintf("Sole expert, nobody else knows (%d)", len(imp.Sole))))

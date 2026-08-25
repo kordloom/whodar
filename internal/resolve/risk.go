@@ -162,6 +162,11 @@ type DepartureImpact struct {
 	Sole []string `json:"sole"`
 	// Top are topics where the person ranks first but others remain.
 	Top []string `json:"top"`
+	// Regions are the joined bodies of work they lead: subjects changed
+	// together where they lead every one. Losing one of these is not the same
+	// as losing the subjects in it separately, because whoever takes it on has
+	// to learn the whole of it.
+	Regions []Region `json:"regions,omitempty"`
 }
 
 // Departure reports what leaves with the person matching query: the offboarding
@@ -176,8 +181,13 @@ func Departure(ix *index.Index, query string) DepartureImpact {
 	if p := ix.Graph.People[pid]; p != nil {
 		imp.Name = p.Name
 	}
+	// Who leads a subject is not who has the most raw weight in it: the people
+	// who touch everything out-weigh every owner at once, and reading departure
+	// off that showed a maintainer losing one subject where they really lead
+	// nine. See leadOf.
+	lead := leads(ix)
 	for _, tr := range Risk(ix, 0) {
-		if len(tr.Experts) == 0 || model.ID(tr.Experts[0].ID) != pid {
+		if len(tr.Experts) == 0 || lead[model.ID(tr.Topic)] != pid {
 			continue
 		}
 		if len(tr.Experts) == 1 {
@@ -188,6 +198,11 @@ func Departure(ix *index.Index, query string) DepartureImpact {
 	}
 	sort.Strings(imp.Sole)
 	sort.Strings(imp.Top)
+	for _, region := range Regions(ix, 0) {
+		if model.ID(region.LeadID) == pid {
+			imp.Regions = append(imp.Regions, region)
+		}
+	}
 	return imp
 }
 
