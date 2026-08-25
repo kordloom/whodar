@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kordloom/whodar/internal/identity"
+
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/util"
 )
@@ -48,6 +50,10 @@ const (
 	confEmailVariant = 0.85
 	confSharedTeam   = 0.8
 	confSharedTopics = 0.7
+	// confSameName is the confidence in two records being one person on the
+	// strength of a full name and the work they both do. It sits lowest of the
+	// inferred joins because nothing identifies the two to each other directly.
+	confSameName = 0.65
 )
 
 // AutoJoin unions each handle-only person, such as github:kim-doe or
@@ -186,8 +192,14 @@ func (ix *Index) AutoJoin() JoinResult {
 				name := flatten(pa.Name)
 				// The local part must BE the full name (john.smith, not a bare
 				// first name), so two different people who only share a first
-				// name at different domains are never collapsed.
+				// name at different domains are never collapsed. A name of one
+				// word is that bare first name however the address is spelled,
+				// and two people called Michael at two domains are not evidence
+				// of one person with two addresses.
 				if name == "" || name != flatten(pb.Name) || name != key {
+					continue
+				}
+				if !strings.Contains(strings.TrimSpace(pa.Name), " ") {
 					continue
 				}
 				r.Union(a, b)
@@ -200,6 +212,7 @@ func (ix *Index) AutoJoin() JoinResult {
 			}
 		}
 	}
+	joins = append(joins, sameNameJoins(g, r)...)
 	sort.Strings(blocked)
 	ix.joins = pruneJoins(mergeJoins(ix.joins, joins), ix)
 	return JoinResult{Joined: len(joins), Joins: joins, Ambiguous: blocked}
@@ -245,6 +258,86 @@ func pruneJoins(joins []Join, ix *Index) []Join {
 		out = append(out, j)
 	}
 	return out
+}
+
+// minSameNameSubjects is how many real subjects two records must both hold
+// before a shared name is taken as evidence they are one person.
+const minSameNameSubjects = 3
+
+// sameNameJoins merges the records of one person who appears twice. A
+// maintainer commits from work and from home, or from a GitHub noreply address
+// and their own, and nothing in either record links the two: no shared handle,
+// no matching local part. What is left is the name they sign with and the work
+// they do, and when a full name and several real subjects both agree, the two
+// records are one person.
+//
+// It is deliberately narrow. Collapsing two people who merely share a name is a
+// worse failure than leaving one person split in two, so a single-word name
+// never qualifies, a name held by more than two records is treated as a common
+// name rather than a split identity, and scaffolding subjects that everybody
+// holds do not count as agreement.
+func sameNameJoins(g *model.Graph, r *identity.Resolver) []Join {
+	byName := make(map[string][]model.ID)
+	for id, p := range g.People {
+		if handleOnly(id) {
+			continue
+		}
+		name := strings.TrimSpace(strings.ToLower(p.Name))
+		if name == "" || !strings.Contains(name, " ") {
+			continue
+		}
+		c := r.Canonical(id)
+		if !slices.Contains(byName[name], c) {
+			byName[name] = append(byName[name], c)
+		}
+	}
+	names := make([]string, 0, len(byName))
+	for name := range byName {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var out []Join
+	for _, name := range names {
+		ids := byName[name]
+		if len(ids) != 2 {
+			continue
+		}
+		slices.Sort(ids)
+		if sharedSubjects(g, g.People[ids[0]], g.People[ids[1]]) < minSameNameSubjects {
+			continue
+		}
+		r.Union(ids[0], ids[1])
+		target := r.Canonical(ids[0])
+		other := ids[1]
+		if target == ids[1] {
+			other = ids[0]
+		}
+		out = append(out, Join{
+			Alias: other, Canonical: target,
+			Confidence: confSameName, Reason: "same name and shared subjects",
+		})
+	}
+	return out
+}
+
+// sharedSubjects counts the real subjects two people both hold. Scaffolding
+// that everybody in an organization holds agrees by default and proves nothing,
+// so it does not count towards the total.
+func sharedSubjects(g *model.Graph, a, b *model.Person) int {
+	if a == nil || b == nil {
+		return 0
+	}
+	n := 0
+	for tid := range a.Topics {
+		if _, ok := b.Topics[tid]; !ok {
+			continue
+		}
+		if g.Topics[tid].Salient() {
+			n++
+		}
+	}
+	return n
 }
 
 // corroboration reports how firmly two people are the same despite an ambiguous
