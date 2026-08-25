@@ -82,3 +82,54 @@ func TestWalkIsIndependentOfWorkerCount(t *testing.T) {
 		})
 	}
 }
+
+// TestAuthorKeepsTheNameTheyUseMost checks one mis-attributed commit cannot
+// rename somebody. Real repositories carry them: a merge lands under the wrong
+// author, or a machine is configured with somebody else's name for a day. Taking
+// the most recent name let a single such commit rename a person with sixteen
+// hundred commits of their own, and the directory then showed one maintainer
+// under another maintainer's address.
+func TestAuthorKeepsTheNameTheyUseMost(t *testing.T) {
+	t.Parallel()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := t.TempDir()
+	gitRun(t, dir, "init", "--quiet", "-b", "main")
+
+	commit := func(i int, who string) {
+		file := filepath.Join(dir, "billing", fmt.Sprintf("f%d.go", i))
+		if err := os.MkdirAll(filepath.Dir(file), 0o750); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(file, []byte(fmt.Sprintf("package x // %d\n", i)), 0o600); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		gitRun(t, dir, "add", ".")
+		cmd := exec.Command("git", "commit", "--quiet", "-m", "work")
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME="+who, "GIT_AUTHOR_EMAIL=real@corp.com",
+			"GIT_COMMITTER_NAME="+who, "GIT_COMMITTER_EMAIL=real@corp.com")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("commit %d: %v: %s", i, err, out)
+		}
+	}
+	for i := range 8 {
+		commit(i, "Real Owner")
+	}
+	// The stray one lands last, which is exactly when taking the latest name
+	// goes wrong.
+	commit(8, "Someone Else")
+
+	recs, err := NewGitHistory(GitOptions{Paths: []string{dir}, SinceDays: 3650}).Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("got %d records, want one author", len(recs))
+	}
+	if recs[0].Name != "Real Owner" {
+		t.Errorf("name = %q, want the name used for eight of nine commits", recs[0].Name)
+	}
+}

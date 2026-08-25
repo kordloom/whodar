@@ -106,7 +106,9 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 	}
 
 	counts := make(map[string]map[string]int)
-	names := make(map[string]string)
+	// How often each author has used each display name, rather than whichever
+	// they used last. See pickNames.
+	nameCounts := make(map[string]map[string]int)
 	latest := make(map[string]time.Time)
 	// Tokens taken from a file path, which is where work demonstrably landed.
 	// Commit subject words stay weak.
@@ -115,7 +117,7 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		read, skipped, err := g.readRepo(ctx, path, counts, names, latest, curated)
+		read, skipped, err := g.readRepo(ctx, path, counts, nameCounts, latest, curated)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return nil, err
@@ -143,6 +145,7 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 		}
 	}
 
+	names := pickNames(nameCounts)
 	records := make([]Record, 0, len(counts))
 	for email, c := range counts {
 		rec := Record{
@@ -270,6 +273,27 @@ const maxGitWorkers = 8
 
 const gitProgressEvery = 3 * time.Second
 
+// pickNames settles on the name each author is known by: the one they have
+// signed with most often, not the one they signed with last. A real repository
+// carries mis-attributed commits, and a single one of them was enough to rename
+// somebody with sixteen hundred commits to their name. Ties fall to the
+// alphabetically first name so a rebuild produces the same directory.
+func pickNames(counts map[string]map[string]int) map[string]string {
+	out := make(map[string]string, len(counts))
+	for email, seen := range counts {
+		best, bestN := "", 0
+		for name, n := range seen {
+			if n > bestN || (n == bestN && name < best) {
+				best, bestN = name, n
+			}
+		}
+		if best != "" {
+			out[email] = best
+		}
+	}
+	return out
+}
+
 // changedPaths lists the files one commit touched, by comparing its tree with
 // its first parent's. Only the trees are needed for that. Asking the commit for
 // its stats instead builds a full textual patch of every changed file, which is
@@ -316,7 +340,7 @@ func (g *GitHistory) readRepo(
 	ctx context.Context,
 	path string,
 	counts map[string]map[string]int,
-	names map[string]string,
+	names map[string]map[string]int,
 	latest map[string]time.Time,
 	curated map[string]bool,
 ) (read, skipped int, err error) {
@@ -403,8 +427,8 @@ func (g *GitHistory) scanCommits(ctx context.Context, path string) ([]commitJob,
 type tally struct {
 	// counts is per-author topic weight.
 	counts map[string]map[string]int
-	// names is each author's display name at their latest commit.
-	names map[string]string
+	// names counts how often each author signed with each display name.
+	names map[string]map[string]int
 	// latest is each author's most recent commit time.
 	latest map[string]time.Time
 	// curated are the tokens this worker saw in a file path rather than only in
@@ -427,7 +451,7 @@ func (g *GitHistory) diffCommits(
 	path string,
 	jobs []commitJob,
 	counts map[string]map[string]int,
-	names map[string]string,
+	names map[string]map[string]int,
 	latest map[string]time.Time,
 	curated map[string]bool,
 ) (read, skipped int, err error) {
@@ -484,12 +508,16 @@ func (g *GitHistory) diffCommits(
 		for email, when := range t.latest {
 			if when.After(latest[email]) {
 				latest[email] = when
-				if t.names[email] != "" {
-					names[email] = t.names[email]
-				}
 			}
-			if names[email] == "" && t.names[email] != "" {
-				names[email] = t.names[email]
+		}
+		for email, seen := range t.names {
+			into := names[email]
+			if into == nil {
+				into = make(map[string]int)
+				names[email] = into
+			}
+			for name, n := range seen {
+				into[name] += n
 			}
 		}
 	}
@@ -508,7 +536,7 @@ func (g *GitHistory) diffShare(
 ) tally {
 	t := tally{
 		counts:  make(map[string]map[string]int),
-		names:   make(map[string]string),
+		names:   make(map[string]map[string]int),
 		latest:  make(map[string]time.Time),
 		curated: make(map[string]bool),
 	}
@@ -542,12 +570,14 @@ func (g *GitHistory) diffShare(
 
 		if job.When.After(t.latest[job.Email]) {
 			t.latest[job.Email] = job.When
-			if job.Name != "" {
-				t.names[job.Email] = job.Name
-			}
 		}
-		if t.names[job.Email] == "" && job.Name != "" {
-			t.names[job.Email] = job.Name
+		if job.Name != "" {
+			seen := t.names[job.Email]
+			if seen == nil {
+				seen = make(map[string]int)
+				t.names[job.Email] = seen
+			}
+			seen[job.Name]++
 		}
 		m := t.counts[job.Email]
 		if m == nil {

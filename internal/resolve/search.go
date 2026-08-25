@@ -84,6 +84,14 @@ func Search(ix *index.Index, query string, limit int) []SearchResult {
 	return out
 }
 
+// Subject match tie-break. topicTierSpread is how far a subject match may rise
+// above the base tier for the work behind it, kept under the gap to the tier
+// above. topicTierScale is the weight at which half that spread is earned.
+const (
+	topicTierSpread = 3.0
+	topicTierScale  = 20.0
+)
+
 // scorePerson scores how directly a person matches the lowercased query and
 // lists the fields that hit. The score is the strongest single field; a name
 // carries the most weight, then email, title, team, and topic.
@@ -114,11 +122,19 @@ func scorePerson(p *model.Person, team, q string) (float64, []string) {
 	if team != "" && strings.Contains(strings.ToLower(team), q) {
 		hit(12, "team")
 	}
-	for tid := range p.Topics {
-		if strings.Contains(strings.ToLower(string(tid)), q) {
-			hit(8, "topic")
-			break
+	// Everybody who holds a matching subject matches it equally as far as the
+	// text is concerned, so without this the people who merely touched it come
+	// back in alphabetical order and the person who owns it is wherever their
+	// name happens to fall. The bonus is bounded well below the next tier, so
+	// no amount of work in a subject outranks a title or team match.
+	var strongest float64
+	for tid, w := range p.Topics {
+		if w > strongest && strings.Contains(strings.ToLower(string(tid)), q) {
+			strongest = w
 		}
+	}
+	if strongest > 0 {
+		hit(8+topicTierSpread*strongest/(strongest+topicTierScale), "topic")
 	}
 	return best, matched
 }
