@@ -26,6 +26,11 @@ type TopicRelation struct {
 	// Narrower marks a topic that looks like a specialty of the source topic:
 	// its experts are a subset, and there are fewer of them.
 	Narrower bool `json:"narrower"`
+	// Experts is how many people hold the related topic. Overlap alone cannot
+	// order these: a subject one person happens to hold overlaps perfectly with
+	// anything else they hold, so without this the strongest relationships are
+	// buried under every incidental one.
+	Experts int `json:"experts"`
 }
 
 // Related returns the topics whose experts substantially overlap with topic's,
@@ -60,11 +65,19 @@ func Related(ix *index.Index, topic string, limit int) []TopicRelation {
 			Topic:    other,
 			Overlap:  overlap,
 			Narrower: len(people) < len(want),
+			Experts:  len(people),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Overlap != out[j].Overlap {
 			return out[i].Overlap > out[j].Overlap
+		}
+		// Equal overlap is common, because any subject a single person holds
+		// overlaps perfectly with everything else they hold. Order those by how
+		// many people share them, so a real neighbouring body of knowledge comes
+		// before one person's passing acquaintance with a file.
+		if out[i].Experts != out[j].Experts {
+			return out[i].Experts > out[j].Experts
 		}
 		return out[i].Topic < out[j].Topic
 	})
