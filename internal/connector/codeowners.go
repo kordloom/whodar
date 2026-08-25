@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/kordloom/whodar/internal/util"
@@ -198,6 +199,32 @@ func pathTopics(p string) []string {
 		}
 	}
 	return out
+}
+
+// pathSubjects splits the tokens of a file path by how much they establish.
+// The directories a file sits in name the area it belongs to, and that is what
+// somebody asks about. The file's own name is mostly boilerplate that repeats
+// in every one of them: const, manifest, strings, an __init__ and a test per
+// area. Counting those the same way makes the busiest subjects in a code base
+// its filenames, so the leaf corroborates and the directories establish.
+//
+// An extension that maps to a technology stays strong, since a file being
+// Terraform is a statement about the work regardless of its name.
+func pathSubjects(p string) (dirs, leaf []string) {
+	cut := strings.LastIndex(p, "/")
+	if cut < 0 {
+		// A file at the root has no directory to belong to, so its own name is
+		// the only thing on offer.
+		return patternNames(p), pathTopics(p)
+	}
+	dirs = pathTopics(p[:cut])
+	dirs = append(dirs, patternNames(p)...)
+	for _, tok := range pathTopics(p[cut+1:]) {
+		if !slices.Contains(dirs, tok) {
+			leaf = append(leaf, tok)
+		}
+	}
+	return dirs, leaf
 }
 
 // wordsIn splits a compound name on the separators code uses, returning the

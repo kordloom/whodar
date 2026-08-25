@@ -111,3 +111,35 @@ func TestJunkPathTokensAreNotSubjects(t *testing.T) {
 		}
 	}
 }
+
+// TestDirectoriesEstablishAndFilenamesCorroborate checks which half of a path
+// is treated as naming a subject. Every area of a code base carries the same
+// handful of filenames, so counting those as subjects makes the busiest
+// subjects in a repository const, manifest, and __init__, and buries the areas
+// people actually ask about.
+func TestDirectoriesEstablishAndFilenamesCorroborate(t *testing.T) {
+	t.Parallel()
+	dirs, leaf := pathSubjects("homeassistant/components/zwave_js/const.py")
+
+	for _, want := range []string{"zwave_js", "zwave", "components"} {
+		if !slices.Contains(dirs, want) {
+			t.Errorf("directories = %v, want %q among them", dirs, want)
+		}
+	}
+	if slices.Contains(dirs, "const") {
+		t.Errorf("directories = %v, want the filename %q left out", dirs, "const")
+	}
+	if !slices.Contains(leaf, "const") {
+		t.Errorf("leaf = %v, want the filename to still corroborate", leaf)
+	}
+	// A file at the root has no directory to belong to, so nothing is lost.
+	rootDirs, rootLeaf := pathSubjects("README.md")
+	if len(rootDirs)+len(rootLeaf) == 0 {
+		t.Error("a file at the repository root produced no tokens at all")
+	}
+	// An extension that names a technology establishes regardless of position.
+	tfDirs, _ := pathSubjects("infra/main.tf")
+	if !slices.Contains(tfDirs, "terraform") {
+		t.Errorf("directories = %v, want a .tf file to state terraform", tfDirs)
+	}
+}

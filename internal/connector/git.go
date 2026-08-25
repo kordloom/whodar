@@ -555,13 +555,20 @@ func (g *GitHistory) diffShare(
 			t.counts[job.Email] = m
 		}
 		for _, name := range paths {
-			for _, tok := range pathTopics(name) {
+			dirs, leaf := pathSubjects(name)
+			// The directories a change landed in are where the work
+			// demonstrably went, so the subjects they name are stated rather
+			// than guessed at. Everything that tells a real subject from a
+			// passing word reads this: without it a repository full of
+			// expertise reports none of it.
+			for _, tok := range dirs {
 				m[tok]++
-				// A path is where the work demonstrably landed, so the subject
-				// it names is stated rather than guessed at. Everything that
-				// depends on telling a real subject from a passing word reads
-				// this: without it a repository full of expertise reports none.
 				t.curated[tok] = true
+			}
+			// The file's own name still counts towards the work, but it does
+			// not establish a subject on its own.
+			for _, tok := range leaf {
+				m[tok]++
 			}
 		}
 		// The commit subject carries the domain vocabulary the filenames often
