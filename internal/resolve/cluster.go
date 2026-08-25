@@ -31,7 +31,23 @@ type TopicRelation struct {
 	// anything else they hold, so without this the strongest relationships are
 	// buried under every incidental one.
 	Experts int `json:"experts"`
+	// Because names the evidence: the two subjects are changed together, or the
+	// same people hold both. They are close to independent of one another, and
+	// the first is the stronger of the two, so it is worth saying which is
+	// speaking.
+	Because string `json:"because"`
+	// Together is how much of the time the two subjects change as one thing,
+	// zero when nothing has ever been observed changing them together.
+	Together float64 `json:"together,omitempty"`
 }
+
+// Evidence a relationship rests on.
+const (
+	// becauseTogether means the two subjects are changed in the same commits.
+	becauseTogether = "changed together"
+	// becauseExperts means the same people hold both.
+	becauseExperts = "shared experts"
+)
 
 // Related returns the topics whose experts substantially overlap with topic's,
 // strongest first. Overlap is computed over the people who hold each topic, so
@@ -43,7 +59,16 @@ func Related(ix *index.Index, topic string, limit int) []TopicRelation {
 	if len(want) == 0 {
 		return nil
 	}
-	var out []TopicRelation
+	// What the work says, which is evidence about the subjects themselves.
+	out := changedTogether(ix, topic, holders)
+	already := make(map[string]bool, len(out))
+	for _, r := range out {
+		already[r.Topic] = true
+	}
+	// What the people say, which fills in where nothing has been seen changing
+	// together. It is the weaker of the two: any subject one person holds
+	// overlaps perfectly with everything else they hold.
+	var byExperts []TopicRelation
 	for other, people := range holders {
 		if other == strings.ToLower(strings.TrimSpace(topic)) || len(people) == 0 {
 			continue
@@ -61,29 +86,67 @@ func Related(ix *index.Index, topic string, limit int) []TopicRelation {
 		if overlap < relatedCut {
 			continue
 		}
-		out = append(out, TopicRelation{
+		if already[other] {
+			continue
+		}
+		byExperts = append(byExperts, TopicRelation{
 			Topic:    other,
 			Overlap:  overlap,
 			Narrower: len(people) < len(want),
 			Experts:  len(people),
+			Because:  becauseExperts,
 		})
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Overlap != out[j].Overlap {
-			return out[i].Overlap > out[j].Overlap
+	sort.Slice(byExperts, func(i, j int) bool {
+		if byExperts[i].Overlap != byExperts[j].Overlap {
+			return byExperts[i].Overlap > byExperts[j].Overlap
 		}
 		// Equal overlap is common, because any subject a single person holds
 		// overlaps perfectly with everything else they hold. Order those by how
 		// many people share them, so a real neighbouring body of knowledge comes
 		// before one person's passing acquaintance with a file.
-		if out[i].Experts != out[j].Experts {
-			return out[i].Experts > out[j].Experts
+		if byExperts[i].Experts != byExperts[j].Experts {
+			return byExperts[i].Experts > byExperts[j].Experts
 		}
-		return out[i].Topic < out[j].Topic
+		return byExperts[i].Topic < byExperts[j].Topic
 	})
+	out = append(out, byExperts...)
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
 	}
+	return out
+}
+
+// changedTogether reads the ties a source observed directly between subjects,
+// strongest first. This is the half of relatedness that does not go through
+// people at all, so unlike shared experts it can be used as evidence about who
+// knows what without arguing in a circle.
+func changedTogether(ix *index.Index, topic string, holders map[string]map[model.ID]bool) []TopicRelation {
+	t := ix.Graph.Topics[model.ID(strings.ToLower(strings.TrimSpace(topic)))]
+	if t == nil || len(t.Near) == 0 {
+		return nil
+	}
+	out := make([]TopicRelation, 0, len(t.Near))
+	for id, weight := range t.Near {
+		other := string(id)
+		people := holders[other]
+		if len(people) == 0 {
+			continue
+		}
+		out = append(out, TopicRelation{
+			Topic:    other,
+			Together: weight,
+			Experts:  len(people),
+			Narrower: len(people) < len(holders[strings.ToLower(strings.TrimSpace(topic))]),
+			Because:  becauseTogether,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Together != out[j].Together {
+			return out[i].Together > out[j].Together
+		}
+		return out[i].Topic < out[j].Topic
+	})
 	return out
 }
 

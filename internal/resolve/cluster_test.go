@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/kordloom/whodar/internal/connector"
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/model"
 )
@@ -122,5 +123,45 @@ func TestTopicGroups(t *testing.T) {
 	}
 	if want := []string{"billing", "retries"}; !slices.Equal(billing[0].Includes, want) {
 		t.Errorf("includes = %v, want %v", billing[0].Includes, want)
+	}
+}
+
+// TestRelatedLeadsWithWhatChangedTogether checks the stronger evidence goes
+// first and says so. Subjects changed in the same commits are related whoever
+// changed them; subjects with the same experts may only share one person, and
+// that kind of relatedness cannot be evidence about people without arguing in
+// a circle.
+func TestRelatedLeadsWithWhatChangedTogether(t *testing.T) {
+	t.Parallel()
+	ix := index.New()
+	ix.Build([]connector.Record{
+		{Kind: connector.KindPerson, Name: "Ada", Email: "ada@x.com",
+			Topics: []string{"billing", "ledger", "unrelated"}, Source: "git"},
+		{Kind: connector.KindPerson, Name: "Bo", Email: "bo@x.com",
+			Topics: []string{"billing", "unrelated"}, Source: "git"},
+		{Kind: connector.KindTopic, Name: "billing", Source: "git",
+			Links: []connector.TopicLink{{To: "ledger", Weight: 0.5}}},
+	})
+	ix.Canonicalize()
+
+	got := Related(ix, "billing", 5)
+	if len(got) == 0 {
+		t.Fatal("billing has no related subjects at all")
+	}
+	if got[0].Topic != "ledger" {
+		t.Errorf("first related = %q, want ledger, which the work ties to billing", got[0].Topic)
+	}
+	if got[0].Because != becauseTogether {
+		t.Errorf("evidence = %q, want it to say the two changed together", got[0].Because)
+	}
+	// The weaker kind still appears, so nothing is lost by preferring the other.
+	var sawExperts bool
+	for _, r := range got {
+		if r.Because == becauseExperts {
+			sawExperts = true
+		}
+	}
+	if !sawExperts {
+		t.Errorf("related = %+v, want shared-expert relations still listed behind", got)
 	}
 }

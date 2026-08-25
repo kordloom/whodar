@@ -72,6 +72,13 @@ type Topic struct {
 	// Sources names the connectors that produced this topic. Breadth across
 	// sources is the strongest evidence a topic is real rather than a stray word.
 	Sources []string
+	// Near are the subjects this one is worked on alongside, and how strongly,
+	// from zero to one. It is the only thing whodar knows about a subject that
+	// does not come through the people who hold it: two areas changed in the
+	// same commit are related whoever made the commit. Everything else relates
+	// subjects by their shared experts, which cannot then be evidence about
+	// expertise without arguing in a circle.
+	Near map[ID]float64
 	// Ubiquitous marks a topic nearly everybody holds. Those are the scaffolding
 	// of a codebase rather than subjects within it: the name of the repository,
 	// the language it is written in, the directory every file sits under. They

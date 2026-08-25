@@ -632,9 +632,15 @@ func renderRelated(w io.Writer, topic string, rel []resolve.TopicRelation, s sty
 			"No related topics found. Either the topic is not indexed, or nobody holds it alongside another."))
 		return
 	}
+	together := 0
+	for _, r := range rel {
+		if r.Together > 0 {
+			together++
+		}
+	}
 	fmt.Fprintln(w, s.bold(fmt.Sprintf(
-		"Related to %s  %d topic%s held by the same people",
-		topic, len(rel), plural(len(rel)))))
+		"Related to %s  %d topic%s, %d of them worked on alongside it",
+		topic, len(rel), plural(len(rel)), together)))
 	width := 0
 	for _, r := range rel {
 		if n := len([]rune(r.Topic)); n > width {
@@ -649,10 +655,17 @@ func renderRelated(w io.Writer, topic string, rel []resolve.TopicRelation, s sty
 		if r.Narrower {
 			kind = "specialty"
 		}
+		// Which of the two kinds of evidence is speaking matters: subjects
+		// changed together are related whoever changed them, while subjects
+		// with the same experts may only share a person.
+		strength := fmt.Sprintf("%3.0f%% shared", r.Overlap*100)
+		if r.Together > 0 {
+			strength = fmt.Sprintf("%3.0f%% together", r.Together*100)
+		}
 		fmt.Fprintf(w, "  %s  %s  %s\n",
 			pad(s.bold(r.Topic), r.Topic, width),
-			s.accent(fmt.Sprintf("%3.0f%% shared", r.Overlap*100)),
-			s.dim(kind))
+			s.accent(strength),
+			s.dim(kind+", "+r.Because))
 	}
 }
 

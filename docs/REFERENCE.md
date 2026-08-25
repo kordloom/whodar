@@ -250,11 +250,24 @@ know a subject ranked by expertise.
 
     whodar related TOPIC [--limit N]
 
-Report the topics whose experts overlap TOPIC's own. An organization names one
-subject several ways and usually has specialties underneath it, and overlap over
-the people who do the work finds both without a taxonomy anyone had to write: a
-topic held by the same people is the same body of knowledge, and one held by
-fewer of them is a specialty within it.
+Report the subjects related to TOPIC, on two kinds of evidence, and say which
+is speaking for each.
+
+The stronger is what changes together. Two areas altered in the same commits
+belong to one body of knowledge whoever altered them, which makes this the only
+thing whodar knows about a subject that does not run through the people holding
+it. A commit sweeping across many areas is ignored, since a rename does not make
+everything it touched one subject, and so are the directory all the changed
+paths sit under and the language they are written in, which every change touches
+by construction.
+
+The weaker is shared experts: a subject held by the same people is likely the
+same body of knowledge, and one held by fewer of them is a specialty within it.
+It fills in where nothing has been seen changing together, which is often, since
+most commits touch a single area. Read it knowing that any subject one person
+holds overlaps perfectly with everything else they hold.
+
+Neither needs a taxonomy anyone had to write, and neither needs a model.
 
 ## whodar risk
 

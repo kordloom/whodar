@@ -43,6 +43,12 @@ type Record struct {
 	// their own, establish a subject: a topic seen only this way has to recur
 	// across sources before it counts as one.
 	WeakTopics []string
+	// Links are ties from this record's subject to other subjects, on a
+	// KindTopic record. They say which subjects are worked on together, which
+	// is the one thing about a subject that does not come through the people
+	// who hold it: two areas changed in the same commit are related whoever
+	// made the commit.
+	Links []TopicLink
 	// Members lists person references active in a KindChannel record.
 	Members []string
 	// Link is the web URL of a KindChannel record, used to open the channel in
@@ -77,7 +83,19 @@ const (
 	KindPerson Kind = iota
 	// KindChannel describes a channel, a place to ask.
 	KindChannel
+	// KindTopic describes a subject rather than a person: what else it is
+	// worked on alongside. Name is the subject and Links are its ties.
+	KindTopic
 )
+
+// TopicLink is one subject's tie to another, seen by a source that watched them
+// change together. Weight is how strongly, from zero to one.
+type TopicLink struct {
+	// To is the other subject's name.
+	To string
+	// Weight is how much of the time the two move as one thing.
+	Weight float64
+}
 
 // Source fetches and normalizes records from one origin.
 type Source interface {

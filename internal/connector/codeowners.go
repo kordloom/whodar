@@ -234,6 +234,24 @@ func pathSubjects(p string) (dirs, leaf []string) {
 	return dirs, leaf
 }
 
+// deepestSubjects returns the subjects named by the most specific directory a
+// file sits in, as opposed to the directories above it. The distinction matters
+// when deciding what a set of changed paths have in common: two files under
+// ovo_energy and srp_energy share "energy" because that is what they are both
+// about, while two files under services/billing and services/ledger share
+// "services" because that is merely where the code lives.
+func deepestSubjects(p string) []string {
+	cut := strings.LastIndex(p, "/")
+	if cut < 0 {
+		return nil
+	}
+	dir := p[:cut]
+	if i := strings.LastIndex(dir, "/"); i >= 0 {
+		dir = dir[i+1:]
+	}
+	return pathTopics(dir)
+}
+
 // wordsIn splits a compound name on the separators code uses, returning the
 // parts worth treating as subjects in their own right. The name itself is not
 // repeated here; the caller already has it.

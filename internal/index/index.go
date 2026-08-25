@@ -422,6 +422,8 @@ func (ix *Index) rebuild() {
 			switch rec.Kind {
 			case connector.KindChannel:
 				ix.buildChannel(rec)
+			case connector.KindTopic:
+				ix.buildTopicLinks(rec)
 			default:
 				ix.buildPerson(rec)
 			}
@@ -1602,6 +1604,37 @@ func fillIdentity(p *model.Person, rec connector.Record) {
 // anybody has touched it.
 func statesOwnership(source string) bool {
 	return source == "codeowners" || source == "org-csv"
+}
+
+// buildTopicLinks records which subjects a source saw worked on together. The
+// subject itself is not established by this: being changed alongside something
+// is not the same as somebody declaring it, so a subject that appears only here
+// stays unsalient until a person holds it.
+func (ix *Index) buildTopicLinks(rec connector.Record) {
+	tid := topicID(rec.Name)
+	if tid == "" || len(rec.Links) == 0 {
+		return
+	}
+	g := ix.Graph
+	topic := g.Topics[tid]
+	if topic == nil {
+		topic = &model.Topic{ID: tid, Name: strings.ToLower(rec.Name)}
+		g.Topics[tid] = topic
+	}
+	if topic.Near == nil {
+		topic.Near = make(map[model.ID]float64)
+	}
+	for _, link := range rec.Links {
+		to := topicID(link.To)
+		if to == "" || to == tid || link.Weight <= 0 {
+			continue
+		}
+		// Sources disagree about how strongly two subjects are tied; keep the
+		// strongest claim rather than letting a weak one dilute it.
+		if link.Weight > topic.Near[to] {
+			topic.Near[to] = link.Weight
+		}
+	}
 }
 
 // linkOrg attaches the person to their team and organization, creating those
