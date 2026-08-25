@@ -90,6 +90,7 @@ Builds or extends the index from one source per run.
 | `--confluence-server`| `false`  | confluence | Self-hosted Server/DC (REST at root, bearer/anonymous).|
 | `--repo-path`       |           | git        | Local repository root, repeatable.               |
 | `--git-since-days`  | `365`     | git        | History window in days.                          |
+| `--git-until-days`  | `0`       | git        | Stop the window short of today, for a past view. |
 | `--max-commits`     | `2000`    | git        | Commit cap per repository.                       |
 | `--git-workers`     | machine   | git        | Commits diffed at once; a walk's whole cost.     |
 

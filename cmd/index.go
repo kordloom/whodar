@@ -93,6 +93,7 @@ func newIndexCmd(opts *options) *cobra.Command {
 		halfLifeDays     int
 		repoPaths        []string
 		gitSinceDays     int
+		gitUntilDays     int
 		gitWorkers       int
 		maxCommits       int
 		confluenceURL    string
@@ -205,6 +206,7 @@ Start with the org chart, then merge everything else onto it:
 				recs, err = connector.NewGitHistory(connector.GitOptions{
 					Paths:      repoPaths,
 					SinceDays:  gitSinceDays,
+					UntilDays:  gitUntilDays,
 					MaxCommits: maxCommits,
 					Workers:    gitWorkers,
 					Log:        cmd.ErrOrStderr(),
@@ -274,6 +276,8 @@ Start with the org chart, then merge everything else onto it:
 	f.StringArrayVar(&repoPaths, "repo-path", nil, "Local repository root for the git source (repeatable).")
 	f.IntVar(&gitSinceDays, "git-since-days", 365, "Git history window in days.")
 	f.IntVar(&maxCommits, "max-commits", 2000, "Commit cap per repository for the git source.")
+	f.IntVar(&gitUntilDays, "git-until-days", 0,
+		"Stop the git window this many days before today; 0 reads up to the present.")
 	f.IntVar(&gitWorkers, "git-workers", 0,
 		"Commits to diff at once for the git source; 0 picks a default from the machine.")
 	f.BoolVar(&embed, "embed", false, "Generate embeddings via Ollama for semantic search.")

@@ -43,6 +43,12 @@ type GitOptions struct {
 	Paths []string
 	// SinceDays bounds how far back to read history; zero means one year.
 	SinceDays int
+	// UntilDays stops the window short of today, excluding anything more recent
+	// than this many days ago. Zero reads up to the present. It exists so an
+	// index can be built from what was known at a past date, which is the only
+	// way to ask whether whodar would have pointed at the right person before
+	// the answer was visible in the history it was reading.
+	UntilDays int
 	// MaxCommits caps commits read per repository; zero means 2000.
 	MaxCommits int
 	// Log receives progress lines; nil discards them.
@@ -381,8 +387,14 @@ func (g *GitHistory) scanCommits(ctx context.Context, path string) ([]commitJob,
 	defer func() { _ = closeRepo() }()
 
 	mm := loadMailmap(path)
-	since := time.Now().AddDate(0, 0, -g.opts.SinceDays)
-	iter, err := repo.Log(&git.LogOptions{Since: &since})
+	now := time.Now()
+	since := now.AddDate(0, 0, -g.opts.SinceDays)
+	opts := &git.LogOptions{Since: &since}
+	if g.opts.UntilDays > 0 {
+		until := now.AddDate(0, 0, -g.opts.UntilDays)
+		opts.Until = &until
+	}
+	iter, err := repo.Log(opts)
 	if err != nil {
 		return nil, fmt.Errorf("git: log %s: %w", path, err)
 	}
