@@ -239,14 +239,14 @@ footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 
 {{ if .Spans }}
 <section id="spans">
 	<h2>One-person connections <span class="count">({{ len .Spans }})</span></h2>
-	<p class="desc">Pairs of subjects that only one person has ever done work across. Both subjects have their own experts, so nothing that counts experts per subject shows this: what rests on one person is not either subject but the knowledge that the two belong together, and whoever picks one up afterwards has no reason to look at the other.</p>
+	<p class="desc">Subjects that only one person has ever done work across. They have their own experts, so nothing that counts experts per subject shows this: what rests on one person is not any of the subjects but the knowledge that they belong together, and whoever picks one up afterwards has no reason to look at the others. Where the crossings join up they are listed as the one body of work they are, since that is what would leave.</p>
 	<div class="scroller">
 	<table>
-		<thead><tr><th>Subjects</th><th>Only</th><th>People holding the two</th><th>Worked on together</th></tr></thead>
+		<thead><tr><th>Subjects</th><th>Only</th><th>People holding them</th><th>Worked on together</th></tr></thead>
 		<tbody>
 		{{ range .Spans }}
 			<tr>
-				<td>{{ .Topic }} + {{ .With }}</td>
+				<td>{{ range $i, $t := .Topics }}{{ if $i }} + {{ end }}{{ $t }}{{ end }}</td>
 				<td>{{ .Person }}</td>
 				<td class="num">{{ .Experts }}</td>
 				<td class="num">{{ pct .Together }}</td>

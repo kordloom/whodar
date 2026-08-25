@@ -37,26 +37,29 @@ func TestGeneratedCompanyHasWorkThatCrossesAreas(t *testing.T) {
 	}
 	for _, s := range spans {
 		if s.Person == "" {
-			t.Errorf("%s with %s rests on one person but nobody is named", s.Topic, s.With)
+			t.Errorf("%v rests on one person but nobody is named", s.Topics)
+		}
+		if s.Size() < 2 {
+			t.Errorf("%v joins fewer than two subjects, which is not a crossing", s.Topics)
 		}
 		if s.Experts < 2 {
-			t.Errorf("%s with %s: %d experts; the finding is only interesting when both areas have some",
-				s.Topic, s.With, s.Experts)
+			t.Errorf("%v: %d experts; the finding is only interesting when the areas have some",
+				s.Topics, s.Experts)
 		}
 	}
 
-	// The same pair must not be reported twice under fragments of its own name.
-	for i := range spans {
-		for j := i + 1; j < len(spans); j++ {
-			if sameSpanPair(spans[i], spans[j]) {
-				t.Errorf("one connection reported twice: %s+%s and %s+%s",
-					spans[i].Topic, spans[i].With, spans[j].Topic, spans[j].With)
+	// A subject belongs to exactly one finding. Seeing it twice means the
+	// crossings that join up were reported separately after all, which is the
+	// redundancy the grouping exists to prevent.
+	where := make(map[string]int, len(spans))
+	for i, s := range spans {
+		for _, topic := range s.Topics {
+			if prev, ok := where[topic]; ok {
+				t.Errorf("%q appears in two findings, %v and %v, so one body of "+
+					"joined work is being reported as several",
+					topic, spans[prev].Topics, s.Topics)
 			}
+			where[topic] = i
 		}
 	}
-}
-
-// sameSpanPair reports whether two findings name the same two areas.
-func sameSpanPair(a, b resolve.Span) bool {
-	return (a.Topic == b.Topic && a.With == b.With) || (a.Topic == b.With && a.With == b.Topic)
 }

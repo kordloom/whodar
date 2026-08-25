@@ -714,14 +714,18 @@ func renderSpans(w io.Writer, spans []resolve.Span, s style) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, s.bold(fmt.Sprintf(
 		"One-person connections  %d %s only one person has ever worked across",
-		len(spans), plural2(len(spans), "pair", "pairs"))))
+		len(spans), plural2(len(spans), "crossing", "crossings"))))
 	fmt.Fprintf(w, "  %s\n\n", s.dim(
-		"Both subjects have their own experts. The link between them does not."))
+		"The subjects have their own experts. The links between them do not."))
 	for _, sp := range spans {
-		fmt.Fprintf(w, "  %s %s %s  %s\n",
-			s.bold(sp.Topic), s.dim("+"), s.bold(sp.With),
-			s.dim(fmt.Sprintf("only %s, across %d people holding the two",
-				sp.Person, sp.Experts)))
+		// Two subjects is one crossing and reads as a pair. More than two means
+		// the crossings join up and the whole group rests on one person, which
+		// is the heavier finding and is said as one.
+		fmt.Fprintf(w, "  %s  %s\n",
+			s.bold(strings.Join(sp.Topics, s.dim(" + "))),
+			s.dim(fmt.Sprintf("only %s, across %d people holding %s",
+				sp.Person, sp.Experts,
+				plural2(sp.Size(), "the two", "them"))))
 	}
 }
 

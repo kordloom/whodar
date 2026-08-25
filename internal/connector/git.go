@@ -334,6 +334,16 @@ func noteTogether(t *tally, byPath, deepest [][]string, who, where string) {
 	// that path is about, not the shelf it sits on, however many other paths
 	// also name it. Two files under ovo_energy and srp_energy have energy in
 	// common because both are about energy.
+	//
+	// This does let the words of a single directory pair with each other, so a
+	// commit touching only data_grand_lyon reports data, grand, and lyon as
+	// three subjects one person works across. Exempting a leaf only where two
+	// DIFFERENT directories name it was tried and is worse: it also cut
+	// energy from ovo, planet, green, and srp, since most commits touch one
+	// utility integration at a time. The real difference is that energy names a
+	// directory of its own somewhere in the repository and grand never does,
+	// which needs the tokenizer to keep whole segments apart from the words
+	// inside them.
 	for _, subs := range deepest {
 		for _, s := range subs {
 			delete(common, s)

@@ -1080,11 +1080,14 @@ function regionCard(r) {
 function spanCard(sp) {
   const card = el("div", "exp-card exp-critical");
   const head = el("div", "exp-card-head");
-  head.appendChild(el("span", "exp-topic", sp.topic + " + " + sp.with));
+  const topics = sp.topics || [];
+  head.appendChild(el("span", "exp-topic", topics.join(" + ")));
   head.appendChild(el("span", "exp-bus", "only " + sp.person));
   card.appendChild(head);
   card.appendChild(el("p", "exp-also",
-    (sp.experts || 0) + " people hold the two subjects, and one has ever worked across them"));
+    (sp.experts || 0) + " people hold "
+      + (topics.length > 2 ? "these " + topics.length + " subjects" : "the two subjects")
+      + ", and one has ever worked across them"));
   return card;
 }
 

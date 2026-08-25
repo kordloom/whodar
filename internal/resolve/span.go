@@ -17,19 +17,35 @@ import (
 // the two belong together. The person picking either one up afterwards has no
 // reason to look at the other.
 type Span struct {
-	// Topic and With are the two subjects, alphabetically.
-	Topic string `json:"topic"`
-	// With is the other subject.
-	With string `json:"with"`
-	// Person is the display name of the only person who has worked across both.
+	// Topics are the joined subjects, alphabetically. Two of them is the plain
+	// case: one crossing, made by one person. More than two means the crossings
+	// join up, and every one of them rests on the same person.
+	Topics []string `json:"topics"`
+	// Person is the display name of the only person who has worked across them.
 	Person string `json:"person"`
 	// PersonID is that person's canonical identifier.
 	PersonID string `json:"personId"`
-	// Together is how much of the time the two subjects change as one thing.
+	// Together is how much of the time the subjects move as one thing. For a
+	// group it is the weakest crossing holding it together, since that is what
+	// the whole finding rests on.
 	Together float64 `json:"together"`
-	// Experts is how many people hold the two subjects between them, which is
-	// what makes the finding surprising: the subjects are not short of experts.
+	// Experts is how many people hold the subjects between them, which is what
+	// makes the finding surprising: they are not short of experts.
 	Experts int `json:"experts"`
+}
+
+// Size is how many subjects the finding joins.
+func (s Span) Size() int { return len(s.Topics) }
+
+// soleEdge is one crossing between two subjects made by one person, before the
+// crossings that join up are gathered together.
+type soleEdge struct {
+	// A and B are the two subjects, alphabetically.
+	A, B string
+	// Who is the only person who has ever worked across them.
+	Who model.ID
+	// Weight is how much of the time the two move as one thing.
+	Weight float64
 }
 
 // maxSpanRank is how far down a subject's ties a connection may sit and still
@@ -57,7 +73,7 @@ const maxSpanRank = 3
 func SoleSpans(ix *index.Index, limit int) []Span {
 	holders := topicHolders(ix)
 	seen := make(map[[2]string]bool)
-	var out []Span
+	var out []soleEdge
 	for tid, topic := range ix.Graph.Topics {
 		if !topic.Salient() {
 			continue
@@ -83,41 +99,126 @@ func SoleSpans(ix *index.Index, limit int) []Span {
 			}
 			seen[key] = true
 
-			who := ix.CanonicalID(tie.Sole)
-			// Both subjects having experts is the point: this is not a finding
-			// about a subject nobody knows.
-			people := make(map[model.ID]bool, len(holders[a])+len(holders[b]))
-			for id := range holders[a] {
-				people[id] = true
-			}
-			for id := range holders[b] {
-				people[id] = true
-			}
-			out = append(out, Span{
-				Topic: a, With: b, Person: personName(ix, who), PersonID: string(who),
-				Together: tie.Weight, Experts: len(people),
+			// Who holds the subjects is counted once per group below, since
+			// the point of the finding is that they are not short of experts.
+			out = append(out, soleEdge{
+				A: a, B: b, Who: ix.CanonicalID(tie.Sole), Weight: tie.Weight,
 			})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].Together != out[j].Together {
-			return out[i].Together > out[j].Together
+		if out[i].Weight != out[j].Weight {
+			return out[i].Weight > out[j].Weight
 		}
 		// A more specific pairing comes first, so collapsing below keeps the
 		// one that names the subjects most exactly.
-		ni, nj := len(out[i].Topic)+len(out[i].With), len(out[j].Topic)+len(out[j].With)
+		ni, nj := len(out[i].A)+len(out[i].B), len(out[j].A)+len(out[j].B)
 		if ni != nj {
 			return ni > nj
 		}
-		if out[i].Topic != out[j].Topic {
-			return out[i].Topic < out[j].Topic
+		if out[i].A != out[j].A {
+			return out[i].A < out[j].A
 		}
-		return out[i].With < out[j].With
+		return out[i].B < out[j].B
 	})
 	out = collapseSpans(out)
-	if limit > 0 && len(out) > limit {
-		out = out[:limit]
+
+	spans := joinCrossings(ix, out, holders)
+	if limit > 0 && len(spans) > limit {
+		spans = spans[:limit]
 	}
+	return spans
+}
+
+// joinCrossings gathers the crossings that share a person and a subject into
+// one finding.
+//
+// Reported one crossing at a time, a body of work that one person alone moves
+// between reads as several unrelated findings: on a real repository the same
+// person was the only one crossing between four subjects, and that arrived as
+// five rows saying nearly the same thing. It is one thing to know and one
+// person to lose.
+func joinCrossings(ix *index.Index, edges []soleEdge, holders map[string]map[model.ID]bool) []Span {
+	byPerson := make(map[model.ID][]soleEdge)
+	for _, e := range edges {
+		byPerson[e.Who] = append(byPerson[e.Who], e)
+	}
+	people := make([]model.ID, 0, len(byPerson))
+	for who := range byPerson {
+		people = append(people, who)
+	}
+	sort.Slice(people, func(i, j int) bool { return people[i] < people[j] })
+
+	var out []Span
+	for _, who := range people {
+		mine := byPerson[who]
+		// Which subjects this person's crossings reach from each other.
+		near := make(map[string][]string, len(mine)*2)
+		for _, e := range mine {
+			near[e.A] = append(near[e.A], e.B)
+			near[e.B] = append(near[e.B], e.A)
+		}
+		starts := make([]string, 0, len(near))
+		for s := range near {
+			starts = append(starts, s)
+		}
+		sort.Strings(starts)
+
+		seen := make(map[string]bool, len(near))
+		for _, start := range starts {
+			if seen[start] {
+				continue
+			}
+			group := []string{start}
+			seen[start] = true
+			for i := 0; i < len(group); i++ {
+				for _, next := range near[group[i]] {
+					if !seen[next] {
+						seen[next] = true
+						group = append(group, next)
+					}
+				}
+			}
+			sort.Strings(group)
+
+			// The weakest crossing inside the group is what the finding rests
+			// on, so it is the figure to report.
+			inGroup := make(map[string]bool, len(group))
+			for _, s := range group {
+				inGroup[s] = true
+			}
+			weakest := 0.0
+			for _, e := range mine {
+				if !inGroup[e.A] {
+					continue
+				}
+				if weakest == 0 || e.Weight < weakest {
+					weakest = e.Weight
+				}
+			}
+			everyone := make(map[model.ID]bool)
+			for _, s := range group {
+				for id := range holders[s] {
+					everyone[id] = true
+				}
+			}
+			out = append(out, Span{
+				Topics: group, Person: personName(ix, who), PersonID: string(who),
+				Together: weakest, Experts: len(everyone),
+			})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		// A body of joined work is a heavier finding than a single crossing,
+		// so size leads, the same way it does for joined work.
+		if len(out[i].Topics) != len(out[j].Topics) {
+			return len(out[i].Topics) > len(out[j].Topics)
+		}
+		if out[i].Together != out[j].Together {
+			return out[i].Together > out[j].Together
+		}
+		return out[i].Topics[0] < out[j].Topics[0]
+	})
 	return out
 }
 
@@ -129,8 +230,8 @@ func SoleSpans(ix *index.Index, limit int) []Span {
 // thing said three times. Keeping only the most specific of a family says it
 // once, which is the difference between a report somebody reads and a list they
 // skim past.
-func collapseSpans(spans []Span) []Span {
-	out := make([]Span, 0, len(spans))
+func collapseSpans(spans []soleEdge) []soleEdge {
+	out := make([]soleEdge, 0, len(spans))
 	for _, s := range spans {
 		restated := false
 		for _, kept := range out {
@@ -149,11 +250,11 @@ func collapseSpans(spans []Span) []Span {
 // sameSpan reports whether two findings name the same pair of areas. The pair
 // is unordered, and either side may arrive as a fragment of its own name, so
 // both orientations have to be tried.
-func sameSpan(a, b Span) bool {
-	if util.SameFamily(a.Topic, b.Topic) && util.SameFamily(a.With, b.With) {
+func sameSpan(a, b soleEdge) bool {
+	if util.SameFamily(a.A, b.A) && util.SameFamily(a.B, b.B) {
 		return true
 	}
-	return util.SameFamily(a.Topic, b.With) && util.SameFamily(a.With, b.Topic)
+	return util.SameFamily(a.A, b.B) && util.SameFamily(a.B, b.A)
 }
 
 // tieRank is where other sits among a topic's ties, strongest first, counting

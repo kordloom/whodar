@@ -326,8 +326,10 @@ which sources it saw so a reader can judge how much of the company it covered.
 The headline counts are taken over every scored subject, so capping the table
 with `--limit` never shrinks them.
 
-It also reports one-person connections: pairs of subjects that only one person
-has ever done work across. The pairing has to be among the strongest ties both
+It also reports one-person connections: subjects that only one person has ever
+done work across. Where those crossings join up, they are reported as the one
+body of work they are rather than one row at a time, because that is what would
+leave with the person. The pairing has to be among the strongest ties both
 subjects have, which is a rank test rather than a floor on the strength: a floor
 set by eye cuts the real connections along with the noise, since how much of the
 time two subjects move as one is a tiny number whenever both are also worked on

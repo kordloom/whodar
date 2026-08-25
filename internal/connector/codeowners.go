@@ -256,12 +256,26 @@ func wordsIn(name string) []string {
 	}
 	var out []string
 	for part := range strings.FieldsFuncSeq(name, func(r rune) bool { return r == '_' || r == '-' }) {
-		if len(part) < 3 || codeStop[part] || !isSubject(part) {
+		if len(part) < 3 || codeStop[part] || glueWords[part] || !isSubject(part) {
 			continue
 		}
 		out = append(out, part)
 	}
 	return out
+}
+
+// glueWords are the words that join a compound name together without naming
+// anything. A directory called onedrive_for_business is about onedrive and
+// about business, and "for" is how somebody said so.
+//
+// Kept apart from the noise words used on prose, which also drop the verbs a
+// commit subject is full of: "update" and "support" are noise in a sentence and
+// real integrations in a path. Only the words that can never be a subject
+// wherever they appear belong here.
+var glueWords = map[string]bool{
+	"and": true, "for": true, "the": true, "with": true, "from": true,
+	"into": true, "that": true, "this": true, "via": true, "per": true,
+	"not": true, "any": true, "its": true, "our": true, "their": true,
 }
 
 // isSubject reports whether a token from a path is a name somebody could ask

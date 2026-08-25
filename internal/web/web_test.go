@@ -695,7 +695,7 @@ func TestExposureCarriesOnePersonConnections(t *testing.T) {
 		},
 		Exposure: func() Exposure {
 			return Exposure{Spans: []resolve.Span{{
-				Topic: "billing", With: "ledger", Person: "Ada", PersonID: "ada@x.com",
+				Topics: []string{"billing", "ledger"}, Person: "Ada", PersonID: "ada@x.com",
 				Together: 0.25, Experts: 6,
 			}}}
 		},
