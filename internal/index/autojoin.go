@@ -14,6 +14,12 @@ import (
 // minHandleLen keeps trivially short handles from joining anyone.
 const minHandleLen = 3
 
+// minTruncation is how many characters a handle and a name must agree on before
+// one is read as a shortening of the other. Measured on a real project: at six
+// the rule claims andrew-codechimp for somebody displayed as Andre W., and at
+// eight every match it makes is the right one.
+const minTruncation = 8
+
 // JoinResult reports what AutoJoin did: how many handle-only people it unioned
 // to a canonical person, and which handles it left separate because their name
 // or email collided across more than one distinct person.
@@ -60,6 +66,13 @@ const (
 	// that vendor maintains its own code and wrong when it is not. The merge is
 	// listed with its evidence either way, which is what makes it correctable.
 	confHandleDomain = 0.85
+	// confHandleTruncation is the confidence in a handle and a full name where
+	// one spelling starts the other, such as gjohansson-st and G Johansson, or
+	// milanmeu and Milan Meulemans. It needs minTruncation characters of
+	// agreement, because six is reached by coincidence and eight is not, and it
+	// needs a full name on the other side, since a lone given name would claim
+	// every handle that happens to start with it.
+	confHandleTruncation = 0.8
 	// confSameName is the confidence in two records being one person on the
 	// strength of a full name and the work they both do. It sits lowest of the
 	// inferred joins because nothing identifies the two to each other directly.
@@ -128,9 +141,9 @@ func (ix *Index) AutoJoin() JoinResult {
 
 	var joins []Join
 	var blocked []string
-	// Handles the name pass settled, so the domain pass below only considers
-	// the ones still unaccounted for.
-	joinedByName := make(map[model.ID]bool)
+	// Handles already accounted for, so each later pass only considers the ones
+	// still unexplained.
+	settled := make(map[model.ID]bool)
 	for id, hp := range g.People {
 		if !handleOnly(id) {
 			continue
@@ -169,7 +182,7 @@ func (ix *Index) AutoJoin() JoinResult {
 			continue
 		}
 		r.Union(target, id)
-		joinedByName[id] = true
+		settled[id] = true
 		joins = append(joins, Join{Alias: id, Canonical: target, Confidence: conf, Reason: reason})
 	}
 
@@ -194,7 +207,7 @@ func (ix *Index) AutoJoin() JoinResult {
 		set[r.Canonical(id)] = true
 	}
 	for id := range g.People {
-		if !handleOnly(id) || joinedByName[id] {
+		if !handleOnly(id) || settled[id] {
 			continue
 		}
 		self := r.Canonical(id)
@@ -216,9 +229,63 @@ func (ix *Index) AutoJoin() JoinResult {
 			continue
 		}
 		r.Union(target, id)
+		settled[id] = true
 		joins = append(joins, Join{
 			Alias: id, Canonical: target,
 			Confidence: confHandleDomain, Reason: "handle matches email domain",
+		})
+	}
+
+	// A handle is often the person's name with the end cut off, or their name
+	// with something stuck on it. Neither spelling matches whole, so nothing
+	// above sees them as one person.
+	type named struct {
+		id   model.ID
+		flat string
+	}
+	var fullNames []named
+	for id, p := range g.People {
+		// A full name only. A lone given name would claim every handle starting
+		// with it, and there is usually exactly one person called Michael.
+		if handleOnly(id) || !strings.Contains(strings.TrimSpace(p.Name), " ") {
+			continue
+		}
+		key := flatten(p.Name)
+		if len(key) < minTruncation {
+			continue
+		}
+		fullNames = append(fullNames, named{id: r.Canonical(id), flat: key})
+	}
+	for id := range g.People {
+		if !handleOnly(id) || settled[id] {
+			continue
+		}
+		self := r.Canonical(id)
+		key := flatten(handlePart(id))
+		if len(key) < minTruncation {
+			continue
+		}
+		var target model.ID
+		n := 0
+		for _, cand := range fullNames {
+			if cand.id == self {
+				continue
+			}
+			if !strings.HasPrefix(key, cand.flat) && !strings.HasPrefix(cand.flat, key) {
+				continue
+			}
+			if cand.id != target {
+				target = cand.id
+				n++
+			}
+		}
+		if n != 1 {
+			continue
+		}
+		r.Union(target, id)
+		joins = append(joins, Join{
+			Alias: id, Canonical: target,
+			Confidence: confHandleTruncation, Reason: "handle is a shortened name",
 		})
 	}
 

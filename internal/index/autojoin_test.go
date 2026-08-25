@@ -349,3 +349,75 @@ func TestAutoJoinLinksHandleToItsOwnDomain(t *testing.T) {
 		})
 	}
 }
+
+// TestAutoJoinLinksShortenedHandles checks a handle that is a person's name with
+// the end cut off, or with something stuck on it, is joined to that person, and
+// that the guards which keep it from claiming the wrong person hold.
+func TestAutoJoinLinksShortenedHandles(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		Name     string
+		People   map[model.ID]*model.Person
+		WantJoin bool
+		WantTo   model.ID
+	}{{ // Test 0: The handle is the name cut short.
+		People: map[model.ID]*model.Person{
+			"github:milanmeu": {ID: "github:milanmeu", Name: "milanmeu"},
+			"m@x.com":         {ID: "m@x.com", Name: "Milan Meulemans", Email: "m@x.com"},
+		},
+		WantJoin: true, WantTo: "m@x.com",
+	}, { // Test 1: The handle is the name with a suffix stuck on it.
+		People: map[model.ID]*model.Person{
+			"github:gjohansson-st": {ID: "github:gjohansson-st", Name: "gjohansson-st"},
+			"g@x.com":              {ID: "g@x.com", Name: "G Johansson", Email: "g@x.com"},
+		},
+		WantJoin: true, WantTo: "g@x.com",
+	}, { // Test 2: A lone given name claims nobody, however well it matches.
+		People: map[model.ID]*model.Person{
+			"github:michaelarnauts": {ID: "github:michaelarnauts", Name: "michaelarnauts"},
+			"m@x.com":               {ID: "m@x.com", Name: "Michael", Email: "m@x.com"},
+		},
+		WantJoin: false,
+	}, { // Test 3: Too little agreement to be more than a coincidence.
+		People: map[model.ID]*model.Person{
+			"github:andrew-codechimp": {ID: "github:andrew-codechimp", Name: "andrew-codechimp"},
+			"a@x.com":                 {ID: "a@x.com", Name: "Andre W.", Email: "a@x.com"},
+		},
+		WantJoin: false,
+	}, { // Test 4: Two people it could be is nobody it is.
+		People: map[model.ID]*model.Person{
+			"github:jonathanro": {ID: "github:jonathanro", Name: "jonathanro"},
+			"a@x.com":           {ID: "a@x.com", Name: "Jonathan Robichaud", Email: "a@x.com"},
+			"b@x.com":           {ID: "b@x.com", Name: "Jonathan Rodriguez", Email: "b@x.com"},
+		},
+		WantJoin: false,
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			ix := New()
+			ix.Graph.People = test.People
+			res := ix.AutoJoin()
+
+			var got *Join
+			for i, j := range res.Joins {
+				if strings.HasPrefix(string(j.Alias), "github:") {
+					got = &res.Joins[i]
+				}
+			}
+			if !test.WantJoin {
+				if got != nil {
+					t.Fatalf("joined %s to %s on %q, want no join",
+						got.Alias, got.Canonical, got.Reason)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("the handle was left unlinked, though it is that person's name shortened")
+			}
+			if got.Canonical != test.WantTo {
+				t.Errorf("joined to %s, want %s", got.Canonical, test.WantTo)
+			}
+		})
+	}
+}
