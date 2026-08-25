@@ -28,9 +28,15 @@ Examples:
 			if err != nil {
 				return noIndexError(err)
 			}
-			drift := resolve.OwnershipDrift(ix)
-			return opts.render(cmd.OutOrStdout(), map[string]any{"drift": drift}, func(w io.Writer, s style) {
-				renderOwnership(w, drift, s)
+			report := resolve.Ownership(ix)
+			view := map[string]any{
+				"drift":    report.Drift,
+				"declared": report.Declared,
+				"held":     report.Held,
+				"share":    report.Share(),
+			}
+			return opts.render(cmd.OutOrStdout(), view, func(w io.Writer, s style) {
+				renderOwnership(w, report, s)
 			})
 		},
 	}

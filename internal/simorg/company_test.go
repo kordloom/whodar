@@ -34,7 +34,7 @@ func TestBuildBigIndex(t *testing.T) {
 		t.Logf("RISK %-22s level=%-8s bus=%d top=%s", r.Topic, r.Level, r.BusFactor, exp)
 	}
 
-	drift := resolve.OwnershipDrift(ix)
+	drift := resolve.Ownership(ix).Drift
 	t.Logf("ownership drift entries: %d", len(drift))
 	for i, d := range drift {
 		if i >= 4 {

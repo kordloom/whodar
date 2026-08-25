@@ -197,7 +197,7 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 		Directory: &dir, Modes: modes, Recall: recallFn(ix, cfg, token), RecallMe: cfg.recallMe,
 		Search: func(q string, limit int) []resolve.SearchResult { return resolve.Search(ix, q, limit) },
 		Exposure: func() web.Exposure {
-			return web.Exposure{Risk: resolve.Risk(ix, 0), Drift: resolve.OwnershipDrift(ix)}
+			return web.Exposure{Risk: resolve.Risk(ix, 0), Drift: resolve.Ownership(ix).Drift}
 		},
 		Brief: func() report.Brief {
 			all := resolve.Risk(ix, 0)
@@ -299,7 +299,7 @@ func cliFn(ix *index.Index, ask web.AskFunc, seal web.AttestFunc) web.CLIFunc {
 		case "risk":
 			renderRisk(&b, resolve.Risk(ix, 12), plain)
 		case "ownership":
-			renderOwnership(&b, resolve.OwnershipDrift(ix), plain)
+			renderOwnership(&b, resolve.Ownership(ix), plain)
 		case "related":
 			topic := "billing"
 			if top := resolve.Risk(ix, 1); len(top) > 0 {

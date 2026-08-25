@@ -656,15 +656,23 @@ func renderRelated(w io.Writer, topic string, rel []resolve.TopicRelation, s sty
 	}
 }
 
-func renderOwnership(w io.Writer, drift []resolve.OwnerDrift, s style) {
-	if len(drift) == 0 {
+func renderOwnership(w io.Writer, report resolve.OwnershipReport, s style) {
+	drift := report.Drift
+	if report.Declared == 0 {
 		fmt.Fprintln(w, s.dim(
-			"No ownership drift found, or no declared ownership indexed. Add a CODEOWNERS source to compare."))
+			"No declared ownership indexed. Add a CODEOWNERS source to compare it against the work."))
 		return
 	}
+	if len(drift) == 0 {
+		fmt.Fprintln(w, s.dim(fmt.Sprintf(
+			"All %d declared area%s is led by its owner of record.", report.Declared, plural(report.Declared))))
+		return
+	}
+	// The share is the finding. A list on its own reads as a handful of
+	// exceptions, and it never is one.
 	fmt.Fprintln(w, s.bold(fmt.Sprintf(
-		"Ownership drift  %d area%s where the owner on paper is not the one doing the work",
-		len(drift), plural(len(drift)))))
+		"Ownership drift  %d of %d declared areas (%.0f%%) are not led by their owner of record",
+		len(drift), report.Declared, 100*report.Share())))
 	width := 0
 	for _, d := range drift {
 		if n := len([]rune(d.Topic)); n > width {

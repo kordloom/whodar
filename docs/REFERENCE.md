@@ -283,6 +283,14 @@ Compare declared ownership, from a source of record such as CODEOWNERS, against
 who actually has the expertise. A mismatch is ownership drift: the file says one
 person or team owns an area, but the work and the knowledge sit somewhere else.
 
+It leads with the share, not the list, because in every organization measured so
+far most declared ownership does not match who does the work, and a list on its
+own reads as a handful of exceptions. An area is only counted as moved when it
+has moved to somebody who really works on it: weight is discounted by how much
+that person does everywhere else, so the few people who touch everything do not
+take ownership of every area at once. The comparison can only speak for what was
+indexed, so the share is an upper bound on drift rather than a measurement of it.
+
 ## whodar attest
 
     whodar attest
