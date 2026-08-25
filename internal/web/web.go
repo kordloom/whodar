@@ -484,6 +484,11 @@ type Exposure struct {
 	Risk []resolve.TopicRisk `json:"risk"`
 	// Drift is where declared ownership and real expertise disagree.
 	Drift []resolve.OwnerDrift `json:"drift"`
+	// Regions are the joined bodies of work resting on one person: subjects
+	// changed together where the same person leads every one. It is a heavier
+	// finding than a concentrated subject, and a list of subjects one at a time
+	// cannot show it.
+	Regions []resolve.Region `json:"regions"`
 }
 
 // BriefFunc builds the knowledge-risk brief for the index being served.

@@ -645,3 +645,39 @@ func TestBriefRouteAbsentWithoutABriefFunc(t *testing.T) {
 		t.Errorf("brief without a Brief function = %d, want 404", rec.Code)
 	}
 }
+
+// TestExposureCarriesJoinedWork checks the web view is shown the same finding
+// the command line and the brief report. Joined work is the heaviest thing in
+// the report, and the exposure view is where somebody looks first, so leaving
+// it out of one surface and not the others is how the three drift apart.
+func TestExposureCarriesJoinedWork(t *testing.T) {
+	t.Parallel()
+	h, err := Handler(Config{
+		Ask: func(_ context.Context, _, _, _ string, _ int) (resolve.Answer, error) {
+			return resolve.Answer{}, nil
+		},
+		Exposure: func() Exposure {
+			return Exposure{Regions: []resolve.Region{{
+				Lead: "Ada", LeadID: "ada@x.com", Topics: []string{"dlna", "dmr", "dms"},
+			}}}
+		},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/exposure", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("exposure = %d, want 200", rec.Code)
+	}
+	var got Exposure
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got.Regions) != 1 {
+		t.Fatalf("regions = %+v, want the joined work carried through", got.Regions)
+	}
+	if got.Regions[0].Size() != 3 || got.Regions[0].Lead != "Ada" {
+		t.Errorf("region = %+v, want Ada with three joined subjects", got.Regions[0])
+	}
+}

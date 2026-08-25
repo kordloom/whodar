@@ -197,7 +197,11 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 		Directory: &dir, Modes: modes, Recall: recallFn(ix, cfg, token), RecallMe: cfg.recallMe,
 		Search: func(q string, limit int) []resolve.SearchResult { return resolve.Search(ix, q, limit) },
 		Exposure: func() web.Exposure {
-			return web.Exposure{Risk: resolve.Risk(ix, 0), Drift: resolve.Ownership(ix).Drift}
+			return web.Exposure{
+				Risk:    resolve.Risk(ix, 0),
+				Drift:   resolve.Ownership(ix).Drift,
+				Regions: resolve.Regions(ix, regionsShown),
+			}
 		},
 		Brief: func() report.Brief {
 			all := resolve.Risk(ix, 0)

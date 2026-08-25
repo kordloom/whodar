@@ -30,6 +30,7 @@ const expView = document.getElementById("view-exposure");
 const expStatus = document.getElementById("exp-status");
 const expRisk = document.getElementById("exp-risk");
 const expDrift = document.getElementById("exp-drift");
+const expRegions = document.getElementById("exp-regions");
 const expDepInput = document.getElementById("exp-dep-input");
 const expDepGo = document.getElementById("exp-dep-go");
 const expDepResult = document.getElementById("exp-dep-result");
@@ -941,6 +942,7 @@ async function renderExposure() {
   expStatus.textContent = "Loading...";
   expRisk.replaceChildren();
   expDrift.replaceChildren();
+  if (expRegions) expRegions.replaceChildren();
   let data;
   try {
     const res = await fetch("/api/exposure", { headers: { Accept: "application/json" } });
@@ -954,10 +956,19 @@ async function renderExposure() {
 
   const risk = data.risk || [];
   const drift = data.drift || [];
+  const regions = data.regions || [];
   const crit = risk.filter((r) => r.level === "critical").length;
   expStatus.textContent =
     risk.length + " topics scored, " + crit + " critical, " + drift.length + " drifting";
 
+  if (expRegions) {
+    if (regions.length) {
+      for (const r of regions) expRegions.appendChild(regionCard(r));
+    } else {
+      expRegions.appendChild(el("p", "exp-empty",
+        "No joined work found. Index a source that records what changed together, such as git."));
+    }
+  }
   if (risk.length) {
     for (const r of risk) expRisk.appendChild(riskCard(r));
   } else {
@@ -1036,6 +1047,20 @@ async function checkDeparture(who) {
     card.appendChild(el("p", "exp-also", "Leads nothing on their own. Their areas all have another expert."));
   }
   expDepResult.appendChild(card);
+}
+
+// regionCard draws one joined body of work and who it rests on. The subjects
+// are listed in full rather than counted, because the point of the finding is
+// how much one person would take with them.
+function regionCard(r) {
+  const topics = r.topics || [];
+  const card = el("div", "exp-card exp-critical");
+  const head = el("div", "exp-card-head");
+  head.appendChild(el("span", "exp-topic", r.lead));
+  head.appendChild(el("span", "exp-bus", topics.length + " joined subjects"));
+  card.appendChild(head);
+  card.appendChild(el("p", "exp-also", topics.join(", ")));
+  return card;
 }
 
 // riskCard draws one topic's knowledge concentration with its experts.
