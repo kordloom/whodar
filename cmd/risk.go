@@ -45,7 +45,12 @@ Examples:
 					return fmt.Errorf("%w: --html writes the whole-company brief, so it takes no person",
 						ErrBadArgs)
 				}
-				capped := 0
+				// A brief is read, not searched. Every subject is still
+				// scored and still counted in the figures it leads with, but a
+				// large organization has thousands of them and listing all of
+				// them makes a document nobody opens twice. --limit 0 lists
+				// every one for somebody who wants the whole table.
+				capped := briefRows
 				if cmd.Flags().Changed("limit") {
 					capped = limit
 				}
@@ -69,6 +74,11 @@ Examples:
 		"Write a self-contained HTML brief to this path, for sending to somebody without whodar.")
 	return cmd
 }
+
+// briefRows is how many subjects a brief lists before it stops, unless asked
+// for a different number. The figures above the table always count every scored
+// subject, so this shortens the reading without shrinking the finding.
+const briefRows = 100
 
 // writeRiskHTML renders the knowledge-risk brief to a file. It renders into
 // memory first so a template failure leaves no half-written report behind.

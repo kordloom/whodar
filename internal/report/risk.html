@@ -99,6 +99,7 @@ tbody tr:hover { background: var(--accent-soft); }
 .pill.elevated { background: var(--elevated-soft); color: var(--elevated); }
 .pill.ok { background: var(--ok-soft); color: var(--ok); }
 .also { color: var(--muted); font-size: 14px; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; background: var(--accent-soft); color: var(--accent); padding: 1px 5px; border-radius: 4px; }
 details { border-top: 1px solid var(--line); padding: 12px 0; }
 details:first-of-type { border-top: 0; }
 summary { cursor: pointer; font-size: 16px; font-weight: 600; }
@@ -166,7 +167,7 @@ footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 
 
 <section id="topics">
 	<h2>Concentrated subjects <span class="count">({{ if lt (len .Risks) .Scored }}worst {{ len .Risks }} of {{ .Scored }}{{ else }}all {{ .Scored }}{{ end }})</span></h2>
-	{{ if lt (len .Risks) .Scored }}<p class="desc">This table was capped with --limit and lists the worst {{ len .Risks }} of {{ .Scored }} scored subjects. The figures above count all {{ .Scored }}.</p>{{ end }}
+	{{ if lt (len .Risks) .Scored }}<p class="desc">Listed here are the {{ len .Risks }} subjects resting on the most work, of {{ .Scored }} scored. The figures above count all {{ .Scored }} of them. Run the report with <code>--limit 0</code> for the whole table.</p>{{ end }}
 	<p class="desc">A subject is concentrated when most of its expertise sits with one or two people. Bus factor is how few people together hold the majority of it, so a bus factor of one means a single departure takes the topic with it.</p>
 	{{ if .Risks }}
 	<div class="toolbar">
