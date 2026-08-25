@@ -442,10 +442,22 @@ resolved PagerDuty incidents.</p>
 <td>History window in days.</td>
 </tr>
 <tr>
+<td><code>--git-until-days</code></td>
+<td><code>0</code></td>
+<td>git</td>
+<td>Stop the window short of today, for a past view.</td>
+</tr>
+<tr>
 <td><code>--max-commits</code></td>
 <td><code>2000</code></td>
 <td>git</td>
 <td>Commit cap per repository.</td>
+</tr>
+<tr>
+<td><code>--git-workers</code></td>
+<td>machine</td>
+<td>git</td>
+<td>Commits diffed at once; a walk's whole cost.</td>
 </tr>
 </tbody>
 </table>
@@ -671,6 +683,161 @@ shared topics. Co-membership is normalized by group size, so a small tight team
 counts for far more than a broad channel; groups that span most of the org are
 ignored as administrative; and permission tiers of one group (store-admin,
 store-write) fold together. PERSON is an email, an id, or an exact name.</p>
+<h2 id="whodar-search">whodar search</h2>
+<pre><code>whodar search QUERY [--limit N]
+</code></pre>
+<p>Find people and channels whose name, email, title, team, or topic contains
+QUERY, ranked by how directly they match. This is a direct lookup, so use it
+when you know what you are looking for; use <code>ask</code> when you want the people who
+know a subject ranked by expertise.</p>
+<h2 id="whodar-related">whodar related</h2>
+<pre><code>whodar related TOPIC [--limit N]
+</code></pre>
+<p>Report the subjects related to TOPIC, on two kinds of evidence, and say which
+is speaking for each.</p>
+<p>The stronger is what is worked on together. Two areas altered in the same
+commit, fixed under one ticket, described on one page, or carried by a single
+pull request belong to one body of knowledge whoever did the work, which makes
+this the only thing whodar knows about a subject that does not run through the
+people holding it. Git, Jira, Confluence, and GitHub all contribute it the same
+way, so this works for a company whose work lives in tickets and pages rather
+than in one large repository. The other sources cannot: a chat message or an
+on-call shift says who was there, not which subjects one piece of work touched.</p>
+<p>How much each one contributes depends on whether the people using it say what
+their work is about. Measured on public instances: an issue tracker where four
+in five tickets carry two or more labels or components produces a dense graph,
+and a wiki where almost nothing is labeled produces none at all, while still
+answering perfectly well about who knows what. Nothing is wrong in the second
+case. Connections need stated subjects, and a source only has them if somebody
+stated them.</p>
+<p>Only what a piece of work states counts: labels, components, and the paths a
+commit touched. Titles and prose do not, since pairing the words of a summary
+would tie a subject to every turn of phrase somebody used near it. Work that
+sweeps across many areas at once is ignored, because a rename does not make
+everything it touched one subject, and so are the directory all the changed
+paths sit under and the language they are written in, which every change touches
+by construction.</p>
+<p>Three things never form a connection. The labels that describe what is being
+done to a piece of work rather than what it is about, such as the ones GitHub
+creates in every new repository, are listed and excluded outright: no shape in
+the graph tells them from a real area, and four different structural measures
+were tried before the list was written. Only connections are affected, so
+somebody can still be the person who knows the documentation.</p>
+<p>A subject that turns up in more than half of a source's containers, its
+projects, its repositories, or its wiki spaces, is dropped too. Meaning the same
+thing everywhere is what a kind of work does and what an area never does. The
+rule stays quiet when a source has fewer than three containers, since a single
+repository cannot show a subject staying inside one.</p>
+<p>Two words of one name are not two subjects either. Every file under a directory
+called data_grand_lyon names data, grand, and lyon, which says how one
+integration is spelled and nothing more. A subject that names a directory of its
+own counts wherever else it turns up, so energy stays connected to the utility
+integrations whose names contain it.</p>
+<p>And a subject tied to more than a third of everything else is dropped along with
+every tie to it. Reaching across the whole vocabulary is what describing a kind
+of work looks like rather than an area, and it makes every subject appear
+adjacent to every other. This is the same rule as the graph-wide ubiquity check
+but measured against the vocabulary rather than the people, because the people
+version cannot see it: on a real issue tracker the label a bot attaches to every
+ticket with a patch is carried by a sixth of the contributors, nowhere near the
+share of people that marks scaffolding, while being tied to seventy per cent of
+every subject there.</p>
+<p>The weaker is shared experts: a subject held by the same people is likely the
+same body of knowledge, and one held by fewer of them is a specialty within it.
+It fills in where nothing has been seen worked on together, which is often,
+since most work touches a single area. Read it knowing that any subject one
+person holds overlaps perfectly with everything else they hold.</p>
+<p>Neither needs a taxonomy anyone had to write, and neither needs a model.</p>
+<h2 id="whodar-risk">whodar risk</h2>
+<pre><code>whodar risk [PERSON] [--limit N] [--html PATH]
+</code></pre>
+<p>Score knowledge concentration across the graph: the subjects where one or two
+people hold most of the expertise, so a single departure is visible before it
+hurts. Name a person for the offboarding view instead: what leaves with them.</p>
+<p><code>--html</code> writes a self-contained knowledge-risk brief to PATH rather than
+printing. The file needs no network, no server, and no whodar to open, so it can
+be forwarded to somebody who has neither. It leads with the headline counts,
+lists every scored subject in a sortable and filterable table with a CSV export,
+reads the same finding back per person as what would leave with them, and states
+which sources it saw so a reader can judge how much of the company it covered.
+The headline counts are taken over every scored subject, so capping the table
+with <code>--limit</code> never shrinks them.</p>
+<p>It also reports one-person connections: subjects that only one person has ever
+done work across. Where those crossings join up, they are reported as the one
+body of work they are rather than one row at a time, because that is what would
+leave with the person. The pairing has to be among the strongest ties both
+subjects have, which is a rank test rather than a floor on the strength: a floor
+set by eye cuts the real connections along with the noise, since how much of the
+time two subjects move as one is a tiny number whenever both are also worked on
+alone. Without it the report fills with true and worthless findings, of the form
+that one person is the only one who ever touched both documentation and
+Kubernetes. Both subjects have their own experts, so nothing that
+counts experts per subject can show this. What rests on one person there is not
+either subject but the knowledge that the two belong together, and whoever picks
+one up after they leave has no reason to look at the other.</p>
+<p>It also reports joined work: connected bodies of subjects that get worked on
+together where the same person leads every one. That is a heavier finding than a
+concentrated subject on its own, and a per-subject list cannot show it. Ten
+unrelated subjects held by one person are ten small risks; ten that move
+together and rest on the same person are one large one, because whoever takes
+the work over has to learn the whole of it at once.</p>
+<p>Deterministic arithmetic over the graph, no model needed.</p>
+<h2 id="whodar-ownership">whodar ownership</h2>
+<pre><code>whodar ownership
+</code></pre>
+<p>Compare declared ownership, from a source of record such as CODEOWNERS, against
+who actually has the expertise. A mismatch is ownership drift: the file says one
+person or team owns an area, but the work and the knowledge sit somewhere else.</p>
+<p>The drifted areas are split three ways, because they are three different
+problems: an owner with no recorded work at all, an owner who is active
+elsewhere but has never worked in the area they own, and an owner who does work
+there but less than whoever now leads. Only the last is a judgement call. Weight
+that a source of record assigned does not count as work, or indexing a
+CODEOWNERS file would make every owner look active in everything they own.</p>
+<p>Read the first of those three carefully. A source of record names people by
+handle and an activity source names them by address, so an owner whose handle
+was never linked to their commits is indistinguishable from one who has left.
+Check that bucket against an <a href="#identity-aliases">alias file</a> before believing it.</p>
+<p>It leads with the share, not the list, because in every organization measured so
+far most declared ownership does not match who does the work, and a list on its
+own reads as a handful of exceptions. An area is only counted as moved when it
+has moved to somebody who really works on it: weight is discounted by how much
+that person does everywhere else, so the few people who touch everything do not
+take ownership of every area at once. The comparison can only speak for what was
+indexed, so the share is an upper bound on drift rather than a measurement of it.</p>
+<h2 id="whodar-attest">whodar attest</h2>
+<pre><code>whodar attest
+</code></pre>
+<p>Produce a LoomSeal evidence bundle for the current knowledge-risk finding: the
+claim, a digest of the evidence behind it, and an ed25519 signature. Anyone can
+verify it offline with the loomseal verifier, with no account and nothing sent
+anywhere, so the finding can be trusted without trusting the machine that made
+it. The signing key is created once under the data directory and reused.</p>
+<h2 id="whodar-identity">whodar identity</h2>
+<pre><code>whodar identity [PERSON]
+</code></pre>
+<p>List the inferred identity merges: each handle folded into a person, how
+confident the merge is, and the evidence for it. Joins by shared email or
+provider id are certain and are not listed. Correct a wrong merge by editing the
+<a href="#identity-aliases">alias file</a> and re-indexing.</p>
+<p>The evidence is a matching name, a mailbox that differs only by punctuation, a
+domain the handle names, or a name the handle shortens. Somebody committing as
+<code>git@frenck.dev</code> is the owner written down as <code>frenck</code>, and <code>gjohansson-st</code> is
+G Johansson: in neither case does the display name or the mailbox say so. A
+domain shared by more than one person never matches, which keeps the public
+providers out, and a shortening has to agree on eight characters with a full
+name, since six is reached by coincidence.</p>
+<p>Those two rules linked 23 owners on home-assistant who otherwise read as doing
+no work at all, and moved 37 owned areas out of the drift count, without anyone
+writing an alias by hand. Every merge is listed with its evidence, so a wrong
+one is visible rather than silent.</p>
+<p><code>--unlinked</code> reports the opposite problem, and usually the larger one. A source
+of record names owners by handle while an activity source records work by
+address, so an owner whose two were never tied together looks exactly like one
+who does nothing: every area they own reads as drifted, and their expertise is
+missing from every answer. The flag lists those owners, the ones owning most
+first, which is the worklist for an alias file. Groups named as owners are left
+out, since no alias can tie a group to an address.</p>
 <h2 id="whodar-archive">whodar archive</h2>
 <p>Reports and prunes the conversations whodar keeps.</p>
 <pre><code>whodar archive status                          # what is kept and how far back
@@ -784,7 +951,8 @@ embeddings; whether a key encrypts it at rest; and the license tier.</p>
 </code></pre>
 <p>Diagnose configuration and index problems and print the fix for each. It checks
 that the index loads, is non-empty, and is fresh, whether it carries vectors and
-is encrypted at rest, and which connector credentials are set. Every problem
+is encrypted at rest, which connector credentials are set, and how many declared
+owners have no work recorded against them. Every problem
 prints the exact command that resolves it, and <code>doctor</code> exits nonzero when
 something stops whodar from answering, so it works as a gate in a script.</p>
 <h2 id="whodar-serve">whodar serve</h2>
@@ -848,9 +1016,27 @@ result has feedback buttons.</p>
 <p>Explores whodar on a simulated company: all eight sources are built in
 process and served in the web UI, with no credentials and nothing fetched
 from the network. Sample data only; it is discarded when the demo stops.</p>
-<pre><code>whodar demo
+<pre><code>whodar demo [--big] [--save-index DIR]
 </code></pre>
-<p>Takes the same flags as <code>serve</code>.</p>
+<p>Takes the same flags as <code>serve</code>, plus two of its own.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--big</code></td>
+<td>Simulate a company of 200 people rather than the small sample, which is what to look at to judge how whodar reads at a real size.</td>
+</tr>
+<tr>
+<td><code>--save-index</code></td>
+<td>Write the simulated company to a directory as a real index and exit, so the other commands can be run against it.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="whodar-mcp">whodar mcp</h2>
 <p>Serves the index to MCP clients over stdio, so agents such as Claude Code
 and Claude Desktop can ask who knows what mid-conversation. Tools:
@@ -1067,12 +1253,32 @@ answers under <code>identities</code>. See <code>examples/aliases.json</code>.</
 <p>Keyword scores weight rarer query terms higher, then cap and saturate each
 term's accumulated weight, so repeating a word in chat all day cannot outrank
 the person with the explicit topic, title, or ownership signal. People with
-far more indexed text than average are further discounted for verbosity.
-Recency decay and feedback votes then scale the result.</p>
+far more indexed text than average are further discounted for verbosity, though
+only mildly, for a measured reason: the people who own the most of an
+organization are also the people who appear in the most of it, and discounting
+them heavily for that hands their own subjects to whoever passed through once.
+Removing the discount is worse again, since then whoever appears most often
+wins everything. Recency decay and feedback votes then scale the result.</p>
+<p>How often somebody touched a subject counts one for one at first and
+logarithmically after that, so an owner with three hundred commits in an area
+outranks somebody with four, while no single subject can run away with a
+person's whole profile.</p>
+<p>Both of those are tuned against real repositories rather than by taste. The
+measure is a project's own CODEOWNERS file: index only its commit history, hold
+the ownership file out, and ask whodar who knows each area. The labels are
+written by that project's maintainers, so the answer is not graded by us.</p>
+<p>A reason reading <code>zwave (topic, not lately)</code> means the person knows the subject
+but has stopped working on it. Knowing something best is not the same as still
+being in it: measured against a real repository, the leading expert of two
+subjects in five had already stopped touching them, and such a lead was less
+than half as likely to still hold the subject six months on. Sources that cannot
+say what was recent claim nothing either way.</p>
 <p>A term that matches nothing falls back to fuzzy matching: the closest indexed
 term within one edit (four-letter terms and up) or two edits (seven and up)
 scores instead, at a penalty per edit so an exact match always outranks a
-corrected one. Corrected terms say so in the reasons, e.g. <code>terrafrom (topic, fuzzy)</code>.</p>
+corrected one. A corrected term says so in the reasons and names what it
+was read as, e.g. <code>terraform (topic, read for &quot;terrafrom&quot;)</code>, so a lucky save can
+be told from a wrong guess.</p>
 <h2 id="recency">Recency</h2>
 <p>Dated records lose half their weight per half-life, 180 days by default, so
 today's owner outranks one from years ago. Tune with <code>--half-life-days</code> at
