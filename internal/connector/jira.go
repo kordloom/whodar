@@ -229,10 +229,21 @@ func (j *Jira) jql(loc *time.Location) string {
 	return "ORDER BY updated DESC"
 }
 
-// jiraJQLTime formats t as a JQL absolute timestamp in t's own location, backed
-// off by a small margin so minor clock skew re-reads a little rather than
-// skips. The caller converts t into the user's JQL timezone; the margin only
-// has to cover clock drift, never a zone offset.
+// jiraJQLTime formats t as a JQL absolute timestamp, backed off by a small
+// margin so minor clock skew re-reads a little rather than skips.
+//
+// It formats in t's OWN location, and that is the whole correctness argument.
+// JQL accepts no timezone: "yyyy/MM/dd HH:mm" and nothing else, checked against
+// a live server, so the boundary means whatever zone the site reads it in. What
+// makes the round trip safe is that the cursor is the newest "updated" the site
+// itself returned, parsed with the offset the site wrote, so formatting it back
+// reproduces the site's own wall clock whatever zone that is.
+//
+// The invariant, then: NEVER normalize the cursor to UTC on the way to here. An
+// instant is not enough, the zone carries the meaning. The same moment written
+// +05:30 instead of Z moves this boundary five and a half hours into the future
+// and every issue in between is skipped, which is a measured result and not a
+// worry. TestJiraJQLTimeKeepsTheSiteZone holds the line.
 func jiraJQLTime(t time.Time) string {
 	return t.Add(-2 * time.Minute).Format("2006/01/02 15:04")
 }
@@ -281,13 +292,7 @@ func issueTopics(is jira.Issue) []string {
 // to the site identity, which is the account id on Cloud or the username on
 // Server and Data Center.
 func jiraUserKey(u jira.User) string {
-	if u.EmailAddress != "" {
-		return util.NormalizeEmail(u.EmailAddress)
-	}
-	if id := u.Identity(); id != "" {
-		return "jira:" + id
-	}
-	return ""
+	return util.PersonKey("jira", u.EmailAddress, u.Identity())
 }
 
 // jiraPersonRecord builds a person record. The account id always keys the

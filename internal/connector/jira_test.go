@@ -225,3 +225,43 @@ func TestJiraFindsSubjectsWorkedTogether(t *testing.T) {
 		t.Error("no issue tied billing to ledger, though six named both")
 	}
 }
+
+// TestJiraJQLTimeKeepsTheSiteZone checks the incremental boundary is written in
+// the zone the site itself used, not in UTC and not in the local zone.
+//
+// JQL accepts no timezone. The only reason an incremental read is correct is
+// that the cursor still carries the offset the site wrote, so formatting it
+// reproduces the site's own wall clock. Normalizing the cursor to UTC anywhere
+// on the way here silently moves the boundary by the offset: measured against a
+// live server, the same instant written +05:30 instead of Z pushed the boundary
+// five and a half hours into the future and returned nothing, which would skip
+// every issue in that window and then advance past them for good.
+func TestJiraJQLTimeKeepsTheSiteZone(t *testing.T) {
+	t.Parallel()
+	// One instant, as three different sites would render it.
+	instant := time.Date(2026, 8, 25, 19, 18, 2, 0, time.UTC)
+	tests := []struct {
+		Zone     *time.Location
+		WantWall string
+	}{
+		{time.UTC, "2026/08/25 19:16"},
+		{time.FixedZone("CDT", -5*3600), "2026/08/25 14:16"},
+		{time.FixedZone("IST", 5*3600+1800), "2026/08/26 00:46"},
+	}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			got := jiraJQLTime(instant.In(test.Zone))
+			if got != test.WantWall {
+				t.Errorf("jiraJQLTime = %q, want %q: the boundary must read as the "+
+					"site's own wall clock, since JQL has no timezone", got, test.WantWall)
+			}
+			// The same instant in UTC must NOT produce the same string unless the
+			// site is itself UTC. If it does, the zone has been thrown away.
+			utc := jiraJQLTime(instant)
+			if test.Zone != time.UTC && got == utc {
+				t.Error("the zone was discarded: every site would get the UTC boundary")
+			}
+		})
+	}
+}

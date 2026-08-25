@@ -6,7 +6,6 @@ package confluence
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
@@ -69,15 +68,6 @@ type Client struct {
 
 // Option configures a Client.
 type Option func(*Client)
-
-// WithHTTPClient sets the HTTP doer.
-func WithHTTPClient(d httputil.Doer) Option {
-	return func(c *Client) {
-		if d != nil {
-			c.http = d
-		}
-	}
-}
 
 // WithProgress sets a callback invoked after each page with the running item
 // count, so a long fetch can show movement.
@@ -720,18 +710,25 @@ func (c *Client) getRaw(ctx context.Context, pathWithQuery string, out any) erro
 		label = label[:i]
 	}
 	endpoint := c.baseURL + pathWithQuery
-	resp, body, err := httputil.Do(ctx, c.http, c.maxRetries, nil, httputil.Get(ctx, endpoint, "Authorization", c.auth, "Accept", "application/json"))
-	if errors.Is(err, httputil.ErrRateLimited) {
-		return fmt.Errorf("confluence %s: %w", label, ErrRateLimited)
-	}
-	if err != nil {
-		return fmt.Errorf("confluence %s: %w", label, err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("confluence %s: %w: %w", label, ErrStatus, &httputil.StatusError{Code: resp.StatusCode})
-	}
-	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("confluence %s: decode: %w", label, err)
+	if err := failure(label, httputil.GetJSON(ctx, c.http, c.maxRetries, endpoint, out,
+		"Authorization", c.auth, "Accept", "application/json")); err != nil {
+		return err
 	}
 	return nil
+}
+
+// failure names this package in an error from a shared helper, and maps it onto
+// the sentinels callers match against.
+func failure(label string, err error) error {
+	var status *httputil.StatusError
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, httputil.ErrRateLimited):
+		return fmt.Errorf("confluence %s: %w", label, ErrRateLimited)
+	case errors.As(err, &status):
+		return fmt.Errorf("confluence %s: %w: %w", label, ErrStatus, status)
+	default:
+		return fmt.Errorf("confluence %s: %w", label, err)
+	}
 }

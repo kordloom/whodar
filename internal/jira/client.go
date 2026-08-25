@@ -401,18 +401,22 @@ func (c *Client) Ping(ctx context.Context) error {
 // HTTP 429 up to maxRetries.
 func (c *Client) get(ctx context.Context, path string, params url.Values, out any) error {
 	endpoint := c.baseURL + path + "?" + params.Encode()
-	resp, body, err := httputil.Do(ctx, c.http, c.maxRetries, nil, httputil.Get(ctx, endpoint, "Authorization", c.auth, "Accept", "application/json"))
-	if errors.Is(err, httputil.ErrRateLimited) {
-		return fmt.Errorf("jira %s: %w", path, ErrRateLimited)
+	return failure(path, httputil.GetJSON(ctx, c.http, c.maxRetries, endpoint, out,
+		"Authorization", c.auth, "Accept", "application/json"))
+}
+
+// failure names this package in an error from a shared helper, and maps it onto
+// the sentinels callers match against.
+func failure(label string, err error) error {
+	var status *httputil.StatusError
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, httputil.ErrRateLimited):
+		return fmt.Errorf("jira %s: %w", label, ErrRateLimited)
+	case errors.As(err, &status):
+		return fmt.Errorf("jira %s: %w: %w", label, ErrStatus, status)
+	default:
+		return fmt.Errorf("jira %s: %w", label, err)
 	}
-	if err != nil {
-		return fmt.Errorf("jira %s: %w", path, err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("jira %s: %w: %w", path, ErrStatus, &httputil.StatusError{Code: resp.StatusCode})
-	}
-	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("jira %s: decode: %w", path, err)
-	}
-	return nil
 }

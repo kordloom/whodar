@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -115,3 +116,60 @@ func buildReq(t *testing.T) func() (*http.Request, error) {
 		return http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.invalid", nil)
 	}
 }
+
+// TestGetJSON checks the three failures every API client has to tell apart come
+// back distinctly, since each client maps them onto its own sentinels and a
+// wrong mapping turns an expired token into an unreachable server.
+func TestGetJSON(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		Status     int
+		Body       string
+		WantCode   int
+		WantResult string
+		Want       error
+	}{{ // Test 0: A good response decodes.
+		Status: http.StatusOK, Body: `{"name":"kim"}`, WantResult: "kim",
+	}, { // Test 1: A non-200 is a status error carrying the code.
+		Status: http.StatusUnauthorized, Body: `{}`, WantCode: http.StatusUnauthorized,
+	}, { // Test 2: A body that is not JSON is a decode error, not a status one.
+		Status: http.StatusOK, Body: `not json`, Want: errBadDecode,
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(test.Status)
+				io.WriteString(w, test.Body)
+			}))
+			t.Cleanup(srv.Close)
+
+			var out struct {
+				Name string `json:"name"`
+			}
+			err := GetJSON(context.Background(), srv.Client(), 0, srv.URL, &out)
+
+			var status *StatusError
+			switch {
+			case test.WantCode != 0:
+				if !errors.As(err, &status) || status.Code != test.WantCode {
+					t.Fatalf("err = %v, want a status error with code %d", err, test.WantCode)
+				}
+			case test.Want != nil:
+				if err == nil || errors.As(err, &status) {
+					t.Fatalf("err = %v, want a decode error and not a status one", err)
+				}
+			default:
+				if err != nil {
+					t.Fatalf("GetJSON: %v", err)
+				}
+				if out.Name != test.WantResult {
+					t.Errorf("name = %q, want %q", out.Name, test.WantResult)
+				}
+			}
+		})
+	}
+}
+
+// errBadDecode marks the decode case in the table above.
+var errBadDecode = errors.New("decode")

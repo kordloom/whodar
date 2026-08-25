@@ -5,6 +5,7 @@ package httputil
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -155,4 +156,29 @@ func Get(ctx context.Context, url string, headers ...string) func() (*http.Reque
 		}
 		return req, nil
 	}
+}
+
+// GetJSON fetches endpoint and decodes the JSON body into out, retrying on HTTP
+// 429 up to retries. Headers are passed as alternating name and value.
+//
+// It reports the three failures every caller has to tell apart, and no more:
+// ErrRateLimited when the retries ran out, a *StatusError for any non-200, and
+// the transport or decode error otherwise. Naming the source and labeling the
+// path is left to the caller, since that is the only part each API client does
+// differently.
+func GetJSON(ctx context.Context, d Doer, retries int, endpoint string, out any, headers ...string) error {
+	resp, body, err := Do(ctx, d, retries, nil, Get(ctx, endpoint, headers...))
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return &StatusError{Code: resp.StatusCode}
+	}
+	if out == nil {
+		return nil
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("decode: %w", err)
+	}
+	return nil
 }

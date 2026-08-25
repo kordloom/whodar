@@ -2,7 +2,6 @@ package graph
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -145,18 +144,22 @@ func (c *Client) Ping(ctx context.Context) error {
 // getURL performs one GET against a full URL and decodes the body into out. It
 // takes a full URL so a Graph nextLink is followed as-is.
 func (c *Client) getURL(ctx context.Context, endpoint string, out any) error {
-	resp, body, err := httputil.Do(ctx, c.http, c.maxRetries, nil, httputil.Get(ctx, endpoint, "Authorization", "Bearer "+c.token, "Accept", "application/json"))
-	if errors.Is(err, httputil.ErrRateLimited) {
+	return failure(httputil.GetJSON(ctx, c.http, c.maxRetries, endpoint, out,
+		"Authorization", "Bearer "+c.token, "Accept", "application/json"))
+}
+
+// failure names this package in an error from a shared helper, and maps it onto
+// the sentinels callers match against.
+func failure(err error) error {
+	var status *httputil.StatusError
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, httputil.ErrRateLimited):
 		return fmt.Errorf("graph: %w", ErrRateLimited)
-	}
-	if err != nil {
+	case errors.As(err, &status):
+		return fmt.Errorf("graph: %w: %w", ErrStatus, status)
+	default:
 		return fmt.Errorf("graph: %w", err)
 	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("graph: %w: %w", ErrStatus, &httputil.StatusError{Code: resp.StatusCode})
-	}
-	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("graph: decode: %w", err)
-	}
-	return nil
 }

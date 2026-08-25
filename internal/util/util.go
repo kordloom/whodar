@@ -209,3 +209,21 @@ func SameFamily(a, b string) bool {
 	}
 	return false
 }
+
+// PersonKey settles which identifier a person is keyed by: their email when a
+// source gave one, and the source's own id when it did not.
+//
+// An email is preferred because it is the one identifier that means the same
+// thing in every source, so work recorded under a Jira account and a commit
+// signed with the same address land on one person. The id is namespaced by
+// source, since two systems reusing an id are not one person. An empty string
+// means the source gave nothing to key on.
+func PersonKey(source, email, id string) string {
+	if email != "" {
+		return NormalizeEmail(email)
+	}
+	if id != "" {
+		return source + ":" + id
+	}
+	return ""
+}

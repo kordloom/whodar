@@ -211,3 +211,34 @@ func TestIsRoleEmail(t *testing.T) {
 		})
 	}
 }
+
+// TestPersonKey checks which identifier a person is keyed by, since every
+// source funnels through this and a wrong answer either splits one person in
+// two or merges two people into one.
+func TestPersonKey(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		Source     string
+		Email      string
+		ID         string
+		WantResult string
+	}{{ // Test 0: An email wins, because it means the same in every source.
+		Source: "jira", Email: "Kim.Doe@Example.com", ID: "acct-1",
+		WantResult: "kim.doe@example.com",
+	}, { // Test 1: No email falls back to the source's own id.
+		Source: "jira", Email: "", ID: "acct-1", WantResult: "jira:acct-1",
+	}, { // Test 2: The id is namespaced, so two systems reusing one id stay apart.
+		Source: "pagerduty", Email: "", ID: "acct-1", WantResult: "pagerduty:acct-1",
+	}, { // Test 3: Nothing to key on.
+		Source: "confluence", Email: "", ID: "", WantResult: "",
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			got := PersonKey(test.Source, test.Email, test.ID)
+			if diff := cmp.Diff(test.WantResult, got); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

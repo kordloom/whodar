@@ -77,3 +77,42 @@ func TestKey(t *testing.T) {
 		t.Error("separator collision between source and scope")
 	}
 }
+
+// TestWatermarkKeepsItsZone checks a cursor survives the state file with the
+// offset it was written in, not flattened to UTC.
+//
+// The incremental boundary for Jira and Confluence is a bare wall clock, since
+// neither query language accepts a timezone, and it is only correct because the
+// cursor still reads as the site's own clock. Storing the instant alone would be
+// enough to compare times and not enough to ask for them: measured against a
+// live server, the same moment carrying +05:30 instead of Z moved the boundary
+// five and a half hours into the future and returned nothing.
+func TestWatermarkKeepsItsZone(t *testing.T) {
+	t.Parallel()
+	loc := time.FixedZone("CDT", -5*3600)
+	cursor := time.Date(2026, 8, 25, 14, 18, 2, 0, loc)
+	path := filepath.Join(t.TempDir(), "index.state.json")
+
+	st := New()
+	st.Set(Watermark{Source: "jira", Scope: "project:K", Cursor: cursor, Complete: true})
+	if err := st.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	back, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	got, ok := back.Get("jira", "project:K")
+	if !ok {
+		t.Fatal("the watermark did not survive the file at all")
+	}
+	if !got.Cursor.Equal(cursor) {
+		t.Errorf("cursor = %v, want the same instant %v", got.Cursor, cursor)
+	}
+	const wall = "2006/01/02 15:04"
+	if got.Cursor.Format(wall) != cursor.Format(wall) {
+		t.Errorf("cursor reads as %q, want the site's own clock %q: the zone was lost, "+
+			"so the next incremental read asks for the wrong hour",
+			got.Cursor.Format(wall), cursor.Format(wall))
+	}
+}
