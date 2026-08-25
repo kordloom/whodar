@@ -31,6 +31,13 @@ var stopwords = map[string]bool{
 	"here": true, "there": true, "anyone": true, "anybody": true,
 	"someone": true, "somebody": true, "please": true, "thanks": true,
 	"hey": true, "hi": true, "hello": true, "should": true, "would": true,
+	// Quantifiers and qualifiers. A question is mostly these, and none of them
+	// names a subject: asked who knows the most about something, whodar was
+	// answering with whoever had touched a file called most.
+	"most": true, "more": true, "less": true, "least": true, "many": true,
+	"much": true, "few": true, "new": true, "old": true, 	"first": true, "last": true, "next": true, "other": true,
+	"another": true, "same": true, "different": true, "thing": true,
+	"things": true, "stuff": true, "way": true, "ways": true, "lot": true,
 	"could": true, "will": true, "was": true, "were": true, "been": true,
 	"but": true, "not": true, "any": true, "all": true, "some": true,
 	"good": true, "best": true, "better": true, "really": true, "just": true,
