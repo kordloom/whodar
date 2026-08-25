@@ -262,6 +262,14 @@ way, so this works for a company whose work lives in tickets and pages rather
 than in one large repository. The other sources cannot: a chat message or an
 on-call shift says who was there, not which subjects one piece of work touched.
 
+How much each one contributes depends on whether the people using it say what
+their work is about. Measured on public instances: an issue tracker where four
+in five tickets carry two or more labels or components produces a dense graph,
+and a wiki where almost nothing is labeled produces none at all, while still
+answering perfectly well about who knows what. Nothing is wrong in the second
+case. Connections need stated subjects, and a source only has them if somebody
+stated them.
+
 Only what a piece of work states counts: labels, components, and the paths a
 commit touched. Titles and prose do not, since pairing the words of a summary
 would tie a subject to every turn of phrase somebody used near it. Work that
