@@ -8,6 +8,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/kordloom/whodar/internal/index"
+
 	"github.com/spf13/cobra"
 
 	"github.com/kordloom/whodar/internal/license"
@@ -79,6 +81,14 @@ type doctorFacts struct {
 	Configured map[string]bool
 	// LicenseReason is the resolved license tier description.
 	LicenseReason string
+	// DeclaredOwners is how many people a source of record names as owning
+	// something.
+	DeclaredOwners int
+	// UnlinkedOwners is how many of those have no work recorded against them
+	// anywhere. A source of record names people by handle and an activity
+	// source names them by address, so the gap between the two is usually
+	// identities that were never joined rather than people who left.
+	UnlinkedOwners int
 }
 
 // diagnose runs every check against the facts and returns findings in report
@@ -148,9 +158,64 @@ func diagnose(f doctorFacts) []finding {
 		out = append(out, finding{Name: "encryption", Level: levelOK, Detail: enc})
 	}
 
+	if fnd, ok := ownershipFinding(f); ok {
+		out = append(out, fnd)
+	}
 	out = append(out, credentialFindings(f)...)
 	out = append(out, finding{Name: "license", Level: levelOK, Detail: f.LicenseReason})
 	return out
+}
+
+// ownerLinkage counts the people a source of record names as owners, and how
+// many of them have no recorded work at all. Weight that a source of record
+// assigned is not work, or every owner would look busy the moment the file is
+// indexed.
+func ownerLinkage(ix *index.Index) (declared, unlinked int) {
+	for _, p := range ix.Graph.People {
+		if len(p.Owns) == 0 {
+			continue
+		}
+		declared++
+		worked := false
+		for tid, w := range p.Topics {
+			if w-p.Stated[tid] > 0 {
+				worked = true
+				break
+			}
+		}
+		if !worked {
+			unlinked++
+		}
+	}
+	return declared, unlinked
+}
+
+// unlinkedOwnerShare is the fraction of declared owners with no recorded work
+// above which the gap is worth reporting rather than treating as turnover.
+const unlinkedOwnerShare = 0.25
+
+// ownershipFinding reports declared owners who have no work recorded against
+// them. Some will have left, but a source of record names people by handle and
+// an activity source names them by address, so most of a large gap is usually
+// identities that were never joined. It matters because those owners look
+// inactive everywhere they appear: the ownership report calls their areas
+// drifted, and nobody is told the cause is fixable.
+func ownershipFinding(f doctorFacts) (finding, bool) {
+	if f.DeclaredOwners == 0 || f.UnlinkedOwners == 0 {
+		return finding{}, false
+	}
+	share := float64(f.UnlinkedOwners) / float64(f.DeclaredOwners)
+	detail := fmt.Sprintf("%d of %d declared owners have no work recorded against them",
+		f.UnlinkedOwners, f.DeclaredOwners)
+	if share < unlinkedOwnerShare {
+		return finding{Name: "ownership", Level: levelOK, Detail: detail}, true
+	}
+	return finding{
+		Name:   "ownership",
+		Level:  levelWarn,
+		Detail: detail + ", so their areas all read as drifted",
+		Fix:    "whodar identity, then map the handles to their addresses in an alias file",
+	}, true
 }
 
 // freshnessFinding checks how old the index is against staleAfter.
@@ -275,6 +340,7 @@ whodar from answering, so it works as a gate in a script.`,
 				facts.IndexErr = err
 			} else {
 				facts.IndexLoaded = true
+				facts.DeclaredOwners, facts.UnlinkedOwners = ownerLinkage(ix)
 				facts.People = len(ix.Graph.People)
 				facts.BuiltAt = ix.BuiltAt()
 				facts.Embeddings = ix.HasEmbeddings()

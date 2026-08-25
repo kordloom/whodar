@@ -416,7 +416,8 @@ embeddings; whether a key encrypts it at rest; and the license tier.
 
 Diagnose configuration and index problems and print the fix for each. It checks
 that the index loads, is non-empty, and is fresh, whether it carries vectors and
-is encrypted at rest, and which connector credentials are set. Every problem
+is encrypted at rest, which connector credentials are set, and how many declared
+owners have no work recorded against them. Every problem
 prints the exact command that resolves it, and `doctor` exits nonzero when
 something stops whodar from answering, so it works as a gate in a script.
 

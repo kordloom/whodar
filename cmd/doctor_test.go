@@ -110,3 +110,48 @@ func TestDiagnoseTellsMissingFromBroken(t *testing.T) {
 		t.Errorf("broken index detail = %q, want the cause without its wrapping", got)
 	}
 }
+
+// TestOwnershipFinding checks the gap between declared owners and recorded work
+// is reported as something to fix rather than left to look like turnover. Those
+// owners look inactive everywhere they appear, so every area they own reads as
+// drifted, and the usual cause is identities that were never joined.
+func TestOwnershipFinding(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		Name      string
+		Declared  int
+		Unlinked  int
+		WantFound bool
+		WantLevel checkLevel
+	}{{ // Test 0: No declared ownership at all, so there is nothing to say.
+		Name: "nothing declared", Declared: 0, Unlinked: 0, WantFound: false,
+	}, { // Test 1: Every owner accounted for.
+		Name: "all linked", Declared: 40, Unlinked: 0, WantFound: false,
+	}, { // Test 2: A few unlinked is ordinary turnover, worth stating, not fixing.
+		Name: "a few unlinked", Declared: 40, Unlinked: 4,
+		WantFound: true, WantLevel: levelOK,
+	}, { // Test 3: Most of them unlinked is a join that did not happen.
+		Name: "most unlinked", Declared: 746, Unlinked: 457,
+		WantFound: true, WantLevel: levelWarn,
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d %s", testNum, test.Name), func(t *testing.T) {
+			t.Parallel()
+			got, ok := ownershipFinding(doctorFacts{
+				DeclaredOwners: test.Declared, UnlinkedOwners: test.Unlinked,
+			})
+			if ok != test.WantFound {
+				t.Fatalf("reported = %v, want %v", ok, test.WantFound)
+			}
+			if !ok {
+				return
+			}
+			if got.Level != test.WantLevel {
+				t.Errorf("level = %v, want %v (%s)", got.Level, test.WantLevel, got.Detail)
+			}
+			if test.WantLevel == levelWarn && got.Fix == "" {
+				t.Error("a warning with no fix leaves the reader nothing to do")
+			}
+		})
+	}
+}
