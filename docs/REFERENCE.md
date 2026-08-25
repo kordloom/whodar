@@ -270,7 +270,20 @@ everything it touched one subject, and so are the directory all the changed
 paths sit under and the language they are written in, which every change touches
 by construction.
 
-A subject tied to more than a third of everything else is dropped along with
+Three things never form a connection. The labels that describe what is being
+done to a piece of work rather than what it is about, such as the ones GitHub
+creates in every new repository, are listed and excluded outright: no shape in
+the graph tells them from a real area, and four different structural measures
+were tried before the list was written. Only connections are affected, so
+somebody can still be the person who knows the documentation.
+
+A subject that turns up in more than half of a source's containers, its
+projects, its repositories, or its wiki spaces, is dropped too. Meaning the same
+thing everywhere is what a kind of work does and what an area never does. The
+rule stays quiet when a source has fewer than three containers, since a single
+repository cannot show a subject staying inside one.
+
+And a subject tied to more than a third of everything else is dropped along with
 every tie to it. Reaching across the whole vocabulary is what describing a kind
 of work looks like rather than an area, and it makes every subject appear
 adjacent to every other. This is the same rule as the graph-wide ubiquity check

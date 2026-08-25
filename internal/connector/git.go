@@ -297,7 +297,7 @@ const recentWindow = 180 * 24 * time.Hour
 // noteTogether records which of a commit's subjects were worked on together.
 // Only subjects named by DIFFERENT paths count as having met: one path yields
 // both zwave_js and zwave, and a name agreeing with itself is not evidence.
-func noteTogether(t *tally, byPath, deepest [][]string, who string) {
+func noteTogether(t *tally, byPath, deepest [][]string, who, where string) {
 	distinct := make(map[string]bool)
 	for _, subs := range byPath {
 		for _, s := range subs {
@@ -307,7 +307,7 @@ func noteTogether(t *tally, byPath, deepest [][]string, who string) {
 	if len(distinct) == 0 {
 		return
 	}
-	if !t.ties.begin(distinct) {
+	if !t.ties.begin(distinct, where) {
 		return
 	}
 	// A subject every changed path names is this commit's own scaffolding: the
@@ -730,7 +730,7 @@ func (g *GitHistory) diffShare(
 				m[tok]++
 			}
 		}
-		noteTogether(&t, byPath, deepest, job.Email)
+		noteTogether(&t, byPath, deepest, job.Email, path)
 		// The commit subject carries the domain vocabulary the filenames often
 		// hide: "fix rate-limiter backoff" against a generically named limiter.go.
 		// Mine it once per commit, so it weighs less than the per-file paths but

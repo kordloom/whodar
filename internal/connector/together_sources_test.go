@@ -2,6 +2,7 @@ package connector
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 )
 
@@ -15,13 +16,13 @@ func TestTogetherPairsWhatOnePieceOfWorkNames(t *testing.T) {
 	// Enough separate pieces of work for a pairing to be more than coincidence,
 	// and enough of each subject for its ties to mean anything.
 	for range minSubjectItems {
-		ties.note([]string{"billing", "ledger"}, "ada@x.com")
-		ties.note([]string{"search", "indexing"}, "bo@x.com")
+		ties.note([]string{"billing", "ledger"}, "ada@x.com", "PROJ")
+		ties.note([]string{"search", "indexing"}, "bo@x.com", "PROJ")
 	}
 	// Padding so no subject is a majority of the work and gets set aside as
 	// scaffolding.
 	for i := range 40 {
-		ties.note([]string{"filler", "other"}, "cy@x.com")
+		ties.note([]string{"filler", "other"}, "cy@x.com", "PROJ")
 		_ = i
 	}
 	recs := ties.records("jira")
@@ -68,7 +69,7 @@ func TestTogetherIgnoresWorkThatNamesEverything(t *testing.T) {
 		sweeping = append(sweeping, string(rune('a'+i%26))+"subject")
 	}
 	for range 10 {
-		ties.note(sweeping, "ada@x.com")
+		ties.note(sweeping, "ada@x.com", "PROJ")
 	}
 	if recs := ties.records("jira"); len(recs) != 0 {
 		t.Errorf("records = %+v, want nothing tied by work that named everything", recs)
@@ -83,13 +84,13 @@ func TestTogetherTreatsOneSubjectAsOneSubject(t *testing.T) {
 	ties := newTogether()
 	for i := range minSubjectItems {
 		if i%2 == 0 {
-			ties.note([]string{"Billing", " Ledger "}, "ada@x.com")
+			ties.note([]string{"Billing", " Ledger "}, "ada@x.com", "PROJ")
 			continue
 		}
-		ties.note([]string{"billing", "ledger"}, "ada@x.com")
+		ties.note([]string{"billing", "ledger"}, "ada@x.com", "PROJ")
 	}
 	for range 40 {
-		ties.note([]string{"filler", "other"}, "cy@x.com")
+		ties.note([]string{"filler", "other"}, "cy@x.com", "PROJ")
 	}
 	found := false
 	for _, r := range ties.records("github") {
@@ -125,7 +126,7 @@ func TestTogetherDropsSubjectsThatReachEverywhere(t *testing.T) {
 	}
 	for i := 0; i+1 < len(areas); i += 2 {
 		for range minTogether + 2 {
-			ties.note([]string{areas[i], areas[i+1], "patch-available"}, "ada@x.com")
+			ties.note([]string{areas[i], areas[i+1], "patch-available"}, "ada@x.com", "PROJ")
 		}
 	}
 	recs := ties.records("jira")
@@ -163,10 +164,106 @@ func TestTogetherKeepsScaffoldingRuleOffForSmallVocabularies(t *testing.T) {
 	t.Parallel()
 	ties := newTogether()
 	for range minTogether + 2 {
-		ties.note([]string{"billing", "ledger"}, "ada@x.com")
-		ties.note([]string{"search", "indexing"}, "bo@x.com")
+		ties.note([]string{"billing", "ledger"}, "ada@x.com", "PROJ")
+		ties.note([]string{"search", "indexing"}, "bo@x.com", "PROJ")
 	}
 	if got := len(ties.records("jira")); got == 0 {
 		t.Error("a four-subject vocabulary was emptied by a rule about reaching across one")
+	}
+}
+
+// TestTogetherDropsSubjectsThatMeanTheSameEverywhere checks a subject appearing
+// in most of a source's containers is removed, and one that stays inside a
+// container is kept, even when the two have the same number of ties.
+//
+// This is the case no measure of the tie graph can settle. Measured on a real
+// tracker, documentation and sql have almost the same number of ties and the
+// same neighbourhood shape; degree, neighbour clustering, and how far the
+// neighbourhood falls apart without them all rank documentation as the more
+// subject-like of the two. What separates them is that sql lives in two
+// projects and documentation lives in all five.
+func TestTogetherDropsSubjectsThatMeanTheSameEverywhere(t *testing.T) {
+	t.Parallel()
+	ties := newTogether()
+	projects := []string{"KAFKA", "SPARK", "FLINK", "HADOOP"}
+	for _, p := range projects {
+		for range minTogether + 2 {
+			// "docs" rides along in every project; "engine" belongs to one.
+			ties.note([]string{"docs", p + "-area"}, "ada@x.com", p)
+		}
+	}
+	for range minTogether + 2 {
+		ties.note([]string{"engine", "KAFKA-area"}, "bo@x.com", "KAFKA")
+	}
+	var kept []string
+	for _, r := range ties.records("jira") {
+		kept = append(kept, r.Name)
+		for _, l := range r.Links {
+			if l.To == "docs" {
+				t.Errorf("%s is still tied to the subject that means the same in every project", r.Name)
+			}
+		}
+	}
+	if slices.Contains(kept, "docs") {
+		t.Error("the subject appearing in every project was kept")
+	}
+	if !slices.Contains(kept, "engine") {
+		t.Errorf("the subject belonging to one project was dropped; kept %v", kept)
+	}
+}
+
+// TestTogetherKeepsSpreadRuleOffForOneContainer checks the rule stays silent
+// when a source has too few containers to show anything. A single repository
+// cannot demonstrate a subject staying inside one.
+func TestTogetherKeepsSpreadRuleOffForOneContainer(t *testing.T) {
+	t.Parallel()
+	ties := newTogether()
+	for range minTogether + 2 {
+		ties.note([]string{"billing", "ledger"}, "ada@x.com", "only-repo")
+		ties.note([]string{"search", "indexing"}, "bo@x.com", "only-repo")
+	}
+	if got := len(ties.records("git")); got == 0 {
+		t.Error("a single-container source was emptied by a rule about spanning containers")
+	}
+}
+
+// TestTogetherIgnoresProcessLabels checks the labels that describe what is being
+// done to a piece of work, rather than what it is about, form no ties.
+//
+// They cannot be recognized by any shape in the graph, which is why they are
+// listed. What the list must not do is reach past ties: somebody can still be
+// the person who knows the documentation, so the subject itself has to survive
+// everywhere except in what it is related to.
+func TestTogetherIgnoresProcessLabels(t *testing.T) {
+	t.Parallel()
+	ties := newTogether()
+	for range minTogether + 2 {
+		ties.note([]string{"billing", "ledger", "good-first-issue"}, "ada@x.com", "PROJ")
+		ties.note([]string{"search", "documentation"}, "bo@x.com", "PROJ")
+	}
+	for _, r := range ties.records("github") {
+		if processLabels[r.Name] {
+			t.Errorf("%q was tied to something, though it says nothing about what work is about", r.Name)
+		}
+		for _, l := range r.Links {
+			if processLabels[l.To] {
+				t.Errorf("%s is tied to the process label %q", r.Name, l.To)
+			}
+		}
+	}
+	// The real pairing alongside the process label still stands.
+	found := false
+	for _, r := range ties.records("github") {
+		if r.Name != "billing" {
+			continue
+		}
+		for _, l := range r.Links {
+			if l.To == "ledger" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("billing lost its tie to ledger because a process label shared the ticket")
 	}
 }

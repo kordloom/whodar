@@ -253,7 +253,7 @@ func (g *GitHub) indexRepo(
 		markCurated(pr.LabelNames())
 		// Only the labels are paired. A title is prose, and pairing its words
 		// would tie a subject to every turn of phrase used near it.
-		ties.note(pr.LabelNames(), pr.Author())
+		ties.note(pr.LabelNames(), pr.Author(), full)
 		tokens := append(pr.LabelNames(), phraseTokens(pr.Title)...)
 		bump(pr.Author(), tokens, pr.UpdatedAt)
 		for _, u := range pr.Reviewers() {
@@ -293,7 +293,7 @@ func (g *GitHub) indexRepo(
 		}
 		issueCount++
 		markCurated(is.LabelNames())
-		ties.note(is.LabelNames(), is.Author())
+		ties.note(is.LabelNames(), is.Author(), full)
 		tokens := append(is.LabelNames(), phraseTokens(is.Title)...)
 		bump(is.Author(), tokens, is.UpdatedAt)
 		for _, u := range is.AssigneeLogins() {

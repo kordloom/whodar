@@ -158,7 +158,7 @@ func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 		if who == "" {
 			who = jiraUserKey(userOrEmpty(is.Fields.Reporter))
 		}
-		ties.note(stated, who)
+		ties.note(stated, who, is.Fields.Project.Key)
 	}
 	records := make([]Record, 0, len(counts))
 	for key, c := range counts {

@@ -45,6 +45,22 @@ const (
 	// scaffoldFloor is the vocabulary below which that share means nothing:
 	// among a handful of subjects everything is tied to most of the rest.
 	scaffoldFloor = 20
+	// spreadShare is the share of a source's containers a subject may turn up
+	// in before it is a kind of work rather than an area. A container is
+	// whatever the source divides work into: a Jira project, a repository, a
+	// wiki space.
+	//
+	// Reach across the vocabulary catches the labels tied to everything, and
+	// misses the ones that are merely everywhere. Measured on a real tracker,
+	// documentation and sql have almost the same number of ties and the same
+	// neighbourhood shape, and no measure of the tie graph tells them apart.
+	// What does is that sql lives in two projects and documentation lives in
+	// all five: it means the same thing everywhere, which is what a kind of
+	// work is and what an area never is.
+	spreadShare = 0.5
+	// spreadFloor is how many containers a source must have before that share
+	// says anything. One repository cannot show a subject staying inside it.
+	spreadFloor = 3
 	// minLinkWeight only guards against arithmetic noise. It is deliberately
 	// almost zero: how much of the time two subjects move as one thing is a
 	// tiny number whenever both are also worked on alone, which is normal, and
@@ -53,6 +69,37 @@ const (
 	// bounds the result is maxLinks keeping only the strongest.
 	minLinkWeight = 0.001
 )
+
+// processLabels are the labels that describe what is being done to a piece of
+// work rather than what it is about. They form no concept ties.
+//
+// This is a list rather than a rule because it has to be. Four structural
+// measures were tried against a real tracker and every one failed: how many
+// subjects a label is tied to, how tightly its neighbours cluster, how far its
+// neighbourhood falls apart without it, and how concentrated its experts are.
+// On all four, "sql" and "shuffle" score as process and "build" scores as an
+// area. What separates them is what the words mean, and no shape in the graph
+// carries that.
+//
+// It stays deliberately short and holds only what is process on every tracker:
+// the labels GitHub creates in a new repository, and the handful of tracker
+// conventions that mean the same thing wherever they appear. A label somebody
+// invented for their own project is not in here and cannot be.
+//
+// Only ties are affected. Somebody can still be the person who knows the
+// documentation; documentation just does not make two areas related.
+var processLabels = map[string]bool{
+	// The labels GitHub puts in every new repository.
+	"bug": true, "documentation": true, "duplicate": true, "enhancement": true,
+	"good first issue": true, "good-first-issue": true, "help wanted": true,
+	"help-wanted": true, "invalid": true, "question": true, "wontfix": true,
+	// Conventions that mean the same thing on any tracker.
+	"beginner": true, "docs": true, "easyfix": true, "feature-request": true,
+	"needs-triage": true, "newbie": true, "patch-available": true,
+	"pull-request-available": true, "regression": true, "release-notes": true,
+	"releasenotes": true, "stale": true, "starter": true, "triage": true,
+	"wip": true, "work-in-progress": true,
+}
 
 // subjectPair is two subject names in a fixed order, so a pairing is counted
 // once however the two were encountered.
@@ -92,24 +139,43 @@ type togetherIndex struct {
 	// spanned records who has worked across each pairing, which is what tells a
 	// connection everybody makes from one only ever made by a single person.
 	spanned map[subjectPair]map[string]bool
+	// places records the containers each subject turned up in, and everywhere
+	// holds all of them, so a subject that is the same thing in every corner of
+	// the company can be told from one that belongs to a corner.
+	places     map[string]map[string]bool
+	everywhere map[string]bool
 }
 
 // newTogether returns an empty accumulator.
 func newTogether() *togetherIndex {
 	return &togetherIndex{
-		seen:    make(map[string]int),
-		pairs:   make(map[subjectPair]int),
-		spanned: make(map[subjectPair]map[string]bool),
+		seen:       make(map[string]int),
+		pairs:      make(map[subjectPair]int),
+		spanned:    make(map[subjectPair]map[string]bool),
+		places:     make(map[string]map[string]bool),
+		everywhere: make(map[string]bool),
 	}
 }
 
 // begin records one piece of work and the distinct subjects it named. It
 // reports whether those subjects are worth pairing: fewer than two say nothing
 // about each other, and too many say nothing at all.
-func (t *togetherIndex) begin(subjects map[string]bool) bool {
+func (t *togetherIndex) begin(subjects map[string]bool, where string) bool {
 	t.items++
+	if where != "" {
+		t.everywhere[where] = true
+	}
 	for s := range subjects {
 		t.seen[s]++
+		if where == "" {
+			continue
+		}
+		in := t.places[s]
+		if in == nil {
+			in = make(map[string]bool)
+			t.places[s] = in
+		}
+		in[where] = true
 	}
 	return len(subjects) >= 2 && len(subjects) <= maxTogether
 }
@@ -132,7 +198,7 @@ func (t *togetherIndex) pair(a, b, who string) {
 // an issue, a page, or a thread. Everything it named met everything else it
 // named, which is what makes those sources simpler than a repository: there are
 // no directories above the work to mistake for the work itself.
-func (t *togetherIndex) note(subjects []string, who string) {
+func (t *togetherIndex) note(subjects []string, who, where string) {
 	// Normalized here rather than by each caller: a source that hands over
 	// "Matter" and one that hands over "matter" mean the same subject, and
 	// counting them apart would split a pairing below the floor that makes it
@@ -143,7 +209,7 @@ func (t *togetherIndex) note(subjects []string, who string) {
 			distinct[s] = true
 		}
 	}
-	if !t.begin(distinct) {
+	if !t.begin(distinct, where) {
 		return
 	}
 	names := make([]string, 0, len(distinct))
@@ -200,7 +266,26 @@ func (t *togetherIndex) records(source string) []Record {
 		links[p.B] = append(links[p.B],
 			TopicLink{To: p.A, Weight: weight, Witnesses: len(by), Sole: sole})
 	}
+	for name := range links {
+		if processLabels[name] {
+			delete(links, name)
+		}
+	}
+	for name, ties := range links {
+		kept := ties[:0]
+		for _, tie := range ties {
+			if !processLabels[tie.To] {
+				kept = append(kept, tie)
+			}
+		}
+		if len(kept) == 0 {
+			delete(links, name)
+			continue
+		}
+		links[name] = kept
+	}
 	links = dropScaffolding(links)
+	links = t.dropSpread(links)
 
 	names := make([]string, 0, len(links))
 	for name := range links {
@@ -237,6 +322,19 @@ func (t *togetherIndex) absorb(o *togetherIndex) {
 	}
 	for p, n := range o.pairs {
 		t.pairs[p] += n
+	}
+	for s, in := range o.places {
+		into := t.places[s]
+		if into == nil {
+			into = make(map[string]bool)
+			t.places[s] = into
+		}
+		for where := range in {
+			into[where] = true
+		}
+	}
+	for where := range o.everywhere {
+		t.everywhere[where] = true
 	}
 	for p, by := range o.spanned {
 		into := t.spanned[p]
@@ -278,6 +376,42 @@ func dropScaffolding(links map[string][]TopicLink) map[string][]TopicLink {
 		for _, t := range ties {
 			if !scaffold[t.To] {
 				kept = append(kept, t)
+			}
+		}
+		if len(kept) > 0 {
+			out[name] = kept
+		}
+	}
+	return out
+}
+
+// dropSpread removes the subjects that turn up in most of a source's containers.
+// A subject that means the same thing in every project, repository, or space is
+// naming a kind of work rather than an area, and tying areas to it says only
+// that both had documentation written about them.
+func (t *togetherIndex) dropSpread(links map[string][]TopicLink) map[string][]TopicLink {
+	if len(t.everywhere) < spreadFloor {
+		return links
+	}
+	cut := float64(len(t.everywhere)) * spreadShare
+	spread := make(map[string]bool)
+	for name := range links {
+		if float64(len(t.places[name])) > cut {
+			spread[name] = true
+		}
+	}
+	if len(spread) == 0 {
+		return links
+	}
+	out := make(map[string][]TopicLink, len(links)-len(spread))
+	for name, ties := range links {
+		if spread[name] {
+			continue
+		}
+		kept := make([]TopicLink, 0, len(ties))
+		for _, tie := range ties {
+			if !spread[tie.To] {
+				kept = append(kept, tie)
 			}
 		}
 		if len(kept) > 0 {

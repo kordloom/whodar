@@ -143,7 +143,7 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 		} else if creator != nil {
 			who = confluenceUserKey(*creator)
 		}
-		ties.note(stated, who)
+		ties.note(stated, who, page.Space.Key)
 		// Credit the creator at creation time and the last editor at edit time,
 		// so an old page edited yesterday does not make its author look recently
 		// active. A person who did both is credited once, at their later action.
