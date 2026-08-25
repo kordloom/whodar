@@ -43,7 +43,14 @@ type TopicRisk struct {
 	// subject held by a single person is equally concentrated, so without this
 	// the report leads with whichever of them happens to sort first by name.
 	Weight float64 `json:"weight"`
-	// Experts are the strongest people for the topic, strongest first.
+	// Experts are the people holding the topic, by share of it, largest first.
+	//
+	// Share of a subject is the right measure for concentration and the wrong
+	// one for who leads it. The few people who touch a whole code base hold a
+	// large share of nearly every part of it, so Experts[0] is not the owner:
+	// reading it that way sent an offboarding report to name one subject where
+	// somebody led nine, and handed ownership of half a project to a passer-by.
+	// Use leads for that.
 	Experts []RiskExpert `json:"experts"`
 	// Includes are the other names this same body of knowledge goes by, folded
 	// in so one subject is not reported as several risks.

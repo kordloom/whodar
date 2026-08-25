@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 
@@ -103,5 +104,41 @@ func TestSearchChannelByTopicTag(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("channel not found by topic tag; results: %+v", Search(ix, "kafka", 0))
+	}
+}
+
+// TestSubjectSearchIgnoresThePersonWhoTouchesEverything checks looking up a
+// subject returns the people concentrated in it rather than the people who
+// appear everywhere. Ranked on raw weight the busiest few come back for every
+// subject in the organization, which is the same defect that has had to be
+// fixed in ownership, departure, adjacency, and joined work.
+func TestSubjectSearchIgnoresThePersonWhoTouchesEverything(t *testing.T) {
+	t.Parallel()
+	recs := []connector.Record{{
+		Kind: connector.KindPerson, Name: "Owner", Email: "owner@x.com",
+		Topics: []string{"zigbee", "zigbee", "zigbee"}, Source: "git",
+	}}
+	sweep := []string{"zigbee", "zigbee", "zigbee", "zigbee"}
+	for i := range 80 {
+		sweep = append(sweep, fmt.Sprintf("area%d", i), fmt.Sprintf("area%d", i))
+	}
+	recs = append(recs, connector.Record{
+		Kind: connector.KindPerson, Name: "Sweeper", Email: "sweeper@x.com",
+		Topics: sweep, Source: "git",
+	})
+	ix := index.New()
+	ix.Build(recs)
+	ix.Canonicalize()
+
+	got := Search(ix, "zigbee", 5)
+	if len(got) == 0 {
+		t.Fatal("zigbee matched nobody")
+	}
+	if got[0].Name != "Owner" {
+		var names []string
+		for _, r := range got {
+			names = append(names, r.Name)
+		}
+		t.Errorf("search order = %v, want the person concentrated in zigbee first", names)
 	}
 }

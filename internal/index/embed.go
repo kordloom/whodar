@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -255,9 +256,21 @@ func (ix *Index) TopicExperts(tid model.ID, limit int) []*model.Person {
 	}
 	var out []scored
 	for _, p := range ix.Graph.People {
-		if w := p.Topics[tid]; w > 0 {
-			out = append(out, scored{p: p, w: w})
+		w := p.Topics[tid]
+		if w <= 0 {
+			continue
 		}
+		// Discounted by everything else this person does. Ranked on raw weight,
+		// the few who touch all of a code base come back as the experts on
+		// every part of it.
+		var reach float64
+		for _, x := range p.Topics {
+			reach += x
+		}
+		if reach <= 0 {
+			continue
+		}
+		out = append(out, scored{p: p, w: w / math.Sqrt(reach)})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].w != out[j].w {

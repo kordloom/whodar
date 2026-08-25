@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"math"
 	"sort"
 	"strings"
 
@@ -86,10 +87,12 @@ func Search(ix *index.Index, query string, limit int) []SearchResult {
 
 // Subject match tie-break. topicTierSpread is how far a subject match may rise
 // above the base tier for the work behind it, kept under the gap to the tier
-// above. topicTierScale is the weight at which half that spread is earned.
+// above. topicTierScale is the concentration at which half that spread is
+// earned, on the discounted scale where a strong owner of one subject sits
+// around a fifth.
 const (
 	topicTierSpread = 3.0
-	topicTierScale  = 20.0
+	topicTierScale  = 0.25
 )
 
 // scorePerson scores how directly a person matches the lowercased query and
@@ -127,14 +130,19 @@ func scorePerson(p *model.Person, team, q string) (float64, []string) {
 	// back in alphabetical order and the person who owns it is wherever their
 	// name happens to fall. The bonus is bounded well below the next tier, so
 	// no amount of work in a subject outranks a title or team match.
-	var strongest float64
+	var strongest, reach float64
 	for tid, w := range p.Topics {
+		reach += w
 		if w > strongest && strings.Contains(strings.ToLower(string(tid)), q) {
 			strongest = w
 		}
 	}
-	if strongest > 0 {
-		hit(8+topicTierSpread*strongest/(strongest+topicTierScale), "topic")
+	if strongest > 0 && reach > 0 {
+		// Discounted by how much this person does everywhere else, for the same
+		// reason every other ranking here is: the few who touch all of a code
+		// base out-weigh the owner of any one part of it.
+		concentration := strongest / math.Sqrt(reach)
+		hit(8+topicTierSpread*concentration/(concentration+topicTierScale), "topic")
 	}
 	return best, matched
 }
