@@ -121,6 +121,7 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 	// Commit subject words stay weak.
 	curated := make(map[string]bool)
 	// Which subjects appeared, and which appeared together. See topicRecords.
+	recent := make(map[string]map[string]int)
 	seen := make(map[string]int)
 	together := make(map[subjectPair]int)
 	commits := 0
@@ -128,7 +129,7 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		read, skipped, err := g.readRepo(ctx, path, counts, nameCounts, latest, curated, seen, together)
+		read, skipped, err := g.readRepo(ctx, path, counts, nameCounts, latest, curated, recent, seen, together)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return nil, err
@@ -171,6 +172,7 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 		// A file path is where work demonstrably landed, so it establishes a
 		// subject; a commit subject is prose and only corroborates one.
 		rec.Topics, rec.WeakTopics = splitCurated(expandTopics(c), curated)
+		rec.RecentTopics = expandTopics(recent[email])
 		// A GitHub noreply commit email encodes the author's login, so key the
 		// person by that login to join their commits to their GitHub reviews
 		// and pull requests. Without this the same engineer appears once from
@@ -285,6 +287,14 @@ func isShallow(path string) bool {
 const maxGitWorkers = 8
 
 const gitProgressEvery = 3 * time.Second
+
+// recentWindow is how lately somebody must have worked on a subject to still
+// count as being in it. Measured rather than chosen: on a real repository the
+// leading expert of two subjects in five had already stopped touching them, and
+// such a lead was less than half as likely to still hold the subject six months
+// on. Half a year is long enough that an ordinary gap between contributions
+// does not read as leaving.
+const recentWindow = 180 * 24 * time.Hour
 
 // Bounds on what counts as two subjects being worked on together.
 const (
@@ -551,6 +561,7 @@ func (g *GitHistory) readRepo(
 	names map[string]map[string]int,
 	latest map[string]time.Time,
 	curated map[string]bool,
+	recent map[string]map[string]int,
 	seen map[string]int,
 	together map[subjectPair]int,
 ) (read, skipped int, err error) {
@@ -558,7 +569,7 @@ func (g *GitHistory) readRepo(
 	if err != nil {
 		return 0, 0, err
 	}
-	return g.diffCommits(ctx, path, jobs, counts, names, latest, curated, seen, together)
+	return g.diffCommits(ctx, path, jobs, counts, names, latest, curated, recent, seen, together)
 }
 
 // commitJob is one commit worth walking: everything cheap about it, read once
@@ -651,6 +662,9 @@ type tally struct {
 	// a commit subject, which is the difference between demonstrated work and
 	// a word somebody wrote.
 	curated map[string]bool
+	// recent counts, per author, the subjects they have worked on lately. See
+	// recentWindowDays.
+	recent map[string]map[string]int
 	// seen counts the commits each subject appeared in, and together counts the
 	// commits in which each pair of subjects appeared at once.
 	seen     map[string]int
@@ -674,6 +688,7 @@ func (g *GitHistory) diffCommits(
 	names map[string]map[string]int,
 	latest map[string]time.Time,
 	curated map[string]bool,
+	recent map[string]map[string]int,
 	seen map[string]int,
 	together map[subjectPair]int,
 ) (read, skipped int, err error) {
@@ -716,6 +731,16 @@ func (g *GitHistory) diffCommits(
 		skipped += t.skipped
 		for tok := range t.curated {
 			curated[tok] = true
+		}
+		for email, subs := range t.recent {
+			into := recent[email]
+			if into == nil {
+				into = make(map[string]int)
+				recent[email] = into
+			}
+			for sub, n := range subs {
+				into[sub] += n
+			}
 		}
 		for sub, n := range t.seen {
 			seen[sub] += n
@@ -767,6 +792,7 @@ func (g *GitHistory) diffShare(
 		names:    make(map[string]map[string]int),
 		latest:   make(map[string]time.Time),
 		curated:  make(map[string]bool),
+		recent:   make(map[string]map[string]int),
 		seen:     make(map[string]int),
 		together: make(map[subjectPair]int),
 	}
@@ -816,6 +842,15 @@ func (g *GitHistory) diffShare(
 		}
 		byPath := make([][]string, 0, len(paths))
 		deepest := make([][]string, 0, len(paths))
+		lately := time.Since(job.When) <= recentWindow
+		var fresh map[string]int
+		if lately {
+			fresh = t.recent[job.Email]
+			if fresh == nil {
+				fresh = make(map[string]int)
+				t.recent[job.Email] = fresh
+			}
+		}
 		for _, name := range paths {
 			dirs, leaf := pathSubjects(name)
 			byPath = append(byPath, dirs)
@@ -828,6 +863,9 @@ func (g *GitHistory) diffShare(
 			for _, tok := range dirs {
 				m[tok]++
 				t.curated[tok] = true
+				if fresh != nil {
+					fresh[tok]++
+				}
 			}
 			// The file's own name still counts towards the work, but it does
 			// not establish a subject on its own.

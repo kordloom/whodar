@@ -590,6 +590,13 @@ measure is a project's own CODEOWNERS file: index only its commit history, hold
 the ownership file out, and ask whodar who knows each area. The labels are
 written by that project's maintainers, so the answer is not graded by us.
 
+A reason reading `zwave (topic, not lately)` means the person knows the subject
+but has stopped working on it. Knowing something best is not the same as still
+being in it: measured against a real repository, the leading expert of two
+subjects in five had already stopped touching them, and such a lead was less
+than half as likely to still hold the subject six months on. Sources that cannot
+say what was recent claim nothing either way.
+
 A term that matches nothing falls back to fuzzy matching: the closest indexed
 term within one edit (four-letter terms and up) or two edits (seven and up)
 scores instead, at a penalty per edit so an exact match always outranks a

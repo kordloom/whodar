@@ -570,6 +570,19 @@ func (ix *Index) buildPerson(rec connector.Record) {
 	for _, top := range rec.WeakTopics {
 		addTopic(top, false)
 	}
+	// What they have worked on lately, which is a subset of what they know.
+	// Kept apart so a subject somebody knows best but has stopped touching can
+	// be told from one they are still in.
+	for _, top := range rec.RecentTopics {
+		tid := topicID(top)
+		if tid == "" {
+			continue
+		}
+		if p.Recent == nil {
+			p.Recent = make(map[model.ID]float64)
+		}
+		p.Recent[tid] += weightTopic * w
+	}
 	// Fresh ingest carries readable Text, kept in memory for embedding and
 	// merge and tokenized into postings. A record rebuilt from a saved index
 	// carries only the stemmed Terms, which reproduce the same postings without
@@ -1174,6 +1187,7 @@ func (ix *Index) reasons(
 	pid model.ID, terms map[string]bool, resolved map[string]termHit, asked map[string]string,
 ) ([]string, float64) {
 	pt := ix.texts[pid]
+	p := ix.Graph.People[pid]
 	out := make([]string, 0, len(terms))
 	var evidence float64
 	for term := range terms {
@@ -1204,6 +1218,14 @@ func (ix *Index) reasons(
 			out = append(out, fmt.Sprintf("%s (%s) for %q", term, field, from))
 			continue
 		}
+		// Knowing a subject best is not the same as still being in it. On a
+		// real repository the leading expert of two subjects in five had
+		// stopped touching them, and was less than half as likely to still
+		// hold the subject six months on, so sending somebody to ask them
+		// without saying so is how an answer goes stale.
+		if field == "topic" && quietOn(p, found) {
+			field += ", not lately"
+		}
 		// A correction has to name what it corrected to. Told only that
 		// "zigby" was fuzzy, a reader cannot tell whether whodar read it as
 		// zigbee or as zigzag, which is the difference between a lucky save
@@ -1221,7 +1243,18 @@ func (ix *Index) reasons(
 	return out, evidence
 }
 
-// channelReasons describes, for each matched term, which field of the channel
+// quietOn reports whether somebody knows a subject but has stopped working on
+// it. An empty recent record means the source never said what was recent, so
+// nothing is claimed either way.
+func quietOn(p *model.Person, topic string) bool {
+	if p == nil || len(p.Recent) == 0 || topic == "" {
+		return false
+	}
+	tid := topicID(topic)
+	return p.Topics[tid] > 0 && p.Recent[tid] == 0
+}
+
+// match records the word a stem lookup found// channelReasons describes, for each matched term, which field of the channel
 // it hit, and returns the strongest evidence among those hits. A fuzzily
 // corrected term classifies by its resolved stem and says so.
 func (ix *Index) channelReasons(

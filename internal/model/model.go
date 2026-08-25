@@ -29,6 +29,11 @@ type Person struct {
 	// Owns lists topic IDs this person is a declared owner of, from a source of
 	// record such as CODEOWNERS, as opposed to topics they merely work in.
 	Owns []ID
+	// Recent holds the part of each topic weight earned lately, so a subject
+	// somebody knows best but has stopped working on can be told from one they
+	// are still in. Absent from this map while present in Topics means their
+	// work on it has stopped.
+	Recent map[ID]float64
 	// Stated is the part of each topic weight that a source of record assigned
 	// rather than the person earning it: being listed in CODEOWNERS or given a
 	// topics column in an org chart. Subtracting it from Topics leaves the work

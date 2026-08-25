@@ -38,6 +38,14 @@ type Record struct {
 	// repository topic, an owned path, or an org-chart column. Something stated
 	// deliberately, which makes it the strongest topic evidence a source can give.
 	Topics []string
+	// RecentTopics are the subjects this person worked on lately, a subset of
+	// Topics. Whodar answers with whoever knows a subject best, and knowing it
+	// best is not the same as still working on it: on a real repository the
+	// leading expert of two subjects in five had already stopped touching them,
+	// and was less than half as likely to still hold the subject a while later.
+	// Naming them without saying so sends somebody to ask a person who has
+	// moved on.
+	RecentTopics []string
 	// WeakTopics are topics inferred from prose rather than declared, such as the
 	// words of an issue title. They contribute the same affinity but do not, on
 	// their own, establish a subject: a topic seen only this way has to recur

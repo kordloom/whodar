@@ -113,6 +113,12 @@ func mergePerson(dst, src *model.Person) {
 	for t, w := range src.Topics {
 		dst.Topics[t] += w
 	}
+	for t, w := range src.Recent {
+		if dst.Recent == nil {
+			dst.Recent = make(map[model.ID]float64)
+		}
+		dst.Recent[t] += w
+	}
 	for t, w := range src.Stated {
 		if dst.Stated == nil {
 			dst.Stated = make(map[model.ID]float64)
