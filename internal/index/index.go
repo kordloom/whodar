@@ -366,7 +366,10 @@ func foldLinks(base, add []connector.TopicLink) []connector.TopicLink {
 	for _, l := range add {
 		if i, ok := at[l.To]; ok {
 			if l.Weight > base[i].Weight {
-				base[i].Weight = l.Weight
+				// The whole claim moves together. Keeping the stronger weight
+				// beside an older witness count would describe a tie nobody
+				// observed.
+				base[i] = l
 			}
 			continue
 		}
@@ -1690,7 +1693,7 @@ func (ix *Index) buildTopicLinks(rec connector.Record) {
 		g.Topics[tid] = topic
 	}
 	if topic.Near == nil {
-		topic.Near = make(map[model.ID]float64)
+		topic.Near = make(map[model.ID]model.Tie)
 	}
 	for _, link := range rec.Links {
 		to := topicID(link.To)
@@ -1699,8 +1702,20 @@ func (ix *Index) buildTopicLinks(rec connector.Record) {
 		}
 		// Sources disagree about how strongly two subjects are tied; keep the
 		// strongest claim rather than letting a weak one dilute it.
-		if link.Weight > topic.Near[to] {
-			topic.Near[to] = link.Weight
+		if link.Weight > topic.Near[to].Weight {
+			// A source names the person by whatever address the work carried,
+			// which is not always how the graph keys them: a provider's
+			// no-reply address encodes a login the connector keys people by.
+			// Normalized here, the tie points at somebody the graph can name.
+			sole := model.ID("")
+			if link.Sole != "" {
+				sole = model.ID(util.NormalizeEmail(link.Sole))
+			}
+			topic.Near[to] = model.Tie{
+				Weight:    link.Weight,
+				Witnesses: link.Witnesses,
+				Sole:      sole,
+			}
 		}
 	}
 }

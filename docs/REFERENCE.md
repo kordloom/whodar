@@ -286,6 +286,12 @@ which sources it saw so a reader can judge how much of the company it covered.
 The headline counts are taken over every scored subject, so capping the table
 with `--limit` never shrinks them.
 
+It also reports one-person connections: pairs of subjects that only one person
+has ever done work across. Both subjects have their own experts, so nothing that
+counts experts per subject can show this. What rests on one person there is not
+either subject but the knowledge that the two belong together, and whoever picks
+one up after they leave has no reason to look at the other.
+
 It also reports joined work: connected bodies of subjects that get changed
 together where the same person leads every one. That is a heavier finding than a
 concentrated subject on its own, and a per-subject list cannot show it. Ten

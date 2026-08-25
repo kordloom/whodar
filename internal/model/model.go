@@ -77,13 +77,13 @@ type Topic struct {
 	// Sources names the connectors that produced this topic. Breadth across
 	// sources is the strongest evidence a topic is real rather than a stray word.
 	Sources []string
-	// Near are the subjects this one is worked on alongside, and how strongly,
-	// from zero to one. It is the only thing whodar knows about a subject that
-	// does not come through the people who hold it: two areas changed in the
-	// same commit are related whoever made the commit. Everything else relates
-	// subjects by their shared experts, which cannot then be evidence about
-	// expertise without arguing in a circle.
-	Near map[ID]float64
+	// Near are the subjects this one is worked on alongside. It is the only
+	// thing whodar knows about a subject that does not come through the people
+	// who hold it: two areas changed in the same commit are related whoever
+	// changed them, and everything else relates subjects by their shared
+	// experts, which cannot then be evidence about expertise without arguing in
+	// a circle.
+	Near map[ID]Tie
 	// Ubiquitous marks a topic nearly everybody holds. Those are the scaffolding
 	// of a codebase rather than subjects within it: the name of the repository,
 	// the language it is written in, the directory every file sits under. They
@@ -101,6 +101,23 @@ func (t *Topic) Salient() bool {
 		return false
 	}
 	return t.Curated || len(t.Sources) > 1
+}
+
+// Tie is how two subjects are connected: how much of the time they move
+// together, and how many people have ever done work spanning both.
+type Tie struct {
+	// Weight is how much of the time the two subjects move as one thing, from
+	// zero to one.
+	Weight float64
+	// Witnesses is how many different people have ever worked across both. One
+	// means the connection between them has only ever been in a single head,
+	// which is a bus factor on the relationship rather than on either subject,
+	// and nothing that counts experts per subject can see it.
+	Witnesses int
+	// Sole names that person when Witnesses is one. Several people may hold
+	// both subjects while only one has ever worked across them, so it cannot be
+	// recovered from the graph afterwards.
+	Sole ID
 }
 
 // Channel is a place to ask, such as a Slack channel.

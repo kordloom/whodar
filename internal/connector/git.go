@@ -124,12 +124,13 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 	recent := make(map[string]map[string]int)
 	seen := make(map[string]int)
 	together := make(map[subjectPair]int)
+	spanned := make(map[subjectPair]map[string]bool)
 	commits := 0
 	for _, path := range g.opts.Paths {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		read, skipped, err := g.readRepo(ctx, path, counts, nameCounts, latest, curated, recent, seen, together)
+		read, skipped, err := g.readRepo(ctx, path, counts, nameCounts, latest, curated, recent, seen, together, spanned)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return nil, err
@@ -182,7 +183,7 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 		}
 		records = append(records, rec)
 	}
-	records = append(records, topicRecords(seen, together, commits)...)
+	records = append(records, topicRecords(seen, together, spanned, commits)...)
 	return records, nil
 }
 
@@ -350,7 +351,7 @@ func pairOf(a, b string) subjectPair {
 // noteTogether records which of a commit's subjects were worked on together.
 // Only subjects named by DIFFERENT paths count as having met: one path yields
 // both zwave_js and zwave, and a name agreeing with itself is not evidence.
-func noteTogether(t *tally, byPath, deepest [][]string) {
+func noteTogether(t *tally, byPath, deepest [][]string, who string) {
 	distinct := make(map[string]bool)
 	for _, subs := range byPath {
 		for _, s := range subs {
@@ -407,6 +408,12 @@ func noteTogether(t *tally, byPath, deepest [][]string) {
 					if !counted[p] {
 						counted[p] = true
 						t.together[p]++
+						by := t.spanned[p]
+						if by == nil {
+							by = make(map[string]bool)
+							t.spanned[p] = by
+						}
+						by[who] = true
 					}
 				}
 			}
@@ -441,7 +448,12 @@ func sameFamily(a, b string) bool {
 // that does not come through the people who hold it, which is what makes it
 // worth carrying: whodar can otherwise only call two subjects related when the
 // same people work on both, and cannot then use that as evidence about people.
-func topicRecords(seen map[string]int, together map[subjectPair]int, commits int) []Record {
+func topicRecords(
+	seen map[string]int,
+	together map[subjectPair]int,
+	spanned map[subjectPair]map[string]bool,
+	commits int,
+) []Record {
 	if commits == 0 {
 		return nil
 	}
@@ -466,8 +478,20 @@ func topicRecords(seen map[string]int, together map[subjectPair]int, commits int
 		if weight < minLinkWeight {
 			continue
 		}
-		links[p.A] = append(links[p.A], TopicLink{To: p.B, Weight: weight})
-		links[p.B] = append(links[p.B], TopicLink{To: p.A, Weight: weight})
+		// Who has ever worked across the two. One person means the connection
+		// itself has a bus factor of one, whatever the two subjects separately
+		// look like.
+		by := spanned[p]
+		sole := ""
+		if len(by) == 1 {
+			for who := range by {
+				sole = who
+			}
+		}
+		links[p.A] = append(links[p.A],
+			TopicLink{To: p.B, Weight: weight, Witnesses: len(by), Sole: sole})
+		links[p.B] = append(links[p.B],
+			TopicLink{To: p.A, Weight: weight, Witnesses: len(by), Sole: sole})
 	}
 	out := make([]Record, 0, len(links))
 	names := make([]string, 0, len(links))
@@ -564,12 +588,13 @@ func (g *GitHistory) readRepo(
 	recent map[string]map[string]int,
 	seen map[string]int,
 	together map[subjectPair]int,
+	spanned map[subjectPair]map[string]bool,
 ) (read, skipped int, err error) {
 	jobs, err := g.scanCommits(ctx, path)
 	if err != nil {
 		return 0, 0, err
 	}
-	return g.diffCommits(ctx, path, jobs, counts, names, latest, curated, recent, seen, together)
+	return g.diffCommits(ctx, path, jobs, counts, names, latest, curated, recent, seen, together, spanned)
 }
 
 // commitJob is one commit worth walking: everything cheap about it, read once
@@ -669,6 +694,9 @@ type tally struct {
 	// commits in which each pair of subjects appeared at once.
 	seen     map[string]int
 	together map[subjectPair]int
+	// spanned records who has done work across each pair, which is what tells a
+	// connection everybody makes from one only ever made by a single person.
+	spanned map[subjectPair]map[string]bool
 	// read is how many commits this worker took in.
 	read int
 	// skipped is how many it could not diff.
@@ -691,6 +719,7 @@ func (g *GitHistory) diffCommits(
 	recent map[string]map[string]int,
 	seen map[string]int,
 	together map[subjectPair]int,
+	spanned map[subjectPair]map[string]bool,
 ) (read, skipped int, err error) {
 	if len(jobs) == 0 {
 		return 0, 0, nil
@@ -748,6 +777,16 @@ func (g *GitHistory) diffCommits(
 		for p, n := range t.together {
 			together[p] += n
 		}
+		for p, by := range t.spanned {
+			into := spanned[p]
+			if into == nil {
+				into = make(map[string]bool)
+				spanned[p] = into
+			}
+			for w := range by {
+				into[w] = true
+			}
+		}
 		for email, topics := range t.counts {
 			m := counts[email]
 			if m == nil {
@@ -795,6 +834,7 @@ func (g *GitHistory) diffShare(
 		recent:   make(map[string]map[string]int),
 		seen:     make(map[string]int),
 		together: make(map[subjectPair]int),
+		spanned:  make(map[subjectPair]map[string]bool),
 	}
 	repo, closeRepo, err := openRepo(path)
 	if err != nil {
@@ -873,7 +913,7 @@ func (g *GitHistory) diffShare(
 				m[tok]++
 			}
 		}
-		noteTogether(&t, byPath, deepest)
+		noteTogether(&t, byPath, deepest, job.Email)
 		// The commit subject carries the domain vocabulary the filenames often
 		// hide: "fix rate-limiter backoff" against a generically named limiter.go.
 		// Mine it once per commit, so it weighs less than the per-file paths but

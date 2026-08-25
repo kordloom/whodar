@@ -97,12 +97,21 @@ const (
 )
 
 // TopicLink is one subject's tie to another, seen by a source that watched them
-// change together. Weight is how strongly, from zero to one.
+// change together.
 type TopicLink struct {
 	// To is the other subject's name.
 	To string
 	// Weight is how much of the time the two move as one thing.
 	Weight float64
+	// Witnesses is how many different people have ever done work spanning both
+	// subjects. One means the knowledge that these two belong together has only
+	// ever been in one head: the subjects each have their own experts, and the
+	// connection between them has nobody but this person.
+	Witnesses int
+	// Sole names that person when Witnesses is one, since nothing in the graph
+	// can identify them afterwards. Several people may hold both subjects while
+	// only one has ever worked across them.
+	Sole string
 }
 
 // Source fetches and normalizes records from one origin.

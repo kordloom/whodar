@@ -37,6 +37,10 @@ type Brief struct {
 	Totals Counts
 	// Exposed are the people the risks trace back to, most exposed first.
 	Exposed []Exposure
+	// Spans are the connections between subjects that only one person has ever
+	// made. Both subjects have their own experts; the link between them does
+	// not, and counting experts per subject cannot see it.
+	Spans []resolve.Span
 	// Regions are the connected bodies of work that rest on one person:
 	// subjects changed together where the same person leads every one. They are
 	// the largest findings in the report, because whoever picks one up has to

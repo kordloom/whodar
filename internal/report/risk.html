@@ -130,6 +130,7 @@ footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 
 		<li><button type="button" data-jump="topics">Concentrated subjects</button></li>
 		<li><button type="button" data-jump="people">Who is exposed</button></li>
 		{{ if .Regions }}<li><button type="button" data-jump="joined">Joined work</button></li>{{ end }}
+		{{ if .Spans }}<li><button type="button" data-jump="spans">One-person connections</button></li>{{ end }}
 		<li><button type="button" data-jump="method">How this was measured</button></li>
 	</ul>
 </nav>
@@ -234,6 +235,28 @@ footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 
 	<p class="empty">Nobody holds a topic alone. Knowledge is spread across the people indexed.</p>
 	{{ end }}
 </section>
+
+{{ if .Spans }}
+<section id="spans">
+	<h2>One-person connections <span class="count">({{ len .Spans }})</span></h2>
+	<p class="desc">Pairs of subjects that only one person has ever done work across. Both subjects have their own experts, so nothing that counts experts per subject shows this: what rests on one person is not either subject but the knowledge that the two belong together, and whoever picks one up afterwards has no reason to look at the other.</p>
+	<div class="scroller">
+	<table>
+		<thead><tr><th>Subjects</th><th>Only</th><th>People holding the two</th><th>Change together</th></tr></thead>
+		<tbody>
+		{{ range .Spans }}
+			<tr>
+				<td>{{ .Topic }} + {{ .With }}</td>
+				<td>{{ .Person }}</td>
+				<td class="num">{{ .Experts }}</td>
+				<td class="num">{{ pct .Together }}</td>
+			</tr>
+		{{ end }}
+		</tbody>
+	</table>
+	</div>
+</section>
+{{ end }}
 
 {{ if .Regions }}
 <section id="joined">

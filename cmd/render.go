@@ -685,10 +685,40 @@ func renderRelated(w io.Writer, topic string, rel []resolve.TopicRelation, s sty
 		if r.Together > 0 {
 			strength = fmt.Sprintf("%3.0f%% together", r.Together*100)
 		}
+		why := kind + ", " + r.Because
+		// A connection only one person has ever made is worth saying out loud:
+		// both subjects may be well covered while the fact that they belong
+		// together has nobody but them.
+		if r.Spanned == 1 && r.SoleName != "" {
+			why = kind + ", only " + r.SoleName + " has worked across both"
+		}
 		fmt.Fprintf(w, "  %s  %s  %s\n",
 			pad(s.bold(r.Topic), r.Topic, width),
 			s.accent(strength),
-			s.dim(kind+", "+r.Because))
+			s.dim(why))
+	}
+}
+
+// renderSpans lists the connections between subjects that rest on one person.
+// Counting experts per subject cannot find these: both areas can be well
+// covered while the work crossing between them has only ever been done once, by
+// one person, and what leaves with them is the knowledge that the two belong
+// together at all.
+func renderSpans(w io.Writer, spans []resolve.Span, s style) {
+	if len(spans) == 0 {
+		return
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, s.bold(fmt.Sprintf(
+		"One-person connections  %d %s only one person has ever worked across",
+		len(spans), plural2(len(spans), "pair", "pairs"))))
+	fmt.Fprintf(w, "  %s\n\n", s.dim(
+		"Both subjects have their own experts. The link between them does not."))
+	for _, sp := range spans {
+		fmt.Fprintf(w, "  %s %s %s  %s\n",
+			s.bold(sp.Topic), s.dim("+"), s.bold(sp.With),
+			s.dim(fmt.Sprintf("only %s, across %d people holding the two",
+				sp.Person, sp.Experts)))
 	}
 }
 

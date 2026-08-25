@@ -39,6 +39,13 @@ type TopicRelation struct {
 	// Together is how much of the time the two subjects change as one thing,
 	// zero when nothing has ever been observed changing them together.
 	Together float64 `json:"together,omitempty"`
+	// Spanned is how many people have ever worked across both subjects. One
+	// means the connection between them lives in a single head: each subject
+	// may have plenty of experts while nobody but this person has ever done
+	// work that crossed from one to the other.
+	Spanned int `json:"spanned,omitempty"`
+	// SoleName is that person, when Spanned is one.
+	SoleName string `json:"soleName,omitempty"`
 }
 
 // Evidence a relationship rests on.
@@ -127,19 +134,24 @@ func changedTogether(ix *index.Index, topic string, holders map[string]map[model
 		return nil
 	}
 	out := make([]TopicRelation, 0, len(t.Near))
-	for id, weight := range t.Near {
+	for id, tie := range t.Near {
 		other := string(id)
 		people := holders[other]
 		if len(people) == 0 {
 			continue
 		}
-		out = append(out, TopicRelation{
+		rel := TopicRelation{
 			Topic:    other,
-			Together: weight,
+			Together: tie.Weight,
+			Spanned:  tie.Witnesses,
 			Experts:  len(people),
 			Narrower: len(people) < len(holders[strings.ToLower(strings.TrimSpace(topic))]),
 			Because:  becauseTogether,
-		})
+		}
+		if tie.Witnesses == 1 && tie.Sole != "" {
+			rel.SoleName = personName(ix, ix.CanonicalID(tie.Sole))
+		}
+		out = append(out, rel)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Together != out[j].Together {

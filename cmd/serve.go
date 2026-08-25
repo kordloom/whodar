@@ -213,6 +213,7 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 				Sources:   ix.SourceNames(),
 				Risks:     all,
 				Regions:   resolve.Regions(ix, regionsShown),
+				Spans:     resolve.SoleSpans(ix, spansShown),
 				Totals:    report.Count(all, exposed),
 				Exposed:   exposed,
 			}
