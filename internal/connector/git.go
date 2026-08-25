@@ -740,6 +740,11 @@ func (g *GitHistory) diffShare(
 				m[tok]++
 			}
 		}
+		// Which of this commit's subjects name something of their own, so the
+		// words of one compound name are not read as subjects meeting.
+		for _, p := range paths {
+			t.ties.standing(segmentNames(p))
+		}
 		noteTogether(&t, byPath, deepest, job.Email, path)
 		// The commit subject carries the domain vocabulary the filenames often
 		// hide: "fix rate-limiter backoff" against a generically named limiter.go.

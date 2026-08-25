@@ -180,6 +180,29 @@ func topicsFromPatterns(patterns []string) []string {
 // pathTopics derives topic tokens from one path or pattern: extension and
 // special-filename names plus meaningful path segments, duplicates kept so
 // callers can weight by volume.
+// segmentNames returns the subjects that name a whole path segment, as opposed
+// to the words found inside a compound one. A subject standing alone as a
+// directory is a subject the repository has; a word only ever seen inside a
+// longer name is a piece of that name. Both are worth matching a question
+// against, and only the first is evidence about anything on its own.
+func segmentNames(p string) []string {
+	var out []string
+	for seg := range strings.SplitSeq(p, "/") {
+		seg = strings.Trim(seg, "*?.")
+		if seg == "" {
+			continue
+		}
+		for part := range strings.SplitSeq(seg, ".") {
+			part = strings.ToLower(strings.TrimSpace(part))
+			if len(part) < 3 || codeStop[part] || glueWords[part] || !isSubject(part) {
+				continue
+			}
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
 func pathTopics(p string) []string {
 	out := append([]string(nil), patternNames(p)...)
 	for seg := range strings.SplitSeq(p, "/") {

@@ -291,6 +291,12 @@ thing everywhere is what a kind of work does and what an area never does. The
 rule stays quiet when a source has fewer than three containers, since a single
 repository cannot show a subject staying inside one.
 
+Two words of one name are not two subjects either. Every file under a directory
+called data_grand_lyon names data, grand, and lyon, which says how one
+integration is spelled and nothing more. A subject that names a directory of its
+own counts wherever else it turns up, so energy stays connected to the utility
+integrations whose names contain it.
+
 And a subject tied to more than a third of everything else is dropped along with
 every tie to it. Reaching across the whole vocabulary is what describing a kind
 of work looks like rather than an area, and it makes every subject appear

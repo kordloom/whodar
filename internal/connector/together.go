@@ -139,6 +139,9 @@ type togetherIndex struct {
 	// spanned records who has worked across each pairing, which is what tells a
 	// connection everybody makes from one only ever made by a single person.
 	spanned map[subjectPair]map[string]bool
+	// standalone holds the subjects that name something on their own rather than
+	// only ever appearing as a word inside a longer name.
+	standalone map[string]bool
 	// places records the containers each subject turned up in, and everywhere
 	// holds all of them, so a subject that is the same thing in every corner of
 	// the company can be told from one that belongs to a corner.
@@ -152,6 +155,7 @@ func newTogether() *togetherIndex {
 		seen:       make(map[string]int),
 		pairs:      make(map[subjectPair]int),
 		spanned:    make(map[subjectPair]map[string]bool),
+		standalone: make(map[string]bool),
 		places:     make(map[string]map[string]bool),
 		everywhere: make(map[string]bool),
 	}
@@ -178,6 +182,17 @@ func (t *togetherIndex) begin(subjects map[string]bool, where string) bool {
 		in[where] = true
 	}
 	return len(subjects) >= 2 && len(subjects) <= maxTogether
+}
+
+// standing records the subjects that name something of their own: a directory
+// by that name, a component, a label. A source that has no such notion records
+// nothing, and the rule that uses this stays quiet.
+func (t *togetherIndex) standing(names []string) {
+	for _, n := range names {
+		if n != "" {
+			t.standalone[n] = true
+		}
+	}
 }
 
 // pair records that one person worked across two subjects in one piece of work.
@@ -240,6 +255,14 @@ func (t *togetherIndex) records(source string) []Record {
 	links := make(map[string][]TopicLink)
 	for p, n := range t.pairs {
 		if n < minTogether {
+			continue
+		}
+		// Two words of one compound name are not two subjects meeting. The three
+		// words of data_grand_lyon appear together in every file of that one
+		// integration, which says how it is spelled and nothing else. A subject
+		// that names a directory of its own is a real subject wherever else it
+		// turns up, so one standing side is enough to keep the pairing.
+		if len(t.standalone) > 0 && !t.standalone[p.A] && !t.standalone[p.B] {
 			continue
 		}
 		na, nb := t.seen[p.A], t.seen[p.B]
@@ -322,6 +345,9 @@ func (t *togetherIndex) absorb(o *togetherIndex) {
 	}
 	for p, n := range o.pairs {
 		t.pairs[p] += n
+	}
+	for n := range o.standalone {
+		t.standalone[n] = true
 	}
 	for s, in := range o.places {
 		into := t.places[s]

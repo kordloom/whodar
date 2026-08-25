@@ -267,3 +267,44 @@ func TestTogetherIgnoresProcessLabels(t *testing.T) {
 		t.Error("billing lost its tie to ledger because a process label shared the ticket")
 	}
 }
+
+// TestTogetherIgnoresWordsOfOneName checks two words of a single compound name
+// are not read as two subjects meeting.
+//
+// Every file under data_grand_lyon names data, grand, and lyon, so those three
+// appear together constantly while saying only how one integration is spelled.
+// A subject that names a directory of its own is real wherever else it turns
+// up, so one standing side keeps the pairing: that is what lets energy stay
+// tied to ovo and srp, which an earlier attempt at this cut by mistake.
+func TestTogetherIgnoresWordsOfOneName(t *testing.T) {
+	t.Parallel()
+	ties := newTogether()
+	// energy names a directory of its own; ovo, grand, and lyon never do.
+	ties.standing([]string{"energy", "ovo_energy", "data_grand_lyon", "sensor"})
+	for range minTogether + 3 {
+		ties.note([]string{"energy", "ovo"}, "ada@x.com", "repo")
+		ties.note([]string{"grand", "lyon"}, "bo@x.com", "repo")
+	}
+	for range 40 {
+		ties.note([]string{"filler", "other"}, "cy@x.com", "repo")
+	}
+	tied := func(a, b string) bool {
+		for _, r := range ties.records("git") {
+			if r.Name != a {
+				continue
+			}
+			for _, l := range r.Links {
+				if l.To == b {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if !tied("energy", "ovo") {
+		t.Error("energy lost its tie to ovo, though energy names a directory of its own")
+	}
+	if tied("grand", "lyon") {
+		t.Error("grand was tied to lyon, though neither names anything but a piece of one name")
+	}
+}
