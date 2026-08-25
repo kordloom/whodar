@@ -966,7 +966,7 @@ async function renderExposure() {
       for (const r of regions) expRegions.appendChild(regionCard(r));
     } else {
       expRegions.appendChild(el("p", "exp-empty",
-        "No joined work found. Index a source that records what changed together, such as git."));
+        "No joined work found. Index a source that records what work touched, such as git, Jira, Confluence, or GitHub."));
     }
   }
   if (risk.length) {

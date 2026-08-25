@@ -94,6 +94,7 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 	fmt.Fprintf(c.opts.Log, "confluence: %d pages for %q\n", len(pages), confluenceQueryLabel(q))
 
 	counts := make(map[string]map[string]int)
+	ties := newTogether()
 	// Tokens a page stated as a label. Title, space, and body words stay weak.
 	curated := make(map[string]bool)
 	users := make(map[string]confluence.User)
@@ -124,12 +125,25 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 
 	for _, page := range pages {
 		tokens := pageTopics(page)
+		stated := make([]string, 0, 4)
 		for _, tok := range page.LabelNames() {
 			if tok = strings.ToLower(strings.TrimSpace(tok)); tok != "" {
 				curated[tok] = true
+				stated = append(stated, tok)
 			}
 		}
 		creator, editor := page.History.CreatedBy, page.Version.By
+		// What one page states is written about together, and whoever last
+		// wrote it is who worked across those subjects. Only the labels count:
+		// the words of a title or a body are prose, and pairing those would tie
+		// a subject to every phrase that happened to sit near it.
+		who := ""
+		if editor != nil {
+			who = confluenceUserKey(*editor)
+		} else if creator != nil {
+			who = confluenceUserKey(*creator)
+		}
+		ties.note(stated, who)
 		// Credit the creator at creation time and the last editor at edit time,
 		// so an old page edited yesterday does not make its author look recently
 		// active. A person who did both is credited once, at their later action.
@@ -154,6 +168,7 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 		rec.Time = latest[key]
 		records = append(records, rec)
 	}
+	records = append(records, ties.records("confluence")...)
 	return records, nil
 }
 

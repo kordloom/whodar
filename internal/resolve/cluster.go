@@ -6,6 +6,7 @@ import (
 
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // relatedCut is the share of a topic's experts that must also hold another topic
@@ -31,7 +32,7 @@ type TopicRelation struct {
 	// anything else they hold, so without this the strongest relationships are
 	// buried under every incidental one.
 	Experts int `json:"experts"`
-	// Because names the evidence: the two subjects are changed together, or the
+	// Because names the evidence: the two subjects are worked on together, or the
 	// same people hold both. They are close to independent of one another, and
 	// the first is the stronger of the two, so it is worth saying which is
 	// speaking.
@@ -50,8 +51,9 @@ type TopicRelation struct {
 
 // Evidence a relationship rests on.
 const (
-	// becauseTogether means the two subjects are changed in the same commits.
-	becauseTogether = "changed together"
+	// becauseTogether means one piece of work touched both subjects: one
+	// commit, one ticket, one page, or one pull request.
+	becauseTogether = "worked on together"
 	// becauseExperts means the same people hold both.
 	becauseExperts = "shared experts"
 )
@@ -157,9 +159,29 @@ func changedTogether(ix *index.Index, topic string, holders map[string]map[model
 		if out[i].Together != out[j].Together {
 			return out[i].Together > out[j].Together
 		}
+		// The most specific name first, so the collapse below keeps it.
+		if len(out[i].Topic) != len(out[j].Topic) {
+			return len(out[i].Topic) > len(out[j].Topic)
+		}
 		return out[i].Topic < out[j].Topic
 	})
-	return out
+	// One neighbour whose name reads as several words arrives once per word as
+	// well as whole, and listing image-uploads, image, and uploads says the same
+	// thing three times.
+	kept := out[:0]
+	for _, rel := range out {
+		restated := false
+		for _, k := range kept {
+			if util.SameFamily(k.Topic, rel.Topic) {
+				restated = true
+				break
+			}
+		}
+		if !restated {
+			kept = append(kept, rel)
+		}
+	}
+	return kept
 }
 
 // mergeCut is the share of a fragment topic's experts who must also hold the

@@ -187,3 +187,25 @@ func Distinct[T any, K comparable](items []T, key func(T) K) []T {
 	}
 	return out
 }
+
+// SameFamily reports whether two subjects are one name seen twice, such as
+// zwave and zwave_js, which the path tokenizer produces from a single
+// directory. Those agree by construction and say nothing.
+func SameFamily(a, b string) bool {
+	if strings.Contains(a, b) || strings.Contains(b, a) {
+		return true
+	}
+	aw := strings.FieldsFunc(a, func(r rune) bool { return r == '_' || r == '-' })
+	for _, w := range aw {
+		if w == b {
+			return true
+		}
+	}
+	bw := strings.FieldsFunc(b, func(r rune) bool { return r == '_' || r == '-' })
+	for _, w := range bw {
+		if w == a {
+			return true
+		}
+	}
+	return false
+}

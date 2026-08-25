@@ -5,6 +5,7 @@ import (
 
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // Span is a connection between two subjects that only one person has ever made.
@@ -78,13 +79,55 @@ func SoleSpans(ix *index.Index, limit int) []Span {
 		if out[i].Together != out[j].Together {
 			return out[i].Together > out[j].Together
 		}
+		// A more specific pairing comes first, so collapsing below keeps the
+		// one that names the subjects most exactly.
+		ni, nj := len(out[i].Topic)+len(out[i].With), len(out[j].Topic)+len(out[j].With)
+		if ni != nj {
+			return ni > nj
+		}
 		if out[i].Topic != out[j].Topic {
 			return out[i].Topic < out[j].Topic
 		}
 		return out[i].With < out[j].With
 	})
+	out = collapseSpans(out)
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
 	}
 	return out
+}
+
+// collapseSpans drops a finding that restates one already reported.
+//
+// A subject name that reads as several words registers as those words as well
+// as the whole, so one connection between two areas arrives once per fragment:
+// api with image-uploads, api with image, and api with uploads are a single
+// thing said three times. Keeping only the most specific of a family says it
+// once, which is the difference between a report somebody reads and a list they
+// skim past.
+func collapseSpans(spans []Span) []Span {
+	out := make([]Span, 0, len(spans))
+	for _, s := range spans {
+		restated := false
+		for _, kept := range out {
+			if sameSpan(kept, s) {
+				restated = true
+				break
+			}
+		}
+		if !restated {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// sameSpan reports whether two findings name the same pair of areas. The pair
+// is unordered, and either side may arrive as a fragment of its own name, so
+// both orientations have to be tried.
+func sameSpan(a, b Span) bool {
+	if util.SameFamily(a.Topic, b.Topic) && util.SameFamily(a.With, b.With) {
+		return true
+	}
+	return util.SameFamily(a.Topic, b.With) && util.SameFamily(a.With, b.Topic)
 }

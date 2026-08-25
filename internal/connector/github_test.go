@@ -259,3 +259,74 @@ func TestGitHubFetchesReposConcurrently(t *testing.T) {
 		t.Errorf("logged %d indexed lines, want %d", n, len(repos))
 	}
 }
+
+// TestGitHubFindsSubjectsWorkedTogether verifies that pull requests labeled with
+// two subjects at once tie those subjects to each other, and name the person who
+// worked across them. Labels are the only thing paired: a title is prose.
+func TestGitHubFindsSubjectsWorkedTogether(t *testing.T) {
+	t.Parallel()
+	var pulls []string
+	// Enough separate pull requests for the pairing to clear the floor below
+	// which it would be read as coincidence.
+	for i := range 6 {
+		pulls = append(pulls, fmt.Sprintf(
+			`{"title":"reconcile ledger %d","user":{"login":"jane"},`+
+				`"labels":[{"name":"billing"},{"name":"ledger"}],`+
+				`"updated_at":"2026-07-0%dT10:00:00Z"}`, i, i+1))
+	}
+	// Other work so neither subject is most of what the repository does, which
+	// would mark it as scaffolding rather than a subject.
+	for i := range 8 {
+		pulls = append(pulls, fmt.Sprintf(
+			`{"title":"unrelated %d","user":{"login":"bob"},`+
+				`"labels":[{"name":"search"},{"name":"indexing"}],`+
+				`"updated_at":"2026-06-0%dT10:00:00Z"}`, i, i%9+1))
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/o/r", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"name":"r","full_name":"o/r","topics":[]}`)
+	})
+	mux.HandleFunc("/repos/o/r/contributors", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `[]`)
+	})
+	mux.HandleFunc("/repos/o/r/pulls", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, "["+strings.Join(pulls, ",")+"]")
+	})
+	mux.HandleFunc("/repos/o/r/issues", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `[]`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	client := github.New("ghp-test", github.WithBaseURL(srv.URL))
+	recs, err := NewGitHubWithClient(client, GitHubOptions{Repos: []string{"o/r"}}).Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+
+	var link TopicLink
+	found := false
+	for _, r := range recs {
+		if r.Kind != KindTopic || r.Name != "billing" {
+			continue
+		}
+		if r.Source != "github" {
+			t.Errorf("source = %q, want github", r.Source)
+		}
+		for _, l := range r.Links {
+			if l.To == "ledger" {
+				link, found = l, true
+			}
+			if l.To == "search" {
+				t.Error("billing was tied to search, which no pull request named alongside it")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no pull request tied billing to ledger, though six named both")
+	}
+	if link.Witnesses != 1 || link.Sole != "jane" {
+		t.Errorf("billing to ledger: %d people, sole %q; want the one who did that work",
+			link.Witnesses, link.Sole)
+	}
+}

@@ -103,6 +103,7 @@ func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 	fmt.Fprintf(j.opts.Log, "jira: %d issues for %q\n", len(issues), query)
 
 	counts := make(map[string]map[string]int)
+	ties := newTogether()
 	users := make(map[string]jira.User)
 	latest := make(map[string]time.Time)
 	// Tokens any issue stated as a label or component. Everything else mined from
@@ -142,11 +143,22 @@ func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 		updated := jiraTime(is.Fields.Updated)
 		bump(is.Fields.Assignee, tokens, updated)
 		bump(is.Fields.Reporter, tokens, updated)
+		stated := make([]string, 0, 4)
 		for _, tok := range issueCuratedTopics(is) {
 			if tok = strings.ToLower(strings.TrimSpace(tok)); tok != "" {
 				curated[tok] = true
+				stated = append(stated, tok)
 			}
 		}
+		// What one issue states is worked on together, and whoever it fell to
+		// is who worked across it. Only the stated subjects count: the words of
+		// a summary are prose, and pairing those would tie a subject to every
+		// turn of phrase somebody used near it.
+		who := jiraUserKey(userOrEmpty(is.Fields.Assignee))
+		if who == "" {
+			who = jiraUserKey(userOrEmpty(is.Fields.Reporter))
+		}
+		ties.note(stated, who)
 	}
 	records := make([]Record, 0, len(counts))
 	for key, c := range counts {
@@ -155,6 +167,7 @@ func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 		rec.Time = latest[key]
 		records = append(records, rec)
 	}
+	records = append(records, ties.records("jira")...)
 	return records, nil
 }
 
@@ -222,6 +235,14 @@ func (j *Jira) jql(loc *time.Location) string {
 // has to cover clock drift, never a zone offset.
 func jiraJQLTime(t time.Time) string {
 	return t.Add(-2 * time.Minute).Format("2006/01/02 15:04")
+}
+
+// userOrEmpty dereferences a user that a source may have left unset.
+func userOrEmpty(u *jira.User) jira.User {
+	if u == nil {
+		return jira.User{}
+	}
+	return *u
 }
 
 // issueCuratedTopics returns the topics an issue states outright: its labels and

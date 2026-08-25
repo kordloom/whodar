@@ -19,6 +19,48 @@ func topicSlug(s int) string { return strings.ReplaceAll(subjects[s].Topic, " ",
 // topicWord is the leading word of a subject, used as a label and project key.
 func topicWord(s int) string { return strings.Fields(subjects[s].Topic)[0] }
 
+// crossing is a pair of subjects that some of the company's work spans, and
+// the person who does that work.
+type crossing struct {
+	// A and B are the two subject indexes.
+	A, B int
+	// Who does the work that touches both, and is therefore the only person in
+	// the company who knows the two belong together.
+	Who person
+}
+
+// crossCuts pairs neighboring subjects and names one person who works across
+// each pair.
+//
+// Real work crosses areas: a change to billing touches the ledger, and an issue
+// about search is filed against indexing too. Without that the generated company
+// is a set of sealed cells, nothing is ever worked on alongside anything else,
+// and the connections between subjects have nothing to be found in. Every pair
+// is worked by a single person on purpose, because a connection only one person
+// has ever made is the finding that no per-subject report can show.
+func (c *company) crossCuts() []crossing {
+	out := make([]crossing, 0, len(c.owners))
+	for s := 0; s+1 < len(c.owners); s += 2 {
+		out = append(out, crossing{A: s, B: s + 1, Who: c.owners[s].who})
+	}
+	return out
+}
+
+// baseItems is how much tracked work each subject carries in the sources that
+// cost nothing to generate, and basePages how many pages describe it. Both sit
+// well above crossingItems so a subject's own owner always does the most of it
+// and stays the one right answer, which is the whole basis of the gauntlet.
+const (
+	baseItems = 10
+	basePages = 3
+)
+
+// crossingItems is how many separate pieces of work span each pair. It has to
+// clear the floor below which a pairing is treated as coincidence, and stay well
+// under what a subject's own owner does in it, so working across a boundary
+// never makes somebody look like the owner of the far side.
+const crossingItems = 3
+
 // experts returns everyone made fluent in subject s, owner first, so a source can
 // spread its activity across the same people the Slack history made expert.
 func (c *company) experts(s int) []person {
@@ -51,6 +93,7 @@ func (c *company) githubServer() (*httptest.Server, []string) {
 	var repos []string
 	logins := map[string]person{}
 
+	crossing := c.crossCuts()
 	for s := range c.owners {
 		exp := c.experts(s)
 		name := topicSlug(s)
@@ -86,6 +129,26 @@ func (c *company) githubServer() (*httptest.Server, []string) {
 				})
 			}
 		}
+		// Pull requests opened against two areas at once, by the one person who
+		// works across the boundary.
+		for _, x := range crossing {
+			if x.A != s || x.Who.github == "" {
+				continue
+			}
+			for k := range crossingItems {
+				num := s*10 + 900 + k
+				pulls = append(pulls, map[string]any{
+					"number":   num,
+					"html_url": fmt.Sprintf("https://github.com/%s/pull/%d", full, num),
+					"title":    fmt.Sprintf("reconcile %s %d", topicSlug(x.A), k+1),
+					"user":     map[string]any{"login": x.Who.github},
+					"labels": []map[string]any{
+						{"name": topicSlug(x.A)}, {"name": topicSlug(x.B)},
+					},
+					"updated_at": isoDaysAgo(4 + k), "merged_at": isoDaysAgo(4 + k),
+				})
+			}
+		}
 		mux.HandleFunc("/repos/"+full+"/pulls", jsonHandler(pulls))
 		mux.HandleFunc("/repos/"+full+"/issues", jsonHandler([]map[string]any{}))
 	}
@@ -113,10 +176,15 @@ func (c *company) jiraServer() *httptest.Server {
 		if len(proj) > 4 {
 			proj = proj[:4]
 		}
-		for k := range 3 {
+		for k := range baseItems {
 			// Rotate the work across everyone fluent in the subject, so a topic
-			// with several experts reads as shared rather than concentrated.
-			owner := exp[k%len(exp)]
+			// with several experts reads as shared rather than concentrated, but
+			// keep the owner in half the slots so the person who holds a subject
+			// still plainly does the most of it.
+			owner := exp[0]
+			if k%2 == 1 {
+				owner = exp[(k/2+1)%len(exp)]
+			}
 			issues = append(issues, map[string]any{
 				"key": fmt.Sprintf("%s-%d", proj, s*10+k),
 				"fields": map[string]any{
@@ -128,6 +196,37 @@ func (c *company) jiraServer() *httptest.Server {
 						"accountId": "j-" + owner.id, "displayName": owner.name, "emailAddress": owner.email,
 					},
 					"resolutiondate": jiraDaysAgo(5 + k),
+					"status": map[string]any{
+						"name": "Done", "statusCategory": map[string]any{"key": "done"},
+					},
+				},
+			})
+		}
+	}
+	// Tickets filed against two areas at once, each closed by the one person who
+	// works across the boundary.
+	for _, x := range c.crossCuts() {
+		proj := strings.ToUpper(topicWord(x.A))
+		if len(proj) > 4 {
+			proj = proj[:4]
+		}
+		for k := range crossingItems {
+			issues = append(issues, map[string]any{
+				"key": fmt.Sprintf("%s-%d", proj, x.A*10+90+k),
+				"fields": map[string]any{
+					// Only one subject is named in prose. Two names side by
+					// side read as a compound subject of their own, and the
+					// demo filled up with subjects nobody works on. The labels
+					// are what say the ticket spans both.
+					"summary": fmt.Sprintf("%s mismatch %d", topicSlug(x.A), k+1),
+					"labels":  []string{topicSlug(x.A), topicSlug(x.B)},
+					"project": map[string]any{"key": proj, "name": topicSlug(x.A)},
+					"updated": jiraDaysAgo(6 + k),
+					"assignee": map[string]any{
+						"accountId": "j-" + x.Who.id, "displayName": x.Who.name,
+						"emailAddress": x.Who.email,
+					},
+					"resolutiondate": jiraDaysAgo(6 + k),
 					"status": map[string]any{
 						"name": "Done", "statusCategory": map[string]any{"key": "done"},
 					},
@@ -157,9 +256,27 @@ func (c *company) confluenceServer() *httptest.Server {
 		spaceName[sp] = topicSlug(s)
 		aid := "c-" + owner.id
 		users[aid] = map[string]any{"accountId": aid, "displayName": owner.name, "email": owner.email}
-		pages = append(pages, page{
-			fmt.Sprint(s), topicSlug(s) + " runbook", sp, aid, []string{topicSlug(s)}, 6 + s,
-		})
+		for k := range basePages {
+			pages = append(pages, page{
+				fmt.Sprintf("%d-%d", s, k),
+				fmt.Sprintf("%s runbook %d", topicSlug(s), k+1),
+				sp, aid, []string{topicSlug(s)}, 6 + s,
+			})
+		}
+	}
+	// Pages written about two areas at once, by the person who works across them.
+	for _, x := range c.crossCuts() {
+		sp, aid := "sp-"+x.Who.id, "c-"+x.Who.id
+		users[aid] = map[string]any{
+			"accountId": aid, "displayName": x.Who.name, "email": x.Who.email,
+		}
+		for k := range crossingItems {
+			pages = append(pages, page{
+				fmt.Sprintf("x%d-%d", x.A, k),
+				fmt.Sprintf("%s handoff %d", topicSlug(x.A), k+1),
+				sp, aid, []string{topicSlug(x.A), topicSlug(x.B)}, 7 + x.A,
+			})
+		}
 	}
 
 	mux := http.NewServeMux()
@@ -253,20 +370,30 @@ func (c *company) buildGitRepo(dir string) error {
 	if err != nil {
 		return fmt.Errorf("simorg: git worktree: %w", err)
 	}
-	commit := func(rel, content, name, email string, when time.Time) error {
-		full := filepath.Join(dir, rel)
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(full, []byte(content), 0o600); err != nil {
-			return err
-		}
-		if _, err := wt.Add(rel); err != nil {
-			return err
+	// A commit may touch more than one path, which is the whole of what makes
+	// two subjects visibly belong together.
+	commitAll := func(content, name, email string, when time.Time, rels ...string) error {
+		for _, rel := range rels {
+			full := filepath.Join(dir, rel)
+			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(full, []byte(content), 0o600); err != nil {
+				return err
+			}
+			if _, err := wt.Add(rel); err != nil {
+				return err
+			}
 		}
 		sig := &object.Signature{Name: name, Email: email, When: when}
-		_, err := wt.Commit(strings.TrimSuffix(rel, "/main.tf"), &git.CommitOptions{Author: sig, Committer: sig})
+		// Only the first path is named. A message listing both would put two
+		// subject names side by side, and adjacent words register as a compound
+		// subject of their own.
+		_, err := wt.Commit(rels[0], &git.CommitOptions{Author: sig, Committer: sig})
 		return err
+	}
+	commit := func(rel, content, name, email string, when time.Time) error {
+		return commitAll(content, name, email, when, rel)
 	}
 	now := time.Now()
 	for s := range c.owners {
@@ -284,6 +411,15 @@ func (c *company) buildGitRepo(dir string) error {
 			owner := exp[k%len(exp)]
 			if err := commit(rel, fmt.Sprintf("v%d", k), owner.name, owner.email,
 				now.AddDate(0, 0, -(s*3+k+1))); err != nil {
+				return fmt.Errorf("simorg: git commit: %w", err)
+			}
+		}
+	}
+	for _, x := range c.crossCuts() {
+		a, b := topicSlug(x.A)+"/main", topicSlug(x.B)+"/main"
+		for k := range crossingItems {
+			if err := commitAll(fmt.Sprintf("across%d", k), x.Who.name, x.Who.email,
+				now.AddDate(0, 0, -(x.A*3+k+2)), a, b); err != nil {
 				return fmt.Errorf("simorg: git commit: %w", err)
 			}
 		}

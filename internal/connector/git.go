@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -120,17 +119,16 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 	// Tokens taken from a file path, which is where work demonstrably landed.
 	// Commit subject words stay weak.
 	curated := make(map[string]bool)
-	// Which subjects appeared, and which appeared together. See topicRecords.
+	// How often each author has worked on each subject lately.
 	recent := make(map[string]map[string]int)
-	seen := make(map[string]int)
-	together := make(map[subjectPair]int)
-	spanned := make(map[subjectPair]map[string]bool)
-	commits := 0
+	// Which subjects appeared, which appeared together, and who worked across
+	// each pairing.
+	ties := newTogether()
 	for _, path := range g.opts.Paths {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		read, skipped, err := g.readRepo(ctx, path, counts, nameCounts, latest, curated, recent, seen, together, spanned)
+		read, skipped, err := g.readRepo(ctx, path, counts, nameCounts, latest, curated, recent, ties)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return nil, err
@@ -138,7 +136,6 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 			fmt.Fprintf(g.opts.Log, "git: skipping %s: %v\n", path, err)
 			continue
 		}
-		commits += read
 		fmt.Fprintf(g.opts.Log, "git: %s: %d commits\n", path, read)
 		if isShallow(path) {
 			fmt.Fprintf(g.opts.Log,
@@ -183,7 +180,7 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 		}
 		records = append(records, rec)
 	}
-	records = append(records, topicRecords(seen, together, spanned, commits)...)
+	records = append(records, ties.records("git")...)
 	return records, nil
 }
 
@@ -297,57 +294,6 @@ const gitProgressEvery = 3 * time.Second
 // does not read as leaving.
 const recentWindow = 180 * 24 * time.Hour
 
-// Bounds on what counts as two subjects being worked on together.
-const (
-	// maxTogether is the most subjects a commit may touch and still say
-	// anything about them. A rename swept across two hundred areas does not
-	// make those areas one body of knowledge. It counts the scaffolding a
-	// change unavoidably touches as well, since which subjects are scaffolding
-	// is not known until every commit has been read, so it sits above the
-	// number of real subjects worth pairing.
-	maxTogether = 18
-	// minTogether is how many separate commits must have paired two subjects
-	// before the pairing is more than a coincidence.
-	minTogether = 3
-	// minSubjectCommits is how often a subject must appear at all before its
-	// ties mean anything.
-	minSubjectCommits = 5
-	// ubiquitousShare is the share of commits above which a subject is the
-	// scaffolding every change touches rather than a subject of its own, and so
-	// is tied to everything by construction.
-	ubiquitousShare = 0.35
-	// ubiquitousFloor is the history below which that share means nothing. In a
-	// young repository a real subject is genuinely touched by half the commits,
-	// and calling it scaffolding would leave nothing tied to anything.
-	ubiquitousFloor = 200
-	// maxLinks bounds how many ties one subject keeps, strongest first.
-	maxLinks = 12
-	// minLinkWeight only guards against arithmetic noise. It is deliberately
-	// almost zero: how much of the time two subjects move as one thing is a
-	// tiny number whenever both are also worked on alone, which is normal, and
-	// a floor set by eye cuts the real ties along with the noise. What makes a
-	// tie trustworthy is minTogether, several separate commits, and what bounds
-	// the result is maxLinks keeping only the strongest.
-	minLinkWeight = 0.001
-)
-
-// subjectPair is two subject names in a fixed order, so a pairing is counted
-// once however the two were encountered.
-type subjectPair struct {
-	// A is the alphabetically first subject.
-	A string
-	// B is the other one.
-	B string
-}
-
-// pairOf orders two subjects into a pair.
-func pairOf(a, b string) subjectPair {
-	if a > b {
-		a, b = b, a
-	}
-	return subjectPair{A: a, B: b}
-}
-
 // noteTogether records which of a commit's subjects were worked on together.
 // Only subjects named by DIFFERENT paths count as having met: one path yields
 // both zwave_js and zwave, and a name agreeing with itself is not evidence.
@@ -361,10 +307,7 @@ func noteTogether(t *tally, byPath, deepest [][]string, who string) {
 	if len(distinct) == 0 {
 		return
 	}
-	for s := range distinct {
-		t.seen[s]++
-	}
-	if len(distinct) < 2 || len(distinct) > maxTogether {
+	if !t.ties.begin(distinct) {
 		return
 	}
 	// A subject every changed path names is this commit's own scaffolding: the
@@ -401,118 +344,18 @@ func noteTogether(t *tally, byPath, deepest [][]string, who string) {
 		for j := i + 1; j < len(byPath); j++ {
 			for _, a := range byPath[i] {
 				for _, b := range byPath[j] {
-					if a == b || common[a] || common[b] || sameFamily(a, b) {
+					if a == b || common[a] || common[b] || util.SameFamily(a, b) {
 						continue
 					}
 					p := pairOf(a, b)
 					if !counted[p] {
 						counted[p] = true
-						t.together[p]++
-						by := t.spanned[p]
-						if by == nil {
-							by = make(map[string]bool)
-							t.spanned[p] = by
-						}
-						by[who] = true
+						t.ties.pair(a, b, who)
 					}
 				}
 			}
 		}
 	}
-}
-
-// sameFamily reports whether two subjects are one name seen twice, such as
-// zwave and zwave_js, which the path tokenizer produces from a single
-// directory. Those agree by construction and say nothing.
-func sameFamily(a, b string) bool {
-	if strings.Contains(a, b) || strings.Contains(b, a) {
-		return true
-	}
-	aw := strings.FieldsFunc(a, func(r rune) bool { return r == '_' || r == '-' })
-	for _, w := range aw {
-		if w == b {
-			return true
-		}
-	}
-	bw := strings.FieldsFunc(b, func(r rune) bool { return r == '_' || r == '-' })
-	for _, w := range bw {
-		if w == a {
-			return true
-		}
-	}
-	return false
-}
-
-// topicRecords turns the pairings a walk observed into one record per subject,
-// naming what it is worked on alongside. This is the one thing about a subject
-// that does not come through the people who hold it, which is what makes it
-// worth carrying: whodar can otherwise only call two subjects related when the
-// same people work on both, and cannot then use that as evidence about people.
-func topicRecords(
-	seen map[string]int,
-	together map[subjectPair]int,
-	spanned map[subjectPair]map[string]bool,
-	commits int,
-) []Record {
-	if commits == 0 {
-		return nil
-	}
-	ceiling := float64(commits) * ubiquitousShare
-	if commits < ubiquitousFloor {
-		ceiling = float64(commits)
-	}
-	links := make(map[string][]TopicLink)
-	for p, n := range together {
-		if n < minTogether {
-			continue
-		}
-		na, nb := seen[p.A], seen[p.B]
-		if na < minSubjectCommits || nb < minSubjectCommits {
-			continue
-		}
-		if float64(na) > ceiling || float64(nb) > ceiling {
-			continue
-		}
-		// How much of the time the two move as one thing.
-		weight := float64(n) / float64(na+nb-n)
-		if weight < minLinkWeight {
-			continue
-		}
-		// Who has ever worked across the two. One person means the connection
-		// itself has a bus factor of one, whatever the two subjects separately
-		// look like.
-		by := spanned[p]
-		sole := ""
-		if len(by) == 1 {
-			for who := range by {
-				sole = who
-			}
-		}
-		links[p.A] = append(links[p.A],
-			TopicLink{To: p.B, Weight: weight, Witnesses: len(by), Sole: sole})
-		links[p.B] = append(links[p.B],
-			TopicLink{To: p.A, Weight: weight, Witnesses: len(by), Sole: sole})
-	}
-	out := make([]Record, 0, len(links))
-	names := make([]string, 0, len(links))
-	for name := range links {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		ties := links[name]
-		sort.Slice(ties, func(i, j int) bool {
-			if ties[i].Weight != ties[j].Weight {
-				return ties[i].Weight > ties[j].Weight
-			}
-			return ties[i].To < ties[j].To
-		})
-		if len(ties) > maxLinks {
-			ties = ties[:maxLinks]
-		}
-		out = append(out, Record{Kind: KindTopic, Source: "git", Name: name, Links: ties})
-	}
-	return out
 }
 
 // pickNames settles on the name each author is known by: the one they have
@@ -586,15 +429,13 @@ func (g *GitHistory) readRepo(
 	latest map[string]time.Time,
 	curated map[string]bool,
 	recent map[string]map[string]int,
-	seen map[string]int,
-	together map[subjectPair]int,
-	spanned map[subjectPair]map[string]bool,
+	ties *togetherIndex,
 ) (read, skipped int, err error) {
 	jobs, err := g.scanCommits(ctx, path)
 	if err != nil {
 		return 0, 0, err
 	}
-	return g.diffCommits(ctx, path, jobs, counts, names, latest, curated, recent, seen, together, spanned)
+	return g.diffCommits(ctx, path, jobs, counts, names, latest, curated, recent, ties)
 }
 
 // commitJob is one commit worth walking: everything cheap about it, read once
@@ -690,13 +531,8 @@ type tally struct {
 	// recent counts, per author, the subjects they have worked on lately. See
 	// recentWindowDays.
 	recent map[string]map[string]int
-	// seen counts the commits each subject appeared in, and together counts the
-	// commits in which each pair of subjects appeared at once.
-	seen     map[string]int
-	together map[subjectPair]int
-	// spanned records who has done work across each pair, which is what tells a
-	// connection everybody makes from one only ever made by a single person.
-	spanned map[subjectPair]map[string]bool
+	// ties is this worker's share of what was worked on together.
+	ties *togetherIndex
 	// read is how many commits this worker took in.
 	read int
 	// skipped is how many it could not diff.
@@ -717,9 +553,7 @@ func (g *GitHistory) diffCommits(
 	latest map[string]time.Time,
 	curated map[string]bool,
 	recent map[string]map[string]int,
-	seen map[string]int,
-	together map[subjectPair]int,
-	spanned map[subjectPair]map[string]bool,
+	ties *togetherIndex,
 ) (read, skipped int, err error) {
 	if len(jobs) == 0 {
 		return 0, 0, nil
@@ -771,22 +605,7 @@ func (g *GitHistory) diffCommits(
 				into[sub] += n
 			}
 		}
-		for sub, n := range t.seen {
-			seen[sub] += n
-		}
-		for p, n := range t.together {
-			together[p] += n
-		}
-		for p, by := range t.spanned {
-			into := spanned[p]
-			if into == nil {
-				into = make(map[string]bool)
-				spanned[p] = into
-			}
-			for w := range by {
-				into[w] = true
-			}
-		}
+		ties.absorb(t.ties)
 		for email, topics := range t.counts {
 			m := counts[email]
 			if m == nil {
@@ -827,14 +646,12 @@ func (g *GitHistory) diffShare(
 	done *atomic.Int64,
 ) tally {
 	t := tally{
-		counts:   make(map[string]map[string]int),
-		names:    make(map[string]map[string]int),
-		latest:   make(map[string]time.Time),
-		curated:  make(map[string]bool),
-		recent:   make(map[string]map[string]int),
-		seen:     make(map[string]int),
-		together: make(map[subjectPair]int),
-		spanned:  make(map[subjectPair]map[string]bool),
+		counts:  make(map[string]map[string]int),
+		names:   make(map[string]map[string]int),
+		latest:  make(map[string]time.Time),
+		curated: make(map[string]bool),
+		recent:  make(map[string]map[string]int),
+		ties:    newTogether(),
 	}
 	repo, closeRepo, err := openRepo(path)
 	if err != nil {

@@ -170,3 +170,58 @@ func TestJiraJQL(t *testing.T) {
 		})
 	}
 }
+
+// TestJiraFindsSubjectsWorkedTogether verifies that issues naming two subjects
+// at once tie them to each other and name whoever resolved them.
+func TestJiraFindsSubjectsWorkedTogether(t *testing.T) {
+	t.Parallel()
+	var issues []string
+	for i := range 6 {
+		issues = append(issues, fmt.Sprintf(
+			`{"key":"BIL-%d","fields":{"summary":"reconcile %d",`+
+				`"assignee":{"accountId":"a1","displayName":"Jane","emailAddress":"jane@x.com"},`+
+				`"components":[{"name":"ledger"}],"labels":["billing"],`+
+				`"project":{"key":"BIL","name":"Billing"}}}`, i, i))
+	}
+	for i := range 8 {
+		issues = append(issues, fmt.Sprintf(
+			`{"key":"SRCH-%d","fields":{"summary":"unrelated %d",`+
+				`"assignee":{"accountId":"b1","displayName":"Bob","emailAddress":"bob@x.com"},`+
+				`"components":[{"name":"indexing"}],"labels":["search"],`+
+				`"project":{"key":"SRCH","name":"Search"}}}`, i, i))
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"total":14,"startAt":0,"issues":[`+strings.Join(issues, ",")+`]}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	client := jira.New(srv.URL, "me@x.com", "token")
+	recs, err := NewJiraWithClient(client, JiraOptions{Projects: []string{"BIL"}}).Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+
+	found := false
+	for _, r := range recs {
+		if r.Kind != KindTopic || r.Name != "billing" {
+			continue
+		}
+		if r.Source != "jira" {
+			t.Errorf("source = %q, want jira", r.Source)
+		}
+		for _, l := range r.Links {
+			if l.To == "ledger" {
+				found = true
+				if l.Witnesses != 1 {
+					t.Errorf("billing to ledger: %d people, want the one who resolved them", l.Witnesses)
+				}
+			}
+			if l.To == "search" {
+				t.Error("billing was tied to search, which no issue named alongside it")
+			}
+		}
+	}
+	if !found {
+		t.Error("no issue tied billing to ledger, though six named both")
+	}
+}

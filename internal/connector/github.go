@@ -156,6 +156,9 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 		codeOwnerRecords []Record
 		wg               sync.WaitGroup
 	)
+	// Each repository is read by its own worker, so each fills its own tally of
+	// what is worked on together and the parent folds them in.
+	ties := newTogether()
 	sem := make(chan struct{}, repoWorkers)
 	for _, full := range repos {
 		owner, name, ok := splitRepo(full)
@@ -174,10 +177,12 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 		go func(full, owner, name string) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			recs, eps, err := g.indexRepo(ctx, full, owner, name, bump, markCurated)
+			local := newTogether()
+			recs, eps, err := g.indexRepo(ctx, full, owner, name, bump, markCurated, local)
 			mu.Lock()
 			codeOwnerRecords = append(codeOwnerRecords, recs...)
 			g.episodes = append(g.episodes, eps...)
+			ties.absorb(local)
 			mu.Unlock()
 			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				fmt.Fprintf(g.opts.Log, "github: skipping %s: %v\n", full, err)
@@ -199,6 +204,7 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 		records = append(records, rec)
 	}
 	records = append(records, codeOwnerRecords...)
+	records = append(records, ties.records("github")...)
 	return records, nil
 }
 
@@ -209,7 +215,7 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 // discarding the repos already indexed.
 func (g *GitHub) indexRepo(
 	ctx context.Context, full, owner, name string, bump func(string, []string, time.Time),
-	markCurated func([]string),
+	markCurated func([]string), ties *togetherIndex,
 ) ([]Record, []episode.Episode, error) {
 	repo, err := g.client.Repo(ctx, owner, name)
 	if err != nil {
@@ -245,6 +251,9 @@ func (g *GitHub) indexRepo(
 			break
 		}
 		markCurated(pr.LabelNames())
+		// Only the labels are paired. A title is prose, and pairing its words
+		// would tie a subject to every turn of phrase used near it.
+		ties.note(pr.LabelNames(), pr.Author())
 		tokens := append(pr.LabelNames(), phraseTokens(pr.Title)...)
 		bump(pr.Author(), tokens, pr.UpdatedAt)
 		for _, u := range pr.Reviewers() {
@@ -284,6 +293,7 @@ func (g *GitHub) indexRepo(
 		}
 		issueCount++
 		markCurated(is.LabelNames())
+		ties.note(is.LabelNames(), is.Author())
 		tokens := append(is.LabelNames(), phraseTokens(is.Title)...)
 		bump(is.Author(), tokens, is.UpdatedAt)
 		for _, u := range is.AssigneeLogins() {

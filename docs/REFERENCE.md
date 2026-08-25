@@ -253,19 +253,27 @@ know a subject ranked by expertise.
 Report the subjects related to TOPIC, on two kinds of evidence, and say which
 is speaking for each.
 
-The stronger is what changes together. Two areas altered in the same commits
-belong to one body of knowledge whoever altered them, which makes this the only
-thing whodar knows about a subject that does not run through the people holding
-it. A commit sweeping across many areas is ignored, since a rename does not make
+The stronger is what is worked on together. Two areas altered in the same
+commit, fixed under one ticket, described on one page, or carried by a single
+pull request belong to one body of knowledge whoever did the work, which makes
+this the only thing whodar knows about a subject that does not run through the
+people holding it. Every source it reads contributes the same way, so this
+works for a company whose work lives in tickets and pages rather than in one
+large repository.
+
+Only what a piece of work states counts: labels, components, and the paths a
+commit touched. Titles and prose do not, since pairing the words of a summary
+would tie a subject to every turn of phrase somebody used near it. Work that
+sweeps across many areas at once is ignored, because a rename does not make
 everything it touched one subject, and so are the directory all the changed
 paths sit under and the language they are written in, which every change touches
 by construction.
 
 The weaker is shared experts: a subject held by the same people is likely the
 same body of knowledge, and one held by fewer of them is a specialty within it.
-It fills in where nothing has been seen changing together, which is often, since
-most commits touch a single area. Read it knowing that any subject one person
-holds overlaps perfectly with everything else they hold.
+It fills in where nothing has been seen worked on together, which is often,
+since most work touches a single area. Read it knowing that any subject one
+person holds overlaps perfectly with everything else they hold.
 
 Neither needs a taxonomy anyone had to write, and neither needs a model.
 
@@ -292,7 +300,7 @@ counts experts per subject can show this. What rests on one person there is not
 either subject but the knowledge that the two belong together, and whoever picks
 one up after they leave has no reason to look at the other.
 
-It also reports joined work: connected bodies of subjects that get changed
+It also reports joined work: connected bodies of subjects that get worked on
 together where the same person leads every one. That is a heavier finding than a
 concentrated subject on its own, and a per-subject list cannot show it. Ten
 unrelated subjects held by one person are ten small risks; ten that move

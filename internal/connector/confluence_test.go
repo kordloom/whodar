@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -88,5 +89,83 @@ func TestConfluenceFetch(t *testing.T) {
 	}
 	if want := time.Date(2026, 6, 25, 14, 0, 0, 0, time.UTC); !byKey["jane@x.com"].Time.Equal(want) {
 		t.Errorf("jane time = %v, want the page edit time %v", byKey["jane@x.com"].Time, want)
+	}
+}
+
+// TestConfluenceFindsSubjectsWorkedTogether verifies that pages labeled with two
+// subjects at once tie them to each other and name whoever last wrote them.
+func TestConfluenceFindsSubjectsWorkedTogether(t *testing.T) {
+	t.Parallel()
+	var pages []string
+	labels := make(map[string]string)
+	for i := range 6 {
+		id := fmt.Sprintf("b%d", i)
+		pages = append(pages, fmt.Sprintf(
+			`{"id":"%s","title":"reconcile %d","spaceId":"100","authorId":"a1",`+
+				`"createdAt":"2026-06-24T09:00:00.000Z",`+
+				`"version":{"authorId":"a1","createdAt":"2026-06-25T14:00:00.000Z"}}`, id, i))
+		labels[id] = `{"results":[{"name":"billing"},{"name":"ledger"}]}`
+	}
+	for i := range 8 {
+		id := fmt.Sprintf("s%d", i)
+		pages = append(pages, fmt.Sprintf(
+			`{"id":"%s","title":"unrelated %d","spaceId":"100","authorId":"b1",`+
+				`"createdAt":"2026-06-10T09:00:00.000Z",`+
+				`"version":{"authorId":"b1","createdAt":"2026-06-10T09:00:00.000Z"}}`, id, i))
+		labels[id] = `{"results":[{"name":"search"},{"name":"indexing"}]}`
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/wiki/api/v2/pages", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"results":[`+strings.Join(pages, ",")+`],"_links":{}}`)
+	})
+	mux.HandleFunc("/wiki/api/v2/spaces/", func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"id":"100","key":"ENG","name":"Engineering"}`)
+	})
+	mux.HandleFunc("/wiki/api/v2/pages/", func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/wiki/api/v2/pages/"), "/labels")
+		if body, ok := labels[id]; ok {
+			io.WriteString(w, body)
+			return
+		}
+		io.WriteString(w, `{"results":[]}`)
+	})
+	mux.HandleFunc("/wiki/rest/api/user", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("accountId") == "a1" {
+			io.WriteString(w, `{"accountId":"a1","displayName":"Jane","email":"jane@x.com"}`)
+			return
+		}
+		io.WriteString(w, `{"accountId":"b1","displayName":"Bob"}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	client := confluence.New(srv.URL, "me@x.com", "token")
+	recs, err := NewConfluenceWithClient(client, ConfluenceOptions{}).Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+
+	found := false
+	for _, r := range recs {
+		if r.Kind != KindTopic || r.Name != "billing" {
+			continue
+		}
+		if r.Source != "confluence" {
+			t.Errorf("source = %q, want confluence", r.Source)
+		}
+		for _, l := range r.Links {
+			if l.To == "ledger" {
+				found = true
+				if l.Witnesses != 1 {
+					t.Errorf("billing to ledger: %d people, want the one who wrote them", l.Witnesses)
+				}
+			}
+			if l.To == "search" {
+				t.Error("billing was tied to search, which no page named alongside it")
+			}
+		}
+	}
+	if !found {
+		t.Error("no page tied billing to ledger, though six carried both labels")
 	}
 }

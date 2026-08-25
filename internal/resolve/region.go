@@ -9,7 +9,7 @@ import (
 )
 
 // Region is a connected body of work resting on one person: subjects tied to
-// each other because they are changed together, where the same person leads
+// each other because they are worked on together, where the same person leads
 // every one of them.
 //
 // It is a different finding from a subject with a bus factor of one, and a

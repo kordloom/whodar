@@ -261,7 +261,7 @@ footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 
 {{ if .Regions }}
 <section id="joined">
 	<h2>Joined work <span class="count">({{ len .Regions }})</span></h2>
-	<p class="desc">Subjects that get changed together, where the same person leads every one of them. This is a heavier finding than a concentrated subject on its own: whoever takes the work over has to learn the whole of it at once, and a list of subjects one at a time never shows that.</p>
+	<p class="desc">Subjects that get worked on together, where the same person leads every one of them. This is a heavier finding than a concentrated subject on its own: whoever takes the work over has to learn the whole of it at once, and a list of subjects one at a time never shows that.</p>
 	{{ range .Regions }}
 	<details>
 		<summary>{{ .Lead }} <span class="count">&mdash; {{ .Size }} joined subjects</span></summary>

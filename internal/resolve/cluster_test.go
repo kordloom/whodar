@@ -127,7 +127,7 @@ func TestTopicGroups(t *testing.T) {
 }
 
 // TestRelatedLeadsWithWhatChangedTogether checks the stronger evidence goes
-// first and says so. Subjects changed in the same commits are related whoever
+// first and says so. Subjects touched by one piece of work are related whoever
 // changed them; subjects with the same experts may only share one person, and
 // that kind of relatedness cannot be evidence about people without arguing in
 // a circle.
@@ -152,7 +152,7 @@ func TestRelatedLeadsWithWhatChangedTogether(t *testing.T) {
 		t.Errorf("first related = %q, want ledger, which the work ties to billing", got[0].Topic)
 	}
 	if got[0].Because != becauseTogether {
-		t.Errorf("evidence = %q, want it to say the two changed together", got[0].Because)
+		t.Errorf("evidence = %q, want it to say the two were worked on together", got[0].Because)
 	}
 	// The weaker kind still appears, so nothing is lost by preferring the other.
 	var sawExperts bool
