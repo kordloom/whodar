@@ -171,8 +171,10 @@ func diagnose(f doctorFacts) []finding {
 // assigned is not work, or every owner would look busy the moment the file is
 // indexed.
 func ownerLinkage(ix *index.Index) (declared, unlinked int) {
-	for _, p := range ix.Graph.People {
-		if len(p.Owns) == 0 {
+	for id, p := range ix.Graph.People {
+		// A group named as an owner cannot be tied to an address, so it is not
+		// a person whose work has gone missing.
+		if len(p.Owns) == 0 || namesATeam(string(id)) {
 			continue
 		}
 		declared++
@@ -214,7 +216,7 @@ func ownershipFinding(f doctorFacts) (finding, bool) {
 		Name:   "ownership",
 		Level:  levelWarn,
 		Detail: detail + ", so their areas all read as drifted",
-		Fix:    "whodar identity, then map the handles to their addresses in an alias file",
+		Fix:    "whodar identity --unlinked, then map those handles to addresses in an alias file",
 	}, true
 }
 

@@ -77,3 +77,52 @@ func TestFilterIdentityView(t *testing.T) {
 		t.Errorf("filter zzz = %+v, want empty", none)
 	}
 }
+
+// TestUnlinkedOwnersAreAWorklist checks the owners with no recorded work are
+// reported as something to fix, ordered by how much rests on them, and that
+// groups are left out. A group named as an owner can never be tied to an
+// address, so listing it buries the people somebody could reconnect.
+func TestUnlinkedOwnersAreAWorklist(t *testing.T) {
+	t.Parallel()
+	ix := index.New()
+	ix.Build([]connector.Record{
+		// Declared, and nothing else: their work is under an address whodar
+		// has not tied to this handle.
+		{Kind: connector.KindPerson, PersonID: "codeowners:big", Name: "big",
+			Topics: []string{"alpha", "beta", "gamma"}, Source: "codeowners"},
+		{Kind: connector.KindPerson, PersonID: "codeowners:small", Name: "small",
+			Topics: []string{"delta"}, Source: "codeowners"},
+		// A group, which no alias can ever resolve.
+		{Kind: connector.KindPerson, PersonID: "codeowners:acme/platform", Name: "acme/platform",
+			Topics: []string{"epsilon"}, Source: "codeowners"},
+		// Declared and active, so not on the list at all.
+		{Kind: connector.KindPerson, PersonID: "codeowners:busy", Name: "busy",
+			Topics: []string{"zeta"}, Source: "codeowners"},
+		{Kind: connector.KindPerson, PersonID: "codeowners:busy", Name: "busy",
+			Topics: []string{"zeta", "zeta"}, Source: "git"},
+	})
+	ix.Canonicalize()
+
+	view := buildUnlinkedView(ix)
+	var ids []string
+	for _, o := range view.Owners {
+		ids = append(ids, o.ID)
+	}
+	if len(view.Owners) != 2 {
+		t.Fatalf("unlinked = %v, want only the two inactive people", ids)
+	}
+	if view.Owners[0].ID != "codeowners:big" {
+		t.Errorf("first = %q, want the owner of the most areas first", view.Owners[0].ID)
+	}
+	for _, id := range ids {
+		if strings.Contains(id, "/") {
+			t.Errorf("unlinked = %v, want the group left out", ids)
+		}
+		if id == "codeowners:busy" {
+			t.Errorf("unlinked = %v, want the active owner left out", ids)
+		}
+	}
+	if view.Declared != 3 {
+		t.Errorf("declared = %d, want the three people and not the group", view.Declared)
+	}
+}

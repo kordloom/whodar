@@ -676,6 +676,52 @@ func renderRelated(w io.Writer, topic string, rel []resolve.TopicRelation, s sty
 	}
 }
 
+// renderUnlinked prints the declared owners with nothing recorded against them.
+// It is a worklist rather than a finding: a source of record names people by
+// handle and an activity source names them by address, so an owner whose two
+// were never tied together is indistinguishable from one who has left, and
+// every area they own reads as drifted until somebody says which is which.
+func renderUnlinked(w io.Writer, view unlinkedView, s style) {
+	if view.Declared == 0 {
+		fmt.Fprintln(w, s.dim(
+			"No declared ownership indexed. Add a CODEOWNERS source to compare it against the work."))
+		return
+	}
+	if view.Unlinked == 0 {
+		fmt.Fprintf(w, "%s\n", s.dim(fmt.Sprintf(
+			"All %d declared owners have work recorded against them.", view.Declared)))
+		return
+	}
+	fmt.Fprintln(w, s.bold(fmt.Sprintf(
+		"Unlinked owners  %d of %d have no work recorded against them",
+		view.Unlinked, view.Declared)))
+	fmt.Fprintf(w, "  %s\n\n", s.dim(
+		"Each may have left, or may simply commit under an address this handle was never tied to."))
+	width := 0
+	for _, o := range view.Owners {
+		if n := len([]rune(o.ID)); n > width {
+			width = n
+		}
+	}
+	if width > 30 {
+		width = 30
+	}
+	for _, o := range view.Owners {
+		owns := o.Owns
+		const most = 5
+		tail := ""
+		if len(owns) > most {
+			tail = fmt.Sprintf(" and %d more", len(owns)-most)
+			owns = owns[:most]
+		}
+		fmt.Fprintf(w, "  %s  %s%s\n",
+			pad(s.bold(o.ID), o.ID, width),
+			strings.Join(owns, ", "), s.dim(tail))
+	}
+	fmt.Fprintf(w, "\n  %s\n", s.dim(
+		"Tie one to its person by adding \"person@example.com\": [\"the-handle\"] to the alias file, then re-index."))
+}
+
 // renderRegions lists the connected bodies of work that rest on one person.
 // This is a different finding from a concentrated subject and a worse one: ten
 // unrelated subjects held by one person are ten small risks, while ten that are

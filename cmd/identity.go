@@ -41,10 +41,84 @@ type identityJoin struct {
 	Reason string `json:"reason"`
 }
 
+// unlinkedView is the worklist of declared owners with nothing recorded
+// against them: the people a source of record names but whose work whodar
+// cannot find, almost always because their handle was never tied to the address
+// they commit under.
+type unlinkedView struct {
+	// Unlinked is how many declared owners have no recorded work.
+	Unlinked int `json:"unlinked"`
+	// Declared is how many declared owners there are in total.
+	Declared int `json:"declared"`
+	// Owners are those without work, the ones owning most first.
+	Owners []unlinkedOwner `json:"owners"`
+}
+
+// unlinkedOwner is one declared owner with nothing recorded against them.
+type unlinkedOwner struct {
+	// ID is the identifier the source of record knows them by.
+	ID string `json:"id"`
+	// Name is their display name, when a source gave one.
+	Name string `json:"name,omitempty"`
+	// Owns are the areas they are the owner of record for.
+	Owns []string `json:"owns"`
+}
+
+// namesATeam reports whether an owner of record is a group rather than a
+// person, which a source of record writes with a slash in it, as in
+// "@acme/platform". No alias can tie a group to an address, so counting them
+// among the people whose work is missing only inflates the number and buries
+// the owners somebody could actually reconnect.
+func namesATeam(id string) bool {
+	_, handle, ok := strings.Cut(id, ":")
+	if !ok {
+		handle = id
+	}
+	return strings.Contains(handle, "/")
+}
+
+// buildUnlinkedView collects the declared owners with no work recorded against
+// them. Weight a source of record assigned is not work: without that
+// distinction every owner looks busy the moment their ownership file is read.
+func buildUnlinkedView(ix *index.Index) unlinkedView {
+	var view unlinkedView
+	for id, p := range ix.Graph.People {
+		if len(p.Owns) == 0 || namesATeam(string(id)) {
+			continue
+		}
+		view.Declared++
+		worked := false
+		for tid, w := range p.Topics {
+			if w-p.Stated[tid] > 0 {
+				worked = true
+				break
+			}
+		}
+		if worked {
+			continue
+		}
+		owns := make([]string, 0, len(p.Owns))
+		for _, t := range p.Owns {
+			owns = append(owns, string(t))
+		}
+		sort.Strings(owns)
+		view.Owners = append(view.Owners, unlinkedOwner{ID: string(id), Name: p.Name, Owns: owns})
+	}
+	view.Unlinked = len(view.Owners)
+	sort.Slice(view.Owners, func(i, j int) bool {
+		if len(view.Owners[i].Owns) != len(view.Owners[j].Owns) {
+			return len(view.Owners[i].Owns) > len(view.Owners[j].Owns)
+		}
+		return view.Owners[i].ID < view.Owners[j].ID
+	})
+	return view
+}
+
 // newIdentityCmd builds the identity command, an audit of the inferred merges
 // that fold a handle such as github:kim-doe into a person. Joins by shared email
 // or provider id are identity, not inference, and are not listed.
 func newIdentityCmd(opts *options) *cobra.Command {
+	var unlinked bool
 	cmd := &cobra.Command{
 		Use:   "identity [person]",
 		Short: "Show how identities were merged across sources",
@@ -54,14 +128,26 @@ provider id are certain and are not listed. Correct a wrong merge by editing the
 alias file and re-indexing.
 
 Examples:
+Ownership is stated by handle and work is recorded by address, so an owner
+whose two never met looks exactly like one who does nothing. --unlinked lists
+those owners, worst first, which is the worklist for an alias file.
+
+Examples:
   whodar identity
   whodar identity kim
+  whodar identity --unlinked
   whodar identity --json`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ix, err := opts.loadIndex(cmd)
 			if err != nil {
 				return noIndexError(err)
+			}
+			if unlinked {
+				missing := buildUnlinkedView(ix)
+				return opts.render(cmd.OutOrStdout(), missing, func(w io.Writer, s style) {
+					renderUnlinked(w, missing, s)
+				})
 			}
 			view := buildIdentityView(ix)
 			if len(args) == 1 {
@@ -72,6 +158,8 @@ Examples:
 			})
 		},
 	}
+	cmd.Flags().BoolVar(&unlinked, "unlinked", false,
+		"List declared owners with no work recorded against them, the worklist for an alias file.")
 	return cmd
 }
 

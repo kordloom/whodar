@@ -342,6 +342,14 @@ confident the merge is, and the evidence for it. Joins by shared email or
 provider id are certain and are not listed. Correct a wrong merge by editing the
 [alias file](#identity-aliases) and re-indexing.
 
+`--unlinked` reports the opposite problem, and usually the larger one. A source
+of record names owners by handle while an activity source records work by
+address, so an owner whose two were never tied together looks exactly like one
+who does nothing: every area they own reads as drifted, and their expertise is
+missing from every answer. The flag lists those owners, the ones owning most
+first, which is the worklist for an alias file. Groups named as owners are left
+out, since no alias can tie a group to an address.
+
 ## whodar archive
 
 Reports and prunes the conversations whodar keeps.
