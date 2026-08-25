@@ -133,3 +133,26 @@ func Sleep(ctx context.Context, d time.Duration) error {
 		return ctx.Err()
 	}
 }
+
+// Get returns a request builder for a GET carrying the given headers, as pairs
+// of name then value. Every API client wrote the same seven lines to build one,
+// differing only in which credential and which media type they sent, so the one
+// place a request is actually made was the one place hardest to change.
+//
+// An odd trailing name with no value is ignored rather than panicking: a header
+// missing from an outgoing request is a far smaller problem than a crash in a
+// connector midway through a long read.
+func Get(ctx context.Context, url string, headers ...string) func() (*http.Request, error) {
+	return func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("new request: %w", err)
+		}
+		for i := 0; i+1 < len(headers); i += 2 {
+			if headers[i] != "" && headers[i+1] != "" {
+				req.Header.Set(headers[i], headers[i+1])
+			}
+		}
+		return req, nil
+	}
+}

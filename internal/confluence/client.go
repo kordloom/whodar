@@ -692,17 +692,7 @@ func (c *Client) userByAccountID(ctx context.Context, id string) (*User, error) 
 // status, or the transport error when the site is unreachable.
 func (c *Client) Ping(ctx context.Context) error {
 	endpoint := c.baseURL + c.pingPath
-	resp, _, err := httputil.Do(ctx, c.http, c.maxRetries, nil, func() (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return nil, fmt.Errorf("new request: %w", err)
-		}
-		if c.auth != "" {
-			req.Header.Set("Authorization", c.auth)
-		}
-		req.Header.Set("Accept", "application/json")
-		return req, nil
-	})
+	resp, _, err := httputil.Do(ctx, c.http, c.maxRetries, nil, httputil.Get(ctx, endpoint, "Authorization", c.auth, "Accept", "application/json"))
 	if errors.Is(err, httputil.ErrRateLimited) {
 		return fmt.Errorf("confluence ping: %w", ErrRateLimited)
 	}
@@ -730,17 +720,7 @@ func (c *Client) getRaw(ctx context.Context, pathWithQuery string, out any) erro
 		label = label[:i]
 	}
 	endpoint := c.baseURL + pathWithQuery
-	resp, body, err := httputil.Do(ctx, c.http, c.maxRetries, nil, func() (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return nil, fmt.Errorf("new request: %w", err)
-		}
-		if c.auth != "" {
-			req.Header.Set("Authorization", c.auth)
-		}
-		req.Header.Set("Accept", "application/json")
-		return req, nil
-	})
+	resp, body, err := httputil.Do(ctx, c.http, c.maxRetries, nil, httputil.Get(ctx, endpoint, "Authorization", c.auth, "Accept", "application/json"))
 	if errors.Is(err, httputil.ErrRateLimited) {
 		return fmt.Errorf("confluence %s: %w", label, ErrRateLimited)
 	}

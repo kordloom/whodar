@@ -162,3 +162,28 @@ func GitHubNoreplyLogin(email string) (string, bool) {
 	}
 	return local, true
 }
+
+// Distinct returns the items whose key has not been seen before, keeping the
+// order they arrived in and dropping any whose key is the zero value. Callers
+// were hand-rolling this loop everywhere a source returns the same person or
+// the same subject more than once, which is most of them: a comment thread
+// names its author on every comment, and a path yields the same subject at
+// every level.
+//
+// It is deliberately not used for the visited sets of a graph walk. Those look
+// similar and mean something else, and reading one as the other is how a walk
+// stops early.
+func Distinct[T any, K comparable](items []T, key func(T) K) []T {
+	var zero K
+	seen := make(map[K]bool, len(items))
+	out := make([]T, 0, len(items))
+	for _, item := range items {
+		k := key(item)
+		if k == zero || seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, item)
+	}
+	return out
+}

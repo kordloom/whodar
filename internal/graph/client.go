@@ -145,15 +145,7 @@ func (c *Client) Ping(ctx context.Context) error {
 // getURL performs one GET against a full URL and decodes the body into out. It
 // takes a full URL so a Graph nextLink is followed as-is.
 func (c *Client) getURL(ctx context.Context, endpoint string, out any) error {
-	resp, body, err := httputil.Do(ctx, c.http, c.maxRetries, nil, func() (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return nil, fmt.Errorf("new request: %w", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+c.token)
-		req.Header.Set("Accept", "application/json")
-		return req, nil
-	})
+	resp, body, err := httputil.Do(ctx, c.http, c.maxRetries, nil, httputil.Get(ctx, endpoint, "Authorization", "Bearer "+c.token, "Accept", "application/json"))
 	if errors.Is(err, httputil.ErrRateLimited) {
 		return fmt.Errorf("graph: %w", ErrRateLimited)
 	}

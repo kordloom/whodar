@@ -169,16 +169,11 @@ func ownerRecord(owner string, patterns []string) Record {
 // mapping file extensions and special filenames to the words people search and
 // dropping generic directory names.
 func topicsFromPatterns(patterns []string) []string {
-	seen := make(map[string]bool)
 	var topics []string
 	for _, p := range patterns {
-		for _, t := range pathTopics(p) {
-			if t != "" && !seen[t] {
-				seen[t] = true
-				topics = append(topics, t)
-			}
-		}
+		topics = append(topics, pathTopics(p)...)
 	}
+	topics = util.Distinct(topics, func(t string) string { return t })
 	return topics
 }
 

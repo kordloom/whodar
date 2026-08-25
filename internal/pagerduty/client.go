@@ -326,15 +326,7 @@ func (c *Client) Incidents(ctx context.Context, since time.Time, max int) ([]Inc
 // token, or the transport error when the API is unreachable.
 func (c *Client) Ping(ctx context.Context) error {
 	endpoint := c.baseURL + "/users?limit=1"
-	resp, _, err := httputil.Do(ctx, c.http, c.maxRetries, nil, func() (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return nil, fmt.Errorf("new request: %w", err)
-		}
-		req.Header.Set("Authorization", "Token token="+c.token)
-		req.Header.Set("Accept", "application/vnd.pagerduty+json;version=2")
-		return req, nil
-	})
+	resp, _, err := httputil.Do(ctx, c.http, c.maxRetries, nil, httputil.Get(ctx, endpoint, "Authorization", "Token token="+c.token, "Accept", "application/vnd.pagerduty+json;version=2"))
 	if errors.Is(err, httputil.ErrRateLimited) {
 		return fmt.Errorf("pagerduty ping: %w", ErrRateLimited)
 	}
@@ -351,15 +343,7 @@ func (c *Client) Ping(ctx context.Context) error {
 // HTTP 429 up to maxRetries.
 func (c *Client) get(ctx context.Context, path string, params url.Values, out any) error {
 	endpoint := c.baseURL + path + "?" + params.Encode()
-	resp, body, err := httputil.Do(ctx, c.http, c.maxRetries, nil, func() (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return nil, fmt.Errorf("new request: %w", err)
-		}
-		req.Header.Set("Authorization", "Token token="+c.token)
-		req.Header.Set("Accept", "application/vnd.pagerduty+json;version=2")
-		return req, nil
-	})
+	resp, body, err := httputil.Do(ctx, c.http, c.maxRetries, nil, httputil.Get(ctx, endpoint, "Authorization", "Token token="+c.token, "Accept", "application/vnd.pagerduty+json;version=2"))
 	if errors.Is(err, httputil.ErrRateLimited) {
 		return fmt.Errorf("pagerduty %s: %w", path, ErrRateLimited)
 	}

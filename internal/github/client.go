@@ -273,15 +273,7 @@ func (c *Client) Account(ctx context.Context, login string) (Account, error) {
 // is accepted, a *httputil.StatusError for a non-200 status such as 401 for a
 // bad token, or the transport error when the API is unreachable.
 func (c *Client) Ping(ctx context.Context) error {
-	resp, _, err := httputil.Do(ctx, c.http, c.maxRetries, githubRetryable, func() (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/user", nil)
-		if err != nil {
-			return nil, fmt.Errorf("new request: %w", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+c.token)
-		req.Header.Set("Accept", "application/vnd.github+json")
-		return req, nil
-	})
+	resp, _, err := httputil.Do(ctx, c.http, c.maxRetries, githubRetryable, httputil.Get(ctx, c.baseURL+"/user", "Authorization", "Bearer "+c.token, "Accept", "application/vnd.github+json"))
 	if errors.Is(err, httputil.ErrRateLimited) {
 		return fmt.Errorf("github ping: %w", ErrRateLimited)
 	}
@@ -386,15 +378,7 @@ func getAll[T any](ctx context.Context, c *Client, path string, query url.Values
 // retries on a secondary rate limit that sends Retry-After, and returns
 // ErrRateLimited or ErrNotFound for those conditions. path labels errors.
 func (c *Client) getURL(ctx context.Context, endpoint, path string, out any) (string, error) {
-	resp, body, err := httputil.Do(ctx, c.http, c.maxRetries, githubRetryable, func() (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return nil, fmt.Errorf("new request: %w", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+c.token)
-		req.Header.Set("Accept", "application/vnd.github+json")
-		return req, nil
-	})
+	resp, body, err := httputil.Do(ctx, c.http, c.maxRetries, githubRetryable, httputil.Get(ctx, endpoint, "Authorization", "Bearer "+c.token, "Accept", "application/vnd.github+json"))
 	if errors.Is(err, httputil.ErrRateLimited) {
 		return "", fmt.Errorf("github %s: %w", path, ErrRateLimited)
 	}
