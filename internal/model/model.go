@@ -65,13 +65,20 @@ type Topic struct {
 	// Sources names the connectors that produced this topic. Breadth across
 	// sources is the strongest evidence a topic is real rather than a stray word.
 	Sources []string
+	// Ubiquitous marks a topic nearly everybody holds. Those are the scaffolding
+	// of a codebase rather than subjects within it: the name of the repository,
+	// the language it is written in, the directory every file sits under. They
+	// are stated as plainly as any real subject and are worthless for telling
+	// people apart, which is the only thing a subject is for here.
+	Ubiquitous bool
 }
 
 // Salient reports whether a topic is established enough to present as a subject
-// in its own right. A curated topic always counts; a topic only mined from prose
-// has to show up in more than one source to earn it.
+// in its own right. A curated topic counts; a topic only mined from prose has to
+// show up in more than one source to earn it. Either way a topic everybody holds
+// does not count, because it distinguishes nobody.
 func (t *Topic) Salient() bool {
-	if t == nil {
+	if t == nil || t.Ubiquitous {
 		return false
 	}
 	return t.Curated || len(t.Sources) > 1

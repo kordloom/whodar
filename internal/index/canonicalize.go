@@ -51,7 +51,39 @@ func (ix *Index) Canonicalize() {
 	for _, ch := range g.Channels {
 		ch.Members = canonicalMembers(ch.Members, r)
 	}
+	markUbiquitous(g)
 	ix.refreshStats()
+}
+
+// Scaffolding bounds. A topic held by more than ubiquityShare of an
+// organization is its scaffolding rather than a subject inside it, and
+// ubiquityFloor is the size below which the rule is not applied at all: in a
+// small company a real subject genuinely can be held by most of it, and there
+// are too few people for the share to mean anything.
+const (
+	ubiquityShare = 0.35
+	ubiquityFloor = 60
+)
+
+// markUbiquitous flags the topics nearly everybody holds. In a code base those
+// are the repository's own name, the language it is written in, and the
+// directory every file lives under: stated as plainly as any real subject, and
+// useless for telling one person from another. Left unflagged they lead the
+// directory, crowd the risk report, and turn up as what somebody is known for.
+func markUbiquitous(g *model.Graph) {
+	if len(g.People) < ubiquityFloor {
+		return
+	}
+	holders := make(map[model.ID]int, len(g.Topics))
+	for _, p := range g.People {
+		for tid := range p.Topics {
+			holders[tid]++
+		}
+	}
+	cut := float64(len(g.People)) * ubiquityShare
+	for tid, topic := range g.Topics {
+		topic.Ubiquitous = float64(holders[tid]) > cut
+	}
 }
 
 // mergePerson folds src into dst: identity fields fill blanks, topic weights
