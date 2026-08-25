@@ -257,9 +257,10 @@ The stronger is what is worked on together. Two areas altered in the same
 commit, fixed under one ticket, described on one page, or carried by a single
 pull request belong to one body of knowledge whoever did the work, which makes
 this the only thing whodar knows about a subject that does not run through the
-people holding it. Every source it reads contributes the same way, so this
-works for a company whose work lives in tickets and pages rather than in one
-large repository.
+people holding it. Git, Jira, Confluence, and GitHub all contribute it the same
+way, so this works for a company whose work lives in tickets and pages rather
+than in one large repository. The other sources cannot: a chat message or an
+on-call shift says who was there, not which subjects one piece of work touched.
 
 Only what a piece of work states counts: labels, components, and the paths a
 commit touched. Titles and prose do not, since pairing the words of a summary
@@ -502,9 +503,14 @@ Explores whodar on a simulated company: all eight sources are built in
 process and served in the web UI, with no credentials and nothing fetched
 from the network. Sample data only; it is discarded when the demo stops.
 
-    whodar demo
+    whodar demo [--big] [--save-index DIR]
 
-Takes the same flags as `serve`.
+Takes the same flags as `serve`, plus two of its own.
+
+| Flag           | What it does                                                        |
+| -------------- | ------------------------------------------------------------------- |
+| `--big`        | Simulate a company of 200 people rather than the small sample, which is what to look at to judge how whodar reads at a real size. |
+| `--save-index` | Write the simulated company to a directory as a real index and exit, so the other commands can be run against it. |
 
 ## whodar mcp
 

@@ -967,7 +967,7 @@ async function renderExposure() {
       for (const r of regions) expRegions.appendChild(regionCard(r));
     } else {
       expRegions.appendChild(el("p", "exp-empty",
-        "No joined work found. Index a source that records what work touched, such as git, Jira, Confluence, or GitHub."));
+        "No joined work found. Index git, Jira, Confluence, or GitHub: those record which subjects one piece of work touched."));
     }
   }
   if (expSpans) {
@@ -976,7 +976,7 @@ async function renderExposure() {
       for (const sp of spans) expSpans.appendChild(spanCard(sp));
     } else {
       expSpans.appendChild(el("p", "exp-empty",
-        "No one-person connections found. Index a source that records what each piece of work touched, such as git, Jira, Confluence, or GitHub."));
+        "No one-person connections found. Index git, Jira, Confluence, or GitHub: those record which subjects one piece of work touched."));
     }
   }
   if (risk.length) {
