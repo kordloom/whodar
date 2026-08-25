@@ -673,6 +673,12 @@ func renderOwnership(w io.Writer, report resolve.OwnershipReport, s style) {
 	fmt.Fprintln(w, s.bold(fmt.Sprintf(
 		"Ownership drift  %d of %d declared areas (%.0f%%) are not led by their owner of record",
 		len(drift), report.Declared, 100*report.Share())))
+	// The three are different problems: somebody who has left, somebody who
+	// owns an area on paper only, and somebody merely out-worked in their own
+	// area. Only the last is a judgement call.
+	fmt.Fprintf(w, "  %s\n\n", s.dim(fmt.Sprintf(
+		"%d with no recorded work at all, %d who work elsewhere but never here, %d out-worked in their own area",
+		report.Silent, report.Unworked, report.Trailing)))
 	width := 0
 	for _, d := range drift {
 		if n := len([]rune(d.Topic)); n > width {

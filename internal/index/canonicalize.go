@@ -113,6 +113,12 @@ func mergePerson(dst, src *model.Person) {
 	for t, w := range src.Topics {
 		dst.Topics[t] += w
 	}
+	for t, w := range src.Stated {
+		if dst.Stated == nil {
+			dst.Stated = make(map[model.ID]float64)
+		}
+		dst.Stated[t] += w
+	}
 	dst.Identities = append(dst.Identities, src.Identities...)
 	dst.Identities = append(dst.Identities, src.ID)
 	for _, t := range src.Owns {

@@ -283,6 +283,18 @@ Compare declared ownership, from a source of record such as CODEOWNERS, against
 who actually has the expertise. A mismatch is ownership drift: the file says one
 person or team owns an area, but the work and the knowledge sit somewhere else.
 
+The drifted areas are split three ways, because they are three different
+problems: an owner with no recorded work at all, an owner who is active
+elsewhere but has never worked in the area they own, and an owner who does work
+there but less than whoever now leads. Only the last is a judgement call. Weight
+that a source of record assigned does not count as work, or indexing a
+CODEOWNERS file would make every owner look active in everything they own.
+
+Read the first of those three carefully. A source of record names people by
+handle and an activity source names them by address, so an owner whose handle
+was never linked to their commits is indistinguishable from one who has left.
+Check that bucket against an [alias file](#identity-aliases) before believing it.
+
 It leads with the share, not the list, because in every organization measured so
 far most declared ownership does not match who does the work, and a list on its
 own reads as a handful of exceptions. An area is only counted as moved when it

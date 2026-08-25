@@ -29,6 +29,13 @@ type Person struct {
 	// Owns lists topic IDs this person is a declared owner of, from a source of
 	// record such as CODEOWNERS, as opposed to topics they merely work in.
 	Owns []ID
+	// Stated is the part of each topic weight that a source of record assigned
+	// rather than the person earning it: being listed in CODEOWNERS or given a
+	// topics column in an org chart. Subtracting it from Topics leaves the work
+	// they actually did, which is the difference between owning an area and
+	// working in it. Without it, indexing a CODEOWNERS file makes every owner
+	// look active in everything they own.
+	Stated map[ID]float64
 }
 
 // Team is a named group of people within an organization.

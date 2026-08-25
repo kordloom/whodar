@@ -550,6 +550,12 @@ func (ix *Index) buildPerson(rec connector.Record) {
 		}
 		noteTopic(g, tid, top, rec.Source, curated)
 		p.Topics[tid] += weightTopic * w
+		if statesOwnership(rec.Source) {
+			if p.Stated == nil {
+				p.Stated = make(map[model.ID]float64)
+			}
+			p.Stated[tid] += weightTopic * w
+		}
 		pt.Topics = append(pt.Topics, strings.ToLower(top))
 		add(top, weightTopic)
 		if curated && rec.Source == "codeowners" && !slices.Contains(p.Owns, tid) {
@@ -1588,6 +1594,14 @@ func fillIdentity(p *model.Person, rec connector.Record) {
 	if rec.Manager != "" {
 		p.ManagerID = model.ID(strings.ToLower(rec.Manager))
 	}
+}
+
+// statesOwnership reports whether a source assigns subjects to people by
+// declaration rather than by evidence of work. A CODEOWNERS file and an org
+// chart's topics column both say who is responsible for an area; neither says
+// anybody has touched it.
+func statesOwnership(source string) bool {
+	return source == "codeowners" || source == "org-csv"
 }
 
 // linkOrg attaches the person to their team and organization, creating those

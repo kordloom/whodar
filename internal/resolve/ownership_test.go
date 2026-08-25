@@ -81,3 +81,42 @@ func TestDriftIgnoresThePersonWhoTouchesEverything(t *testing.T) {
 		t.Errorf("actual owner = %q, want Bob, who does this work rather than all work", payments.Actual)
 	}
 }
+
+// TestOwnershipSplitsTheThreeWaysAnOwnerCanDrift checks the report separates
+// what a reader has to do something different about: an owner who has gone,
+// one who owns an area on paper only, and one who is simply out-worked in their
+// own area.
+func TestOwnershipSplitsTheThreeWaysAnOwnerCanDrift(t *testing.T) {
+	t.Parallel()
+	ix := index.New()
+	ix.Build([]connector.Record{
+		// Declared owners, from a source of record. This assigns them their
+		// areas without any of them having done a thing.
+		{Kind: connector.KindPerson, Name: "Gone", Email: "gone@x.com",
+			Topics: []string{"alpha"}, Source: "codeowners"},
+		{Kind: connector.KindPerson, Name: "Elsewhere", Email: "elsewhere@x.com",
+			Topics: []string{"beta"}, Source: "codeowners"},
+		{Kind: connector.KindPerson, Name: "Trailing", Email: "trailing@x.com",
+			Topics: []string{"gamma"}, Source: "codeowners"},
+		// Elsewhere works, just never on what they own.
+		{Kind: connector.KindPerson, Name: "Elsewhere", Email: "elsewhere@x.com",
+			Topics: []string{"delta", "delta"}, Source: "git"},
+		// Trailing does work on their own area, but less than Rival.
+		{Kind: connector.KindPerson, Name: "Trailing", Email: "trailing@x.com",
+			Topics: []string{"gamma"}, Source: "git"},
+		// The people actually doing each area.
+		{Kind: connector.KindPerson, Name: "Rival", Email: "rival@x.com",
+			Topics: []string{"alpha", "alpha", "beta", "beta", "gamma", "gamma", "gamma"}, Source: "git"},
+	})
+	ix.Canonicalize()
+
+	report := Ownership(ix)
+	if report.Silent != 1 || report.Unworked != 1 || report.Trailing != 1 {
+		t.Errorf("split = silent %d, unworked %d, trailing %d; want one of each (drift %+v)",
+			report.Silent, report.Unworked, report.Trailing, report.Drift)
+	}
+	if report.Silent+report.Unworked+report.Trailing != len(report.Drift) {
+		t.Errorf("the three buckets total %d but %d areas drifted",
+			report.Silent+report.Unworked+report.Trailing, len(report.Drift))
+	}
+}
