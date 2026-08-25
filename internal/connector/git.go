@@ -324,7 +324,7 @@ func (g *GitHistory) readRepo(
 	if err != nil {
 		return 0, 0, err
 	}
-	return g.diffCommits(ctx, path, jobs, counts, names, latest)
+	return g.diffCommits(ctx, path, jobs, counts, names, latest, curated)
 }
 
 // commitJob is one commit worth walking: everything cheap about it, read once
@@ -407,6 +407,10 @@ type tally struct {
 	names map[string]string
 	// latest is each author's most recent commit time.
 	latest map[string]time.Time
+	// curated are the tokens this worker saw in a file path rather than only in
+	// a commit subject, which is the difference between demonstrated work and
+	// a word somebody wrote.
+	curated map[string]bool
 	// read is how many commits this worker took in.
 	read int
 	// skipped is how many it could not diff.
@@ -425,6 +429,7 @@ func (g *GitHistory) diffCommits(
 	counts map[string]map[string]int,
 	names map[string]string,
 	latest map[string]time.Time,
+	curated map[string]bool,
 ) (read, skipped int, err error) {
 	if len(jobs) == 0 {
 		return 0, 0, nil
@@ -463,6 +468,9 @@ func (g *GitHistory) diffCommits(
 	for _, t := range tallies {
 		read += t.read
 		skipped += t.skipped
+		for tok := range t.curated {
+			curated[tok] = true
+		}
 		for email, topics := range t.counts {
 			m := counts[email]
 			if m == nil {
@@ -499,9 +507,10 @@ func (g *GitHistory) diffShare(
 	done *atomic.Int64,
 ) tally {
 	t := tally{
-		counts: make(map[string]map[string]int),
-		names:  make(map[string]string),
-		latest: make(map[string]time.Time),
+		counts:  make(map[string]map[string]int),
+		names:   make(map[string]string),
+		latest:  make(map[string]time.Time),
+		curated: make(map[string]bool),
 	}
 	repo, closeRepo, err := openRepo(path)
 	if err != nil {
@@ -548,6 +557,11 @@ func (g *GitHistory) diffShare(
 		for _, name := range paths {
 			for _, tok := range pathTopics(name) {
 				m[tok]++
+				// A path is where the work demonstrably landed, so the subject
+				// it names is stated rather than guessed at. Everything that
+				// depends on telling a real subject from a passing word reads
+				// this: without it a repository full of expertise reports none.
+				t.curated[tok] = true
 			}
 		}
 		// The commit subject carries the domain vocabulary the filenames often
