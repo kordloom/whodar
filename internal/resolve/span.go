@@ -34,6 +34,14 @@ type Span struct {
 
 // SoleSpans finds the connections between subjects that rest on one person,
 // strongest first. A limit of zero or less returns all of them.
+//
+// Every surface that names a person has to be checked against the people who
+// touch everything, who otherwise take every answer at once. This one is
+// naturally resistant and was measured to be: on a real project the widest
+// contributor, with fifteen thousand subjects to his name, is the sole witness
+// to nothing at all. Being the only person who crossed between two areas is not
+// a ranking, and somebody who touches everything has company everywhere, so the
+// sweepers rule themselves out. Keep that property when changing this.
 func SoleSpans(ix *index.Index, limit int) []Span {
 	holders := topicHolders(ix)
 	seen := make(map[[2]string]bool)
