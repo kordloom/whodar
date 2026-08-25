@@ -15,6 +15,7 @@ import (
 
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // Answer is a resolved response: ranked people, ranked channels, and an
@@ -400,21 +401,16 @@ func reorderPeople(cands []model.Match, order []string) []model.Match {
 			byKey[name] = m
 		}
 	}
-	out := make([]model.Match, 0, len(cands))
-	seen := make(map[model.ID]bool, len(cands))
+	// What the model asked for first, then everything it did not mention, with
+	// the first mention of each person winning.
+	ordered := make([]model.Match, 0, len(order)+len(cands))
 	for _, key := range order {
-		if m, ok := byKey[strings.ToLower(strings.TrimSpace(key))]; ok && !seen[m.Person.ID] {
-			out = append(out, m)
-			seen[m.Person.ID] = true
+		if m, ok := byKey[strings.ToLower(strings.TrimSpace(key))]; ok {
+			ordered = append(ordered, m)
 		}
 	}
-	for _, m := range cands {
-		if !seen[m.Person.ID] {
-			out = append(out, m)
-			seen[m.Person.ID] = true
-		}
-	}
-	return out
+	ordered = append(ordered, cands...)
+	return util.Distinct(ordered, func(m model.Match) model.ID { return m.Person.ID })
 }
 
 // reorderChannels ranks channel candidates by the model's order, matching on
@@ -426,22 +422,15 @@ func reorderChannels(cands []model.ChannelMatch, order []string) []model.Channel
 		byName[strconv.Itoa(i+1)] = c
 		byName[strings.ToLower(c.Channel.Name)] = c
 	}
-	out := make([]model.ChannelMatch, 0, len(cands))
-	seen := make(map[model.ID]bool, len(cands))
+	ordered := make([]model.ChannelMatch, 0, len(order)+len(cands))
 	for _, key := range order {
 		key = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(key), "#")))
-		if c, ok := byName[key]; ok && !seen[c.Channel.ID] {
-			out = append(out, c)
-			seen[c.Channel.ID] = true
+		if c, ok := byName[key]; ok {
+			ordered = append(ordered, c)
 		}
 	}
-	for _, c := range cands {
-		if !seen[c.Channel.ID] {
-			out = append(out, c)
-			seen[c.Channel.ID] = true
-		}
-	}
-	return out
+	ordered = append(ordered, cands...)
+	return util.Distinct(ordered, func(c model.ChannelMatch) model.ID { return c.Channel.ID })
 }
 
 // capList returns at most limit items; a non-positive limit returns all.

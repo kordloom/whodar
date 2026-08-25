@@ -199,14 +199,7 @@ func isUserRef(u User) bool {
 // People returns everyone who handled the incident, without repeats.
 func (i Incident) People() []User {
 	var out []User
-	seen := make(map[string]bool)
-	add := func(u User) {
-		if u.ID == "" || seen[u.ID] {
-			return
-		}
-		seen[u.ID] = true
-		out = append(out, u)
-	}
+	add := func(u User) { out = append(out, u) }
 	for _, a := range i.Assignments {
 		add(a.Assignee)
 	}
@@ -219,7 +212,9 @@ func (i Incident) People() []User {
 	if i.Resolved() && isUserRef(i.LastStatusChangeBy) {
 		add(i.LastStatusChangeBy)
 	}
-	return out
+	// One person can be assigned, acknowledge, and resolve the same incident,
+	// which is one person and not three.
+	return util.Distinct(out, func(u User) string { return u.ID })
 }
 
 // incidentsResponse decodes the incidents endpoint.

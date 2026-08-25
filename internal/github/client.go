@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kordloom/whodar/internal/httputil"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // defaultBaseURL is the GitHub REST API root.
@@ -221,16 +222,11 @@ func (c *Client) PullReviewers(ctx context.Context, owner, repo string, number i
 	if err != nil {
 		return nil, err
 	}
-	out := make([]string, 0, len(revs))
-	seen := make(map[string]bool)
+	logins := make([]string, 0, len(revs))
 	for _, r := range revs {
-		if r.User.Login == "" || seen[r.User.Login] {
-			continue
-		}
-		seen[r.User.Login] = true
-		out = append(out, r.User.Login)
+		logins = append(logins, r.User.Login)
 	}
-	return out, nil
+	return util.Distinct(logins, func(l string) string { return l }), nil
 }
 
 // PullCommenters returns the distinct logins of people who commented on a pull
@@ -242,16 +238,11 @@ func (c *Client) PullCommenters(ctx context.Context, owner, repo string, number 
 	if err != nil {
 		return nil, err
 	}
-	out := make([]string, 0, len(comments))
-	seen := make(map[string]bool)
+	logins := make([]string, 0, len(comments))
 	for _, cm := range comments {
-		if cm.User.Login == "" || seen[cm.User.Login] {
-			continue
-		}
-		seen[cm.User.Login] = true
-		out = append(out, cm.User.Login)
+		logins = append(logins, cm.User.Login)
 	}
-	return out, nil
+	return util.Distinct(logins, func(l string) string { return l }), nil
 }
 
 // OrgRepos returns an org's repositories, most recently updated first,

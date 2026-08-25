@@ -8,6 +8,7 @@ import (
 
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // namePrefixes are the ways a person's name gets wrapped in a question. They
@@ -152,22 +153,15 @@ func withNamed(named, ranked []model.Match, limit int) []model.Match {
 	if len(named) == 0 {
 		return ranked
 	}
-	seen := make(map[model.ID]bool, len(named))
-	out := make([]model.Match, 0, len(named)+len(ranked))
-	for _, m := range named {
-		if m.Person == nil || seen[m.Person.ID] {
-			continue
-		}
-		seen[m.Person.ID] = true
-		out = append(out, m)
-	}
-	for _, m := range ranked {
-		if m.Person == nil || seen[m.Person.ID] {
-			continue
-		}
-		seen[m.Person.ID] = true
-		out = append(out, m)
-	}
+	// The people the question named first, then the ranked answer behind them.
+	// A match with no person has no identity to key on and drops out.
+	out := util.Distinct(append(append([]model.Match{}, named...), ranked...),
+		func(m model.Match) model.ID {
+			if m.Person == nil {
+				return ""
+			}
+			return m.Person.ID
+		})
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
 	}

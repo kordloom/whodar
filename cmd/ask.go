@@ -15,6 +15,7 @@ import (
 	"github.com/kordloom/whodar/internal/llm"
 	"github.com/kordloom/whodar/internal/policy"
 	"github.com/kordloom/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // Cloud provider credentials come only from the environment, never flags.
@@ -167,17 +168,13 @@ func suggestFromSearch(ix *index.Index, query string, limit int) []resolve.Searc
 	if len(terms) == 0 {
 		return resolve.Search(ix, query, limit)
 	}
-	seen := make(map[string]bool)
 	var all []resolve.SearchResult
 	for _, t := range terms {
-		for _, r := range resolve.Search(ix, t, limit) {
-			if seen[r.ID] {
-				continue
-			}
-			seen[r.ID] = true
-			all = append(all, r)
-		}
+		all = append(all, resolve.Search(ix, t, limit)...)
 	}
+	// One person answering for several terms is still one person, and the
+	// strongest term they matched is the one that speaks for them.
+	all = util.Distinct(all, func(r resolve.SearchResult) string { return r.ID })
 	sort.Slice(all, func(i, j int) bool {
 		if all[i].Score != all[j].Score {
 			return all[i].Score > all[j].Score

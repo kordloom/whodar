@@ -14,6 +14,7 @@ import (
 	"github.com/kordloom/whodar/internal/recall"
 	"github.com/kordloom/whodar/internal/resolve"
 	"github.com/kordloom/whodar/internal/text"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // rank formats a one-based position in a result list, right-aligned so single
@@ -239,19 +240,16 @@ func recallMatchedWords(query string, matched []string) []string {
 			}
 		}
 	}
-	out := make([]string, 0, len(matched))
-	seen := make(map[string]bool, len(matched))
+	words := make([]string, 0, len(matched))
 	for _, key := range matched {
 		word := byStem[key]
 		if word == "" {
 			word = key
 		}
-		if !seen[word] {
-			seen[word] = true
-			out = append(out, word)
-		}
+		words = append(words, word)
 	}
-	return out
+	// Several stems can lead back to one word, which is worth saying once.
+	return util.Distinct(words, func(w string) string { return w })
 }
 
 // recallWith names who else was in a conversation.

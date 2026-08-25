@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 // TestWriteFileAtomic covers fresh writes, overwrites that tighten
@@ -240,5 +241,26 @@ func TestPersonKey(t *testing.T) {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+// TestDistinctKeepsFirstAndDropsEmptyKeys checks the two properties every
+// caller depends on: the first appearance of a key wins, so an ordered merge
+// can put preferred items in front and let the rest fall in behind, and an
+// item with no key at all is dropped rather than treated as one more identity.
+func TestDistinctKeepsFirstAndDropsEmptyKeys(t *testing.T) {
+	t.Parallel()
+	type row struct {
+		ID   string
+		Rank int
+	}
+	in := []row{{"a", 1}, {"b", 2}, {"a", 3}, {"", 4}, {"c", 5}, {"", 6}, {"b", 7}}
+	want := []row{{"a", 1}, {"b", 2}, {"c", 5}}
+	got := Distinct(in, func(r row) string { return r.ID })
+	if diff := cmp.Diff(want, got, cmpopts.EquateEmpty()); diff != "" {
+		t.Errorf("mismatch (-want +got):\n%s", diff)
+	}
+	if got := Distinct([]row(nil), func(r row) string { return r.ID }); len(got) != 0 {
+		t.Errorf("Distinct(nil) = %v, want nothing", got)
 	}
 }

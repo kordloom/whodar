@@ -252,15 +252,12 @@ func (p Page) LabelNames() []string {
 
 // Authors returns the distinct creator and last editor of the page.
 func (p Page) Authors() []*User {
-	var out []*User
-	seen := make(map[string]bool)
-	for _, u := range []*User{p.History.CreatedBy, p.Version.By} {
-		if u != nil && u.AccountID != "" && !seen[u.AccountID] {
-			seen[u.AccountID] = true
-			out = append(out, u)
+	return util.Distinct([]*User{p.History.CreatedBy, p.Version.By}, func(u *User) string {
+		if u == nil {
+			return ""
 		}
-	}
-	return out
+		return u.AccountID
+	})
 }
 
 // Query describes which pages to read. It lets the client choose the transport:
