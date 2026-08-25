@@ -356,6 +356,14 @@ confident the merge is, and the evidence for it. Joins by shared email or
 provider id are certain and are not listed. Correct a wrong merge by editing the
 [alias file](#identity-aliases) and re-indexing.
 
+The evidence is a matching name, a mailbox that differs only by punctuation, or
+a domain the handle names: somebody committing as `git@frenck.dev` is the owner
+written down as `frenck`, and neither their display name nor their mailbox says
+so. A domain shared by more than one person never matches, which is what keeps
+the public providers out. On home-assistant that last rule alone linked 18
+owners who otherwise read as doing no work at all, and moved 18 owned areas out
+of the drift count without anyone writing an alias by hand.
+
 `--unlinked` reports the opposite problem, and usually the larger one. A source
 of record names owners by handle while an activity source records work by
 address, so an owner whose two were never tied together looks exactly like one

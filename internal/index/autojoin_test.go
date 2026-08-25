@@ -3,6 +3,7 @@ package index
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/kordloom/whodar/internal/connector"
@@ -279,5 +280,72 @@ func TestAutoJoinEmailVariants(t *testing.T) {
 	ix2.Canonicalize()
 	if len(ix2.Graph.People) != 2 {
 		t.Errorf("different-named people wrongly merged: %d people %v", len(ix2.Graph.People), peopleIDs(ix2))
+	}
+}
+
+// TestAutoJoinLinksHandleToItsOwnDomain checks a handle nobody's name matches is
+// still joined to the person whose address sits on a domain of the same name.
+// This is the case that leaves declared owners looking like they do no work:
+// ownership is written as a handle, the work arrives as an address, and neither
+// the display name nor the mailbox connects them.
+func TestAutoJoinLinksHandleToItsOwnDomain(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		Name     string
+		People   map[model.ID]*model.Person
+		WantJoin bool
+		WantTo   model.ID
+	}{{ // Test 0: A personal domain names exactly one person.
+		People: map[model.ID]*model.Person{
+			"github:frenck": {ID: "github:frenck", Name: "frenck"},
+			"git@frenck.dev": {
+				ID: "git@frenck.dev", Name: "Franck Nijhof", Email: "git@frenck.dev",
+			},
+		},
+		WantJoin: true, WantTo: "git@frenck.dev",
+	}, { // Test 1: A public provider is shared, so it points at nobody.
+		People: map[model.ID]*model.Person{
+			"github:gmail": {ID: "github:gmail", Name: "gmail"},
+			"a@gmail.com":  {ID: "a@gmail.com", Name: "Ada Lovelace", Email: "a@gmail.com"},
+			"b@gmail.com":  {ID: "b@gmail.com", Name: "Bo Diddley", Email: "b@gmail.com"},
+		},
+		WantJoin: false,
+	}, { // Test 2: No domain of that name, so nothing is claimed.
+		People: map[model.ID]*model.Person{
+			"github:nobody": {ID: "github:nobody", Name: "nobody"},
+			"a@example.com": {ID: "a@example.com", Name: "Ada Lovelace", Email: "a@example.com"},
+		},
+		WantJoin: false,
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			ix := New()
+			ix.Graph.People = test.People
+			res := ix.AutoJoin()
+
+			var got *Join
+			for i, j := range res.Joins {
+				if strings.HasPrefix(string(j.Alias), "github:") {
+					got = &res.Joins[i]
+				}
+			}
+			if !test.WantJoin {
+				if got != nil {
+					t.Fatalf("joined %s to %s on %q, want no join",
+						got.Alias, got.Canonical, got.Reason)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("the handle was left unlinked, though one address sits on its domain")
+			}
+			if got.Canonical != test.WantTo {
+				t.Errorf("joined to %s, want %s", got.Canonical, test.WantTo)
+			}
+			if got.Reason != "handle matches email domain" {
+				t.Errorf("reason = %q, want it to name the evidence", got.Reason)
+			}
+		})
 	}
 }

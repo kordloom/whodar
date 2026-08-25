@@ -50,6 +50,16 @@ const (
 	confEmailVariant = 0.85
 	confSharedTeam   = 0.8
 	confSharedTopics = 0.7
+	// confHandleDomain is the confidence in a handle that matches the domain of
+	// exactly one person's email, such as frenck owning git@frenck.dev. A domain
+	// somebody registered identifies them about as firmly as a matching mailbox
+	// does, and public providers can never match, since hundreds of people share
+	// them and a pointer to hundreds of people points at nobody. It sits below a
+	// name match because a company domain with a single person indexed against
+	// it will match that company's handle, which is right when the handle is how
+	// that vendor maintains its own code and wrong when it is not. The merge is
+	// listed with its evidence either way, which is what makes it correctable.
+	confHandleDomain = 0.85
 	// confSameName is the confidence in two records being one person on the
 	// strength of a full name and the work they both do. It sits lowest of the
 	// inferred joins because nothing identifies the two to each other directly.
@@ -118,6 +128,9 @@ func (ix *Index) AutoJoin() JoinResult {
 
 	var joins []Join
 	var blocked []string
+	// Handles the name pass settled, so the domain pass below only considers
+	// the ones still unaccounted for.
+	joinedByName := make(map[model.ID]bool)
 	for id, hp := range g.People {
 		if !handleOnly(id) {
 			continue
@@ -156,7 +169,57 @@ func (ix *Index) AutoJoin() JoinResult {
 			continue
 		}
 		r.Union(target, id)
+		joinedByName[id] = true
 		joins = append(joins, Join{Alias: id, Canonical: target, Confidence: conf, Reason: reason})
+	}
+
+	// A handle nobody's name matched may still be the domain of somebody's
+	// address: a maintainer who commits as git@frenck.dev is the owner writing
+	// themselves down as frenck, and no name or mailbox ties the two together.
+	// This is what leaves declared owners looking like they do no work at all.
+	byDomain := make(map[string]map[model.ID]bool)
+	for id, p := range g.People {
+		if handleOnly(id) || p.Email == "" {
+			continue
+		}
+		key := flatten(emailDomainLabel(p.Email))
+		if len(key) < minHandleLen {
+			continue
+		}
+		set := byDomain[key]
+		if set == nil {
+			set = make(map[model.ID]bool)
+			byDomain[key] = set
+		}
+		set[r.Canonical(id)] = true
+	}
+	for id := range g.People {
+		if !handleOnly(id) || joinedByName[id] {
+			continue
+		}
+		self := r.Canonical(id)
+		key := flatten(handlePart(id))
+		if len(key) < minHandleLen {
+			continue
+		}
+		var target model.ID
+		n := 0
+		for c := range byDomain[key] {
+			if cc := r.Canonical(c); cc != self {
+				target = cc
+				n++
+			}
+		}
+		// More than one person on that domain means it is a provider or a
+		// company, and points at nobody in particular.
+		if n != 1 {
+			continue
+		}
+		r.Union(target, id)
+		joins = append(joins, Join{
+			Alias: id, Canonical: target,
+			Confidence: confHandleDomain, Reason: "handle matches email domain",
+		})
 	}
 
 	// Merge people who are one person under an email variant: their email local
@@ -426,6 +489,21 @@ func emailLocal(email string) string {
 		return email[:i]
 	}
 	return email
+}
+
+// emailDomainLabel returns the registrable label of an address's domain, so
+// git@frenck.dev gives frenck. Anything more of the domain would never match a
+// handle, and anything less would match half the addresses in the graph.
+func emailDomainLabel(email string) string {
+	i := strings.IndexByte(email, '@')
+	if i < 0 {
+		return ""
+	}
+	parts := strings.Split(strings.ToLower(email[i+1:]), ".")
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[len(parts)-2]
 }
 
 // flatten lowercases s and keeps only letters and digits, so kim-doe,
