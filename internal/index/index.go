@@ -1498,7 +1498,7 @@ func Load(path string, opts ...Option) (*Index, error) {
 	}
 	var snap snapshot
 	if err := json.Unmarshal(raw, &snap); err != nil {
-		return nil, fmt.Errorf("index: decode: %w", err)
+		return nil, fmt.Errorf("%w: %s: %w", ErrDamaged, filepath.Base(path), err)
 	}
 	postings, err := invindex.DecodePostings[model.ID](snap.Postings)
 	if err != nil {

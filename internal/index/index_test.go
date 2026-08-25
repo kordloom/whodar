@@ -1,10 +1,12 @@
 package index
 
 import (
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -398,5 +400,30 @@ func TestMergeReplacesOnlyItsOwnSource(t *testing.T) {
 	// The replaced Slack content is gone rather than lingering beside the new.
 	if got := ix.Search("latency", 1); len(got) != 0 {
 		t.Errorf("replaced source content survived: %v", got)
+	}
+}
+
+// TestLoadNamesADamagedIndex checks a file that exists but will not parse comes
+// back as ErrDamaged rather than a bare decoder complaint. It is the one failure
+// where somebody cannot tell whether their data is gone, so the caller has to be
+// able to recognize it and say what to do.
+func TestLoadNamesADamagedIndex(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "index.json")
+	if err := os.WriteFile(path, []byte("this is not json"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	_, err := Load(path)
+	if !errors.Is(err, ErrDamaged) {
+		t.Fatalf("Load = %v, want it to report a damaged index", err)
+	}
+	if !strings.Contains(err.Error(), "index.json") {
+		t.Errorf("error = %q, want it to name the file", err)
+	}
+	// A missing file is a different problem with different advice, and the two
+	// must not collapse into one message.
+	if _, err := Load(filepath.Join(dir, "gone.json")); errors.Is(err, ErrDamaged) {
+		t.Errorf("a missing index reported as damaged: %v", err)
 	}
 }

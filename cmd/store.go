@@ -192,6 +192,19 @@ func noIndexError(err error) error {
 				"  Then build the index:                  whodar index",
 			ErrNoIndex)
 	}
+	if errors.Is(err, index.ErrDamaged) {
+		// A file that exists but will not parse is the one failure where the
+		// user cannot tell whether their data is gone. Say what to do: the
+		// index is derived from the sources, so rebuilding it loses nothing
+		// that was not already somewhere else.
+		return fmt.Errorf(
+			"%w.\n"+
+				"  The index is rebuilt from the sources, so nothing is lost by making it again:\n"+
+				"    whodar index --source SOURCE\n"+
+				"  If the file was meant to be encrypted, the key is missing rather than the data:\n"+
+				"    set WHODAR_INDEX_KEY or WHODAR_INDEX_PASSPHRASE and try again",
+			err)
+	}
 	return err
 }
 

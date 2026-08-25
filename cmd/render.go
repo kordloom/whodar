@@ -674,7 +674,11 @@ func renderRelated(w io.Writer, topic string, rel []resolve.TopicRelation, s sty
 		width = 24
 	}
 	for _, r := range rel {
-		kind := "same subject"
+		// Not narrower means held by about as many people, which is a subject
+		// of comparable size. It does not mean the two are the same subject,
+		// which is what this said before and was plainly wrong on the page:
+		// kafka-lag is not billing-retries.
+		kind := "peer subject"
 		if r.Narrower {
 			kind = "specialty"
 		}
