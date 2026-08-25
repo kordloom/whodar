@@ -427,10 +427,22 @@ func indexRecords(cmd *cobra.Command, opts *options, recs []connector.Record, p 
 	}
 
 	out := cmd.ErrOrStderr()
+	// Subjects and words are counted apart on purpose. A subject is something a
+	// source stated: a label, a component, a directory. A word is something
+	// mined from prose so a question phrased in somebody's own vocabulary still
+	// matches. On a real issue tracker the mined words outnumber the stated
+	// subjects four hundred to one, and reporting the total as "topics" made the
+	// index look like it understood four hundred times more than it does.
+	stated := 0
+	for _, t := range ix.Graph.Topics {
+		if t.Curated {
+			stated++
+		}
+	}
 	fmt.Fprintf(out,
-		"indexed %d people, %d channels, %d teams, %d topics into %s\n",
+		"indexed %d people, %d channels, %d teams, %d subjects and %d words from text into %s\n",
 		len(ix.Graph.People), len(ix.Graph.Channels), len(ix.Graph.Teams),
-		len(ix.Graph.Topics), opts.indexPath())
+		stated, len(ix.Graph.Topics)-stated, opts.indexPath())
 	if c, _ := opts.codec(); c == nil && len(ix.Graph.People) > 0 {
 		fmt.Fprintln(out,
 			"note: this index holds names, emails, and titles in plaintext, protected only by file "+

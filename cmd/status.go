@@ -29,6 +29,16 @@ embeddings, whether a key is set to encrypt it at rest, and the license tier.`,
 			if err != nil {
 				return err
 			}
+			// A subject was stated by a source; a word was mined from prose so a
+			// question phrased in somebody's own vocabulary still matches. The
+			// two are counted apart because the words outnumber the subjects by
+			// orders of magnitude and a single total misrepresents both.
+			stated := 0
+			for _, t := range ix.Graph.Topics {
+				if t.Curated {
+					stated++
+				}
+			}
 			sources := make(map[string]int)
 			for _, name := range ix.SourceNames() {
 				sources[name] = ix.SourceSize(name)
@@ -38,7 +48,8 @@ embeddings, whether a key is set to encrypt it at rest, and the license tier.`,
 				"people":                    len(ix.Graph.People),
 				"channels":                  len(ix.Graph.Channels),
 				"teams":                     len(ix.Graph.Teams),
-				"topics":                    len(ix.Graph.Topics),
+				"subjects":                  stated,
+				"words":                     len(ix.Graph.Topics) - stated,
 				"sources":                   sources,
 				"embeddings":                ix.HasEmbeddings(),
 				"encryption_key_configured": codec != nil,

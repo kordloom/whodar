@@ -106,7 +106,8 @@ func renderStatus(w io.Writer, v map[string]any, s style) {
 
 	fmt.Fprintf(w, "\n%s\n\n", s.bold("whodar index"))
 	line("People", s.bold(fmt.Sprintf("%d", geti("people")))+"  "+
-		s.dim(fmt.Sprintf("%d teams · %d topics · %d channels", geti("teams"), geti("topics"), geti("channels"))))
+		s.dim(fmt.Sprintf("%d teams · %d subjects · %d channels",
+			geti("teams"), geti("subjects"), geti("channels"))))
 	if bt := gets("built_at"); bt != "" {
 		when := bt
 		if t, err := time.Parse(time.RFC3339, bt); err == nil {

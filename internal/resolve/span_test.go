@@ -1,10 +1,15 @@
 package resolve
 
 import (
+	"fmt"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"github.com/kordloom/whodar/internal/connector"
 	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // TestSoleSpansFindOnePersonConnections checks whodar reports a connection
@@ -69,5 +74,59 @@ func TestSoleSpansIgnoreUnestablishedSubjects(t *testing.T) {
 	ix.Canonicalize()
 	if got := SoleSpans(ix, 0); len(got) != 0 {
 		t.Errorf("spans = %+v, want nothing: scratchpad is not a subject anybody holds", got)
+	}
+}
+
+// TestSoleSpansNeedsAStrongTieOnBothSides checks a connection is only reported
+// when it is among the strongest ties for both subjects.
+//
+// Measured on a real issue tracker, this is what separates a finding from noise.
+// "Only one person has worked across documentation and kubernetes" is true and
+// worthless: the two are barely tied, and hundreds of people hold each. The tie
+// being the strongest one both subjects have is what makes the crossing mean
+// something.
+func TestSoleSpansNeedsAStrongTieOnBothSides(t *testing.T) {
+	t.Parallel()
+	// A subject tied to many others, where the pairing under test sits far down
+	// the list, against a pairing that is the best tie either side has.
+	topics := map[model.ID]*model.Topic{
+		"strongA": {ID: "strongA", Name: "strongA", Curated: true, Near: map[model.ID]model.Tie{
+			"strongB": {Weight: 0.5, Witnesses: 1, Sole: "ada@x.com"},
+		}},
+		"strongB": {ID: "strongB", Name: "strongB", Curated: true, Near: map[model.ID]model.Tie{
+			"strongA": {Weight: 0.5, Witnesses: 1, Sole: "ada@x.com"},
+		}},
+		"broad": {ID: "broad", Name: "broad", Curated: true, Near: map[model.ID]model.Tie{}},
+		"weak":  {ID: "weak", Name: "weak", Curated: true, Near: map[model.ID]model.Tie{}},
+	}
+	// broad is tied to many subjects more strongly than it is to weak, so the
+	// crossing between them sits well down its list.
+	for i := range maxSpanRank + 3 {
+		other := model.ID(fmt.Sprintf("filler%d", i))
+		topics[other] = &model.Topic{ID: other, Name: string(other), Curated: true,
+			Near: map[model.ID]model.Tie{"broad": {Weight: 0.4}}}
+		topics["broad"].Near[other] = model.Tie{Weight: 0.4}
+	}
+	topics["broad"].Near["weak"] = model.Tie{Weight: 0.01, Witnesses: 1, Sole: "bo@x.com"}
+	topics["weak"].Near["broad"] = model.Tie{Weight: 0.01, Witnesses: 1, Sole: "bo@x.com"}
+
+	ix := index.New()
+	ix.Graph.Topics = topics
+	ix.Graph.People = map[model.ID]*model.Person{
+		"ada@x.com": {ID: "ada@x.com", Name: "Ada", Topics: map[model.ID]float64{
+			"strongA": 3, "strongB": 3, "broad": 2, "weak": 2,
+		}},
+		"bo@x.com": {ID: "bo@x.com", Name: "Bo", Topics: map[model.ID]float64{
+			"strongA": 2, "strongB": 2, "broad": 3, "weak": 3,
+		}},
+	}
+	got := SoleSpans(ix, 0)
+	var pairs []string
+	for _, s := range got {
+		pairs = append(pairs, s.Topic+"+"+s.With)
+	}
+	want := []string{"strongA+strongB"}
+	if diff := cmp.Diff(want, pairs, cmpopts.EquateEmpty()); diff != "" {
+		t.Errorf("connections (-want +got):\n%s", diff)
 	}
 }

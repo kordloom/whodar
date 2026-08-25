@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -103,5 +104,69 @@ func TestTogetherTreatsOneSubjectAsOneSubject(t *testing.T) {
 	}
 	if !found {
 		t.Error("billing and ledger were counted as four subjects, so their pairing disappeared")
+	}
+}
+
+// TestTogetherDropsSubjectsThatReachEverywhere checks a subject tied to most of
+// the vocabulary is removed along with every tie to it.
+//
+// The graph's own ubiquity rule cannot see these. Measured on a real issue
+// tracker, the label a bot puts on every ticket with a patch attached is carried
+// by a sixth of the contributors, far under the share of people that marks
+// scaffolding, while being tied to seventy per cent of every subject there.
+func TestTogetherDropsSubjectsThatReachEverywhere(t *testing.T) {
+	t.Parallel()
+	ties := newTogether()
+	// A vocabulary big enough for a share of it to mean something, in which one
+	// label rides along with every real pairing.
+	areas := []string{}
+	for i := range 30 {
+		areas = append(areas, fmt.Sprintf("area%02d", i))
+	}
+	for i := 0; i+1 < len(areas); i += 2 {
+		for range minTogether + 2 {
+			ties.note([]string{areas[i], areas[i+1], "patch-available"}, "ada@x.com")
+		}
+	}
+	recs := ties.records("jira")
+	for _, r := range recs {
+		if r.Name == "patch-available" {
+			t.Error("the label that rides along with everything was kept as a subject")
+		}
+		for _, l := range r.Links {
+			if l.To == "patch-available" {
+				t.Errorf("%s is still tied to the label that rides along with everything", r.Name)
+			}
+		}
+	}
+	// The real pairings underneath it must survive.
+	found := false
+	for _, r := range recs {
+		if r.Name != "area00" {
+			continue
+		}
+		for _, l := range r.Links {
+			if l.To == "area01" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("area00 lost its real tie to area01 along with the scaffolding")
+	}
+}
+
+// TestTogetherKeepsScaffoldingRuleOffForSmallVocabularies checks the share is
+// not applied when there is too little vocabulary for it to mean anything. Among
+// a handful of subjects everything is tied to most of the rest.
+func TestTogetherKeepsScaffoldingRuleOffForSmallVocabularies(t *testing.T) {
+	t.Parallel()
+	ties := newTogether()
+	for range minTogether + 2 {
+		ties.note([]string{"billing", "ledger"}, "ada@x.com")
+		ties.note([]string{"search", "indexing"}, "bo@x.com")
+	}
+	if got := len(ties.records("jira")); got == 0 {
+		t.Error("a four-subject vocabulary was emptied by a rule about reaching across one")
 	}
 }

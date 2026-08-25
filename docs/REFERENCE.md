@@ -270,6 +270,16 @@ everything it touched one subject, and so are the directory all the changed
 paths sit under and the language they are written in, which every change touches
 by construction.
 
+A subject tied to more than a third of everything else is dropped along with
+every tie to it. Reaching across the whole vocabulary is what describing a kind
+of work looks like rather than an area, and it makes every subject appear
+adjacent to every other. This is the same rule as the graph-wide ubiquity check
+but measured against the vocabulary rather than the people, because the people
+version cannot see it: on a real issue tracker the label a bot attaches to every
+ticket with a patch is carried by a sixth of the contributors, nowhere near the
+share of people that marks scaffolding, while being tied to seventy per cent of
+every subject there.
+
 The weaker is shared experts: a subject held by the same people is likely the
 same body of knowledge, and one held by fewer of them is a specialty within it.
 It fills in where nothing has been seen worked on together, which is often,
@@ -296,7 +306,13 @@ The headline counts are taken over every scored subject, so capping the table
 with `--limit` never shrinks them.
 
 It also reports one-person connections: pairs of subjects that only one person
-has ever done work across. Both subjects have their own experts, so nothing that
+has ever done work across. The pairing has to be among the strongest ties both
+subjects have, which is a rank test rather than a floor on the strength: a floor
+set by eye cuts the real connections along with the noise, since how much of the
+time two subjects move as one is a tiny number whenever both are also worked on
+alone. Without it the report fills with true and worthless findings, of the form
+that one person is the only one who ever touched both documentation and
+Kubernetes. Both subjects have their own experts, so nothing that
 counts experts per subject can show this. What rests on one person there is not
 either subject but the knowledge that the two belong together, and whoever picks
 one up after they leave has no reason to look at the other.

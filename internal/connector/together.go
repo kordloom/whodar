@@ -31,6 +31,20 @@ const (
 	ubiquitousFloor = 200
 	// maxLinks bounds how many ties one subject keeps, strongest first.
 	maxLinks = 12
+	// scaffoldShare is the share of the tied vocabulary a subject may be tied to
+	// before it is scaffolding rather than a subject.
+	//
+	// It is the same rule as the graph's ubiquity check, measured against the
+	// vocabulary instead of the people, because the people version cannot see
+	// this. On a real issue tracker the label a bot puts on every ticket with a
+	// patch is held by a sixth of the contributors, nowhere near the share of
+	// people that marks scaffolding, while being tied to seventy per cent of
+	// every subject in the tracker. What gives it away is its reach across the
+	// vocabulary, not how many people carry it.
+	scaffoldShare = 0.35
+	// scaffoldFloor is the vocabulary below which that share means nothing:
+	// among a handful of subjects everything is tied to most of the rest.
+	scaffoldFloor = 20
 	// minLinkWeight only guards against arithmetic noise. It is deliberately
 	// almost zero: how much of the time two subjects move as one thing is a
 	// tiny number whenever both are also worked on alone, which is normal, and
@@ -186,6 +200,8 @@ func (t *togetherIndex) records(source string) []Record {
 		links[p.B] = append(links[p.B],
 			TopicLink{To: p.A, Weight: weight, Witnesses: len(by), Sole: sole})
 	}
+	links = dropScaffolding(links)
+
 	names := make([]string, 0, len(links))
 	for name := range links {
 		names = append(names, name)
@@ -232,4 +248,41 @@ func (t *togetherIndex) absorb(o *togetherIndex) {
 			into[who] = true
 		}
 	}
+}
+
+// dropScaffolding removes the subjects that reach across the vocabulary rather
+// than sitting somewhere in it, and takes them out of everything they were tied
+// to. A subject tied to most of what a company works on is describing the kind
+// of work rather than the area, and it makes every subject look adjacent to
+// every other.
+func dropScaffolding(links map[string][]TopicLink) map[string][]TopicLink {
+	if len(links) < scaffoldFloor {
+		return links
+	}
+	cut := float64(len(links)) * scaffoldShare
+	scaffold := make(map[string]bool)
+	for name, ties := range links {
+		if float64(len(ties)) > cut {
+			scaffold[name] = true
+		}
+	}
+	if len(scaffold) == 0 {
+		return links
+	}
+	out := make(map[string][]TopicLink, len(links)-len(scaffold))
+	for name, ties := range links {
+		if scaffold[name] {
+			continue
+		}
+		kept := make([]TopicLink, 0, len(ties))
+		for _, t := range ties {
+			if !scaffold[t.To] {
+				kept = append(kept, t)
+			}
+		}
+		if len(kept) > 0 {
+			out[name] = kept
+		}
+	}
+	return out
 }

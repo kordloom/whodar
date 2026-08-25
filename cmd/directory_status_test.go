@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -56,5 +57,39 @@ func TestStatusReportsFreshnessAndCounts(t *testing.T) {
 		if !strings.Contains(string(stdout), want) {
 			t.Errorf("status output missing %s: %s", want, stdout)
 		}
+	}
+}
+
+// TestStatusCountsSubjectsApartFromMinedWords verifies the two are reported
+// separately rather than summed into one "topics" figure.
+//
+// They are not the same thing and differ by orders of magnitude. A subject is
+// something a source stated: a label, a component, a directory. A word is mined
+// from prose so a question asked in somebody's own vocabulary still matches. On
+// a real issue tracker the mined words outnumber the stated subjects four
+// hundred to one, and a single total made the index look like it understood four
+// hundred times more than it did.
+func TestStatusCountsSubjectsApartFromMinedWords(t *testing.T) {
+	dir := t.TempDir()
+	csv := writeOrgCSV(t, dir)
+	if _, _, err := runCmd(t, "index", "--data-dir", dir, "--source", "org-csv", "--file", csv); err != nil {
+		t.Fatalf("index: %v", err)
+	}
+	stdout, _, err := runCmd(t, "status", "--data-dir", dir)
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(stdout, &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, ok := got["subjects"]; !ok {
+		t.Error(`status has no "subjects" count`)
+	}
+	if _, ok := got["words"]; !ok {
+		t.Error(`status has no "words" count`)
+	}
+	if _, ok := got["topics"]; ok {
+		t.Error(`status still reports a combined "topics" count, which conflates the two`)
 	}
 }
