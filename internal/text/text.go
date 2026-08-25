@@ -35,7 +35,7 @@ var stopwords = map[string]bool{
 	// names a subject: asked who knows the most about something, whodar was
 	// answering with whoever had touched a file called most.
 	"most": true, "more": true, "less": true, "least": true, "many": true,
-	"much": true, "few": true, "new": true, "old": true, 	"first": true, "last": true, "next": true, "other": true,
+	"much": true, "few": true, "new": true, "old": true, "first": true, "last": true, "next": true, "other": true,
 	"another": true, "same": true, "different": true, "thing": true,
 	"things": true, "stuff": true, "way": true, "ways": true, "lot": true,
 	"could": true, "will": true, "was": true, "were": true, "been": true,
@@ -138,12 +138,20 @@ func Stem(token string) string {
 // confidence agree with what actually scored, including fuzzy hits that
 // resolved to a different stem than the raw query term.
 func StemMatches(want string, texts ...string) bool {
+	_, ok := StemMatch(want, texts...)
+	return ok
+}
+
+// StemMatch is StemMatches with the word it found. Reporting a correction is
+// only useful if it names what was matched: told that "zigby" was corrected,
+// somebody still does not know whether whodar read it as zigbee or as zigzag.
+func StemMatch(want string, texts ...string) (string, bool) {
 	for _, txt := range texts {
 		for _, tok := range Tokenize(txt) {
 			if Stem(tok) == want {
-				return true
+				return tok, true
 			}
 		}
 	}
-	return false
+	return "", false
 }

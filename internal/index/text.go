@@ -19,3 +19,6 @@ func stem(token string) string { return text.Stem(token) }
 
 // stemMatches reports whether want equals the stem of any token of texts.
 func stemMatches(want string, texts ...string) bool { return text.StemMatches(want, texts...) }
+
+// stemMatch is stemMatches with the word it found.
+func stemMatch(want string, texts ...string) (string, bool) { return text.StemMatch(want, texts...) }

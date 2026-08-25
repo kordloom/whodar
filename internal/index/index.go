@@ -991,8 +991,13 @@ func resolveTerms(
 // resolveTerm returns the posting key for one term: its own stem when a
 // posting exists, otherwise the closest vocabulary key within the allowed
 // edit distance. Only keys whose length is within that distance of the stem
-// can match, so the search is confined to those length buckets. Ties break to
-// the lexicographically smallest key so results are deterministic.
+// can match, so the search is confined to those length buckets.
+//
+// Equally close corrections break to the one the organization actually uses,
+// measured by how many people hold it. A real code base contains its own
+// misspellings, and they sit exactly as close to a typo as the correct word
+// does: asked about "blutooth", whodar answered with a directory misspelled
+// "blueooth" rather than bluetooth, purely because it sorted first.
 func resolveTerm(
 	postings map[string]map[model.ID]float64, vocab vocabIndex, term string,
 ) (termHit, bool) {
@@ -1008,12 +1013,16 @@ func resolveTerm(
 	if runes >= fuzzyTwoEditLen {
 		maxDist = 2
 	}
-	best, bestDist := "", maxDist+1
+	best, bestDist, bestHeld := "", maxDist+1, -1
 	for l := len(key) - maxDist; l <= len(key)+maxDist; l++ {
 		for _, cand := range vocab.byLen[l] {
 			d := levenshtein.ComputeDistance(key, cand)
-			if d < bestDist || (d == bestDist && best != "" && cand < best) {
-				best, bestDist = cand, d
+			if d > bestDist {
+				continue
+			}
+			held := len(postings[cand])
+			if d < bestDist || held > bestHeld || (held == bestHeld && cand < best) {
+				best, bestDist, bestHeld = cand, d, held
 			}
 		}
 	}
@@ -1162,12 +1171,21 @@ func (ix *Index) reasons(
 	for term := range terms {
 		hit := resolved[term]
 		field, strength := "mention", evidenceMention
+		var found string
+		// take records the word a stem lookup found, so a switch case can
+		// classify the hit and capture what it matched in the same test.
+		take := func(word string, ok bool) bool {
+			if ok {
+				found = word
+			}
+			return ok
+		}
 		switch {
-		case pt != nil && stemMatches(hit.key, pt.Topics...):
+		case pt != nil && take(stemMatch(hit.key, pt.Topics...)):
 			field, strength = "topic", evidenceTopic
-		case pt != nil && stemMatches(hit.key, pt.Titles...):
+		case pt != nil && take(stemMatch(hit.key, pt.Titles...)):
 			field, strength = "title", evidenceTitle
-		case pt != nil && stemMatches(hit.key, pt.Teams...):
+		case pt != nil && take(stemMatch(hit.key, pt.Teams...)):
 			field, strength = "team", evidenceTeam
 		}
 		evidence = max(evidence, strength)
@@ -1176,6 +1194,14 @@ func (ix *Index) reasons(
 		// from the question.
 		if from := asked[term]; from != "" && from != term {
 			out = append(out, fmt.Sprintf("%s (%s) for %q", term, field, from))
+			continue
+		}
+		// A correction has to name what it corrected to. Told only that
+		// "zigby" was fuzzy, a reader cannot tell whether whodar read it as
+		// zigbee or as zigzag, which is the difference between a lucky save
+		// and a wrong guess presented with confidence.
+		if hit.fuzzy() && found != "" && found != term {
+			out = append(out, fmt.Sprintf("%s (%s, read for %q)", found, field, term))
 			continue
 		}
 		if hit.fuzzy() {
@@ -1199,17 +1225,34 @@ func (ix *Index) channelReasons(
 	for term := range terms {
 		hit := resolved[term]
 		field, strength := "mention", evidenceMention
+		var found string
+		// take records the word a stem lookup found, so a switch case can
+		// classify the hit and capture what it matched in the same test.
+		take := func(word string, ok bool) bool {
+			if ok {
+				found = word
+			}
+			return ok
+		}
 		switch {
-		case ct != nil && stemMatches(hit.key, ct.Topics...):
+		case ct != nil && take(stemMatch(hit.key, ct.Topics...)):
 			field, strength = "topic", evidenceTopic
-		case ct != nil && stemMatches(hit.key, ct.Topic):
+		case ct != nil && take(stemMatch(hit.key, ct.Topic)):
 			field, strength = "topic", evidenceTopic
-		case ct != nil && stemMatches(hit.key, ct.Name):
+		case ct != nil && take(stemMatch(hit.key, ct.Name)):
 			field, strength = "name", evidenceTopic
 		}
 		evidence = max(evidence, strength)
 		if from := asked[term]; from != "" && from != term {
 			out = append(out, fmt.Sprintf("%s (%s) for %q", term, field, from))
+			continue
+		}
+		// A correction has to name what it corrected to. Told only that
+		// "zigby" was fuzzy, a reader cannot tell whether whodar read it as
+		// zigbee or as zigzag, which is the difference between a lucky save
+		// and a wrong guess presented with confidence.
+		if hit.fuzzy() && found != "" && found != term {
+			out = append(out, fmt.Sprintf("%s (%s, read for %q)", found, field, term))
 			continue
 		}
 		if hit.fuzzy() {

@@ -543,8 +543,9 @@ written by that project's maintainers, so the answer is not graded by us.
 A term that matches nothing falls back to fuzzy matching: the closest indexed
 term within one edit (four-letter terms and up) or two edits (seven and up)
 scores instead, at a penalty per edit so an exact match always outranks a
-corrected one. Corrected terms say so in the reasons, e.g. `terrafrom
-(topic, fuzzy)`.
+corrected one. A corrected term says so in the reasons and names what it
+was read as, e.g. `terraform (topic, read for "terrafrom")`, so a lucky save can
+be told from a wrong guess.
 
 ## Recency
 

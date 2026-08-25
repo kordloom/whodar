@@ -45,7 +45,7 @@ func TestSearchRanking(t *testing.T) {
 		{Name: "no substring inflation", Query: "auth", WantTop: "dana@x.com",
 			WantReason: "auth (mention)"},
 		{Name: "fuzzy topic typo", Query: "kafkaa", WantTop: "bob@x.com",
-			WantReason: "kafkaa (topic, fuzzy)"},
+			WantReason: "kafka (topic, read for \"kafkaa\")"},
 	}
 
 	ix := New()
