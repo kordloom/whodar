@@ -22,6 +22,13 @@ var codeStop = map[string]bool{
 	"go": true, "js": true, "ts": true, "jsx": true, "tsx": true, "py": true,
 	"rb": true, "java": true, "md": true, "txt": true, "yaml": true, "yml": true,
 	"json": true, "html": true, "css": true, "sh": true, "tf": true, "sql": true,
+	// Where generated and test material lives. These directories exist in every
+	// area of a code base, so counting them as subjects makes the busiest
+	// subjects the ones nobody has expertise in. Words that could name real
+	// work, such as cache or target, are deliberately left out.
+	"fixtures": true, "fixture": true, "snapshots": true, "snapshot": true,
+	"testdata": true, "mocks": true, "generated": true, "coverage": true,
+	"__pycache__": true, "venv": true, "egg-info": true, "min": true,
 }
 
 // extTopics maps file extensions to the topic words people search for, so an
