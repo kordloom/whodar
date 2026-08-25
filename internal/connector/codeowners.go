@@ -186,13 +186,54 @@ func pathTopics(p string) []string {
 		}
 		for part := range strings.SplitSeq(seg, ".") {
 			part = strings.ToLower(strings.TrimSpace(part))
-			if len(part) < 3 || codeStop[part] {
+			if len(part) < 3 || codeStop[part] || !isSubject(part) {
 				continue
 			}
 			out = append(out, part)
+			// Directories and files are named in snake_case and kebab-case, and
+			// the words inside are what people actually ask about: somebody
+			// wanting the zwave expert types "zwave", not "zwave_js". Keep the
+			// whole name too, since that is what the repository calls it.
+			out = append(out, wordsIn(part)...)
 		}
 	}
 	return out
+}
+
+// wordsIn splits a compound name on the separators code uses, returning the
+// parts worth treating as subjects in their own right. The name itself is not
+// repeated here; the caller already has it.
+func wordsIn(name string) []string {
+	if !strings.ContainsAny(name, "_-") {
+		return nil
+	}
+	var out []string
+	for part := range strings.FieldsFuncSeq(name, func(r rune) bool { return r == '_' || r == '-' }) {
+		if len(part) < 3 || codeStop[part] || !isSubject(part) {
+			continue
+		}
+		out = append(out, part)
+	}
+	return out
+}
+
+// isSubject reports whether a token from a path is a name somebody could ask
+// about. Repositories are full of tokens that look like words and are not:
+// fixture files called 000001, device identifiers, content hashes. Nobody asks
+// who knows 0001, and left in they crowd the top of any report that ranks
+// subjects. A name has more letters in it than digits; 2fa and oauth2 keep
+// their place, 002s and 0101x do not.
+func isSubject(token string) bool {
+	var letters, digits int
+	for _, r := range token {
+		switch {
+		case r >= '0' && r <= '9':
+			digits++
+		case r >= 'a' && r <= 'z':
+			letters++
+		}
+	}
+	return letters > digits
 }
 
 // patternNames maps a pattern's file extension or special filename to the topic
