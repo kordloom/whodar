@@ -63,3 +63,33 @@ func TestGeneratedCompanyHasWorkThatCrossesAreas(t *testing.T) {
 		}
 	}
 }
+
+// TestGeneratedCompanyHasWorkOneLeadHolds checks the sample company contains a
+// joined body of work resting on a single person.
+//
+// It is the heaviest finding whodar makes and the generated company had nothing
+// to show for it, so the public demo displayed an empty panel where the best
+// thing in the report belongs. Neighbouring subjects now deliberately fall to
+// one owner, which is how a real company looks: somebody ends up holding a whole
+// corner of it.
+func TestGeneratedCompanyHasWorkOneLeadHolds(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	ix, err := BuildBigIndex(dir)
+	if err != nil {
+		t.Fatalf("BuildBigIndex: %v", err)
+	}
+	regions := resolve.Regions(ix, 0)
+	if len(regions) == 0 {
+		t.Fatal("no joined work found, so the demo shows an empty panel where the finding belongs")
+	}
+	for _, r := range regions {
+		if r.Lead == "" {
+			t.Errorf("a region of %v rests on nobody named", r.Topics)
+		}
+		if r.Size() < 3 {
+			t.Errorf("region %v joins %d subjects; fewer than three is a pair, which risk already shows",
+				r.Topics, r.Size())
+		}
+	}
+}

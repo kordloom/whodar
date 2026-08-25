@@ -273,12 +273,35 @@ func buildBigOwners(people []person) []owner {
 				perTeam[team]++
 			}
 		}
+		// A few neighbouring subjects deliberately fall to one person, which is
+		// how a real company looks: somebody ends up holding a whole corner of
+		// it. Combined with the work that crosses between them, that corner is
+		// a joined body of work resting on one person, which is the heaviest
+		// finding whodar makes and had nothing to find in the sample company.
+		if held, ok := heldTogether[s]; ok && len(owners) > held {
+			idx = indexOf(people, owners[held].who)
+		}
 		people[idx].topics = append(people[idx].topics, s)
 		owners = append(owners, owner{
 			subject: s, who: people[idx], channel: fmt.Sprintf("C%03d", s),
 		})
 	}
 	return owners
+}
+
+// heldTogether maps a subject to the earlier subject whose owner also takes it,
+// so those subjects share one person. The keys must be consecutive with their
+// value, since only neighbouring subjects have work crossing between them.
+var heldTogether = map[int]int{1: 0, 2: 0, 3: 0}
+
+// indexOf finds a person in the roster by email, or 0 if the roster is empty.
+func indexOf(people []person, who person) int {
+	for i := range people {
+		if people[i].email == who.email {
+			return i
+		}
+	}
+	return 0
 }
 
 // orgCSV renders the company as the org-csv source reads it, with the management
