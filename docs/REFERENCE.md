@@ -286,6 +286,13 @@ which sources it saw so a reader can judge how much of the company it covered.
 The headline counts are taken over every scored subject, so capping the table
 with `--limit` never shrinks them.
 
+It also reports joined work: connected bodies of subjects that get changed
+together where the same person leads every one. That is a heavier finding than a
+concentrated subject on its own, and a per-subject list cannot show it. Ten
+unrelated subjects held by one person are ten small risks; ten that move
+together and rest on the same person are one large one, because whoever takes
+the work over has to learn the whole of it at once.
+
 Deterministic arithmetic over the graph, no model needed.
 
 ## whodar ownership

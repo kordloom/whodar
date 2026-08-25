@@ -1,0 +1,114 @@
+package resolve
+
+import (
+	"fmt"
+	"slices"
+	"testing"
+
+	"github.com/kordloom/whodar/internal/connector"
+	"github.com/kordloom/whodar/internal/index"
+)
+
+// tied returns a record tying one subject to several others.
+func tied(name string, to ...string) connector.Record {
+	r := connector.Record{Kind: connector.KindTopic, Name: name, Source: "git"}
+	for _, t := range to {
+		r.Links = append(r.Links, connector.TopicLink{To: t, Weight: 0.5})
+	}
+	return r
+}
+
+// held returns a person holding each subject as many times as it is repeated.
+func held(name, email string, topics ...string) connector.Record {
+	return connector.Record{
+		Kind: connector.KindPerson, Name: name, Email: email,
+		Topics: topics, Source: "git",
+	}
+}
+
+// TestRegionsFindWorkThatMovesTogether checks whodar reports a connected body
+// of work resting on one person as a single finding. Per-subject risk shows
+// three separate small problems where there is really one large one: whoever
+// takes the work over has to learn all of it at once.
+func TestRegionsFindWorkThatMovesTogether(t *testing.T) {
+	t.Parallel()
+	ix := index.New()
+	ix.Build([]connector.Record{
+		held("Ada", "ada@x.com", "dlna", "dlna", "dmr", "dmr", "dms", "dms"),
+		tied("dlna", "dmr", "dms"),
+		tied("dmr", "dlna"),
+		tied("dms", "dlna"),
+	})
+	ix.Canonicalize()
+
+	got := Regions(ix, 5)
+	if len(got) != 1 {
+		t.Fatalf("regions = %+v, want the three joined subjects reported as one", got)
+	}
+	if got[0].Lead != "Ada" {
+		t.Errorf("lead = %q, want Ada", got[0].Lead)
+	}
+	for _, want := range []string{"dlna", "dmr", "dms"} {
+		if !slices.Contains(got[0].Topics, want) {
+			t.Errorf("region = %v, want %q in it", got[0].Topics, want)
+		}
+	}
+}
+
+// TestRegionStopsWhereTheLeadChanges checks a region is one person's, not the
+// whole graph. Ties run on past the edge of what somebody leads, and following
+// them would merge every connected subject in the organization into one finding
+// that names nobody.
+func TestRegionStopsWhereTheLeadChanges(t *testing.T) {
+	t.Parallel()
+	ix := index.New()
+	ix.Build([]connector.Record{
+		held("Ada", "ada@x.com", "dlna", "dlna", "dmr", "dmr", "dms", "dms"),
+		held("Bo", "bo@x.com", "kasa", "kasa", "sense", "sense", "emulated", "emulated"),
+		tied("dlna", "dmr", "dms"),
+		tied("dms", "kasa"), // the bridge between the two people's work
+		tied("kasa", "sense", "emulated"),
+	})
+	ix.Canonicalize()
+
+	for _, r := range Regions(ix, 5) {
+		hasAda := slices.Contains(r.Topics, "dlna")
+		hasBo := slices.Contains(r.Topics, "kasa")
+		if hasAda && hasBo {
+			t.Errorf("region %v spans two people's work, want it to stop at the edge", r.Topics)
+		}
+	}
+}
+
+// TestRegionsIgnoreThePersonWhoTouchesEverything is the guard that has had to
+// be written four times in four places. Ranking a subject by raw weight hands
+// every subject in a code base to whoever touches all of it, and the regions
+// then belong to that person instead of to the people who actually own them.
+func TestRegionsIgnoreThePersonWhoTouchesEverything(t *testing.T) {
+	t.Parallel()
+	recs := []connector.Record{
+		held("Owner", "owner@x.com", "dlna", "dlna", "dmr", "dmr", "dms", "dms"),
+		tied("dlna", "dmr", "dms"),
+		tied("dmr", "dlna"),
+		tied("dms", "dlna"),
+	}
+	// Somebody who touches every area in the company, this one included, harder
+	// than its owner does.
+	sweep := []string{"dlna", "dlna", "dlna", "dmr", "dmr", "dmr", "dms", "dms", "dms"}
+	for i := range 80 {
+		sweep = append(sweep, fmt.Sprintf("area%d", i), fmt.Sprintf("area%d", i))
+	}
+	recs = append(recs, held("Sweeper", "sweeper@x.com", sweep...))
+
+	ix := index.New()
+	ix.Build(recs)
+	ix.Canonicalize()
+
+	got := Regions(ix, 5)
+	if len(got) == 0 {
+		t.Fatal("the joined work was not reported at all")
+	}
+	if got[0].Lead != "Owner" {
+		t.Errorf("lead = %q, want Owner, who does this work rather than all work", got[0].Lead)
+	}
+}

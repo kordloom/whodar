@@ -37,6 +37,11 @@ type Brief struct {
 	Totals Counts
 	// Exposed are the people the risks trace back to, most exposed first.
 	Exposed []Exposure
+	// Regions are the connected bodies of work that rest on one person:
+	// subjects changed together where the same person leads every one. They are
+	// the largest findings in the report, because whoever picks one up has to
+	// learn the whole of it rather than a subject at a time.
+	Regions []resolve.Region
 }
 
 // Exposure is one person and the knowledge that would leave with them.

@@ -64,8 +64,11 @@ Examples:
 				})
 			}
 			report := resolve.Risk(ix, limit)
-			return opts.render(cmd.OutOrStdout(), map[string]any{"topics": report}, func(w io.Writer, s style) {
+			regions := resolve.Regions(ix, regionsShown)
+			view := map[string]any{"topics": report, "regions": regions}
+			return opts.render(cmd.OutOrStdout(), view, func(w io.Writer, s style) {
 				renderRisk(w, report, s)
+				renderRegions(w, regions, s)
 			})
 		},
 	}
@@ -74,6 +77,10 @@ Examples:
 		"Write a self-contained HTML brief to this path, for sending to somebody without whodar.")
 	return cmd
 }
+
+// regionsShown is how many joined bodies of work the report names. They are
+// the largest findings it has, so a handful is enough to act on.
+const regionsShown = 8
 
 // briefRows is how many subjects a brief lists before it stops, unless asked
 // for a different number. The figures above the table always count every scored
@@ -97,6 +104,7 @@ func writeRiskHTML(cmd *cobra.Command, ix *index.Index, path string, limit int) 
 		Scored:    len(all),
 		Sources:   ix.SourceNames(),
 		Risks:     listed,
+		Regions:   resolve.Regions(ix, regionsShown),
 		Totals:    report.Count(all, exposed),
 		Exposed:   exposed,
 	}

@@ -669,6 +669,41 @@ func renderRelated(w io.Writer, topic string, rel []resolve.TopicRelation, s sty
 	}
 }
 
+// renderRegions lists the connected bodies of work that rest on one person.
+// This is a different finding from a concentrated subject and a worse one: ten
+// unrelated subjects held by one person are ten small risks, while ten that are
+// changed together and led by the same person are one large one, because
+// whoever picks the work up has to learn the whole region at once.
+func renderRegions(w io.Writer, regions []resolve.Region, s style) {
+	if len(regions) == 0 {
+		return
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, s.bold(fmt.Sprintf(
+		"Joined work  %d %s where subjects that change together all rest on one person",
+		len(regions), plural2(len(regions), "body", "bodies"))))
+	for _, r := range regions {
+		shown := r.Topics
+		const most = 6
+		tail := ""
+		if len(shown) > most {
+			tail = fmt.Sprintf(" and %d more", len(shown)-most)
+			shown = shown[:most]
+		}
+		fmt.Fprintf(w, "  %s  %s\n", s.bold(r.Lead),
+			s.dim(fmt.Sprintf("%d joined subjects", r.Size())))
+		fmt.Fprintf(w, "      %s%s\n", strings.Join(shown, ", "), s.dim(tail))
+	}
+}
+
+// plural2 picks between two spellings of a word.
+func plural2(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
 func renderOwnership(w io.Writer, report resolve.OwnershipReport, s style) {
 	drift := report.Drift
 	if report.Declared == 0 {
