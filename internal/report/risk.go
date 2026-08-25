@@ -113,6 +113,10 @@ type Counts struct {
 	SinglePoint int
 	// Exposed is how many people solely hold at least one topic.
 	Exposed int
+	// MovedOn is how many subjects rest on somebody who has stopped working on
+	// them. It is the sharpest count in the report: the expert it would send
+	// you to has already gone.
+	MovedOn int
 }
 
 // Count tallies the headline figures over every scored subject. It is taken
@@ -129,6 +133,9 @@ func Count(risks []resolve.TopicRisk, exposed []Exposure) Counts {
 		}
 		if len(r.Experts) == 1 {
 			c.SinglePoint++
+		}
+		if len(r.Experts) > 0 && r.Experts[0].Quiet {
+			c.MovedOn++
 		}
 	}
 	for _, ex := range exposed {

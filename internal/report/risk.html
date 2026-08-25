@@ -159,6 +159,10 @@ footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 
 			<span class="n">{{ $c.SinglePoint }}</span>
 			<span class="k">Held by one person</span>
 		</button>
+		<button type="button" class="card crit" data-jump="topics">
+			<span class="n">{{ $c.MovedOn }}</span>
+			<span class="k">Whose expert has moved on</span>
+		</button>
 		<button type="button" class="card" data-jump="people">
 			<span class="n">{{ $c.Exposed }}</span>
 			<span class="k">People holding knowledge alone</span>
@@ -169,6 +173,7 @@ footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 
 <section id="topics">
 	<h2>Concentrated subjects <span class="count">({{ if lt (len .Risks) .Scored }}worst {{ len .Risks }} of {{ .Scored }}{{ else }}all {{ .Scored }}{{ end }})</span></h2>
 	{{ if lt (len .Risks) .Scored }}<p class="desc">Listed here are the {{ len .Risks }} subjects resting on the most work, of {{ .Scored }} scored. The figures above count all {{ .Scored }} of them. Run the report with <code>--limit 0</code> for the whole table.</p>{{ end }}
+	<p class="desc">Where an expert is marked <em>not lately</em>, they know the subject but have stopped working on it. That is a sharper finding than concentration alone: measured against a real project, a lead who had already stopped was less than half as likely to still hold the subject six months on.</p>
 	<p class="desc">A subject is concentrated when most of its expertise sits with one or two people. Bus factor is how few people together hold the majority of it, so a bus factor of one means a single departure takes the topic with it.</p>
 	{{ if .Risks }}
 	<div class="toolbar">
@@ -194,7 +199,7 @@ footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 
 				<td><span class="pill {{ .Level }}" data-rank="{{ if eq .Level "critical" }}3{{ else if eq .Level "elevated" }}2{{ else }}1{{ end }}">{{ .Level }}</span></td>
 				<td class="num">{{ .BusFactor }}</td>
 				<td class="num">{{ pct .Concentration }}</td>
-				<td>{{ range $i, $e := .Experts }}{{ if $i }}, {{ end }}{{ $e.Name }} ({{ pct $e.Share }}){{ end }}</td>
+				<td>{{ range $i, $e := .Experts }}{{ if $i }}, {{ end }}{{ $e.Name }} ({{ pct $e.Share }}{{ if $e.Quiet }}, not lately{{ end }}){{ end }}</td>
 				<td class="also">{{ join .Includes }}</td>
 			</tr>
 		{{ end }}

@@ -543,13 +543,23 @@ func renderRisk(w io.Writer, topics []resolve.TopicRisk, s style) {
 		fmt.Fprintln(w, s.dim("No topics scored yet. Index a source with expertise signal first."))
 		return
 	}
-	crit := 0
+	crit, gone := 0, 0
 	for _, t := range topics {
 		if t.Level == "critical" {
 			crit++
 		}
+		// A subject resting on somebody who has already stopped working on it
+		// is the sharpest thing in this report, and counting it in the headline
+		// is the difference between a reader noticing and not.
+		if len(t.Experts) > 0 && t.Experts[0].Quiet {
+			gone++
+		}
 	}
-	fmt.Fprintln(w, s.bold(fmt.Sprintf("Knowledge risk  %d topics scored, %d critical", len(topics), crit)))
+	head := fmt.Sprintf("Knowledge risk  %d topics scored, %d critical", len(topics), crit)
+	if gone > 0 {
+		head += fmt.Sprintf(", %d whose strongest expert has moved on", gone)
+	}
+	fmt.Fprintln(w, s.bold(head))
 	width := riskTopicWidth(topics)
 	last := ""
 	for _, t := range topics {
@@ -563,7 +573,13 @@ func renderRisk(w io.Writer, topics []resolve.TopicRisk, s style) {
 			fmt.Fprintf(w, "      %s\n", s.dim("also called "+strings.Join(t.Includes, ", ")))
 		}
 		for _, e := range t.Experts {
-			fmt.Fprintf(w, "      %s %s\n", pct(e.Share), s.dim(e.Name))
+			// Whether the person holding a subject is still in it changes what
+			// the finding means, so it is said on the same line as their share.
+			note := ""
+			if e.Quiet {
+				note = s.dim("  not lately")
+			}
+			fmt.Fprintf(w, "      %s %s%s\n", pct(e.Share), s.dim(e.Name), note)
 		}
 	}
 }

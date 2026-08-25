@@ -147,3 +147,38 @@ func TestDepartureNamesTheWholeRegion(t *testing.T) {
 		t.Error("nothing at all was reported as leaving with them")
 	}
 }
+
+// TestRiskMarksAnExpertWhoHasMovedOn checks a concentrated subject says whether
+// the person holding it is still in it. A subject resting on one person is a
+// risk; a subject resting on one person who has already stopped working on it
+// is a sharper one, and the two are indistinguishable without this.
+func TestRiskMarksAnExpertWhoHasMovedOn(t *testing.T) {
+	t.Parallel()
+	ix := index.New()
+	ix.Build([]connector.Record{
+		{Kind: connector.KindPerson, Name: "Gone", Email: "gone@x.com",
+			Topics: []string{"billing", "billing"}, RecentTopics: []string{"other"}, Source: "git"},
+		{Kind: connector.KindPerson, Name: "Here", Email: "here@x.com",
+			Topics: []string{"ledger", "ledger"}, RecentTopics: []string{"ledger", "ledger"}, Source: "git"},
+	})
+	ix.Canonicalize()
+
+	byTopic := map[string]TopicRisk{}
+	for _, r := range Risk(ix, 0) {
+		byTopic[r.Topic] = r
+	}
+	billing, ok := byTopic["billing"]
+	if !ok || len(billing.Experts) == 0 {
+		t.Fatalf("billing was not scored: %+v", byTopic)
+	}
+	if !billing.Experts[0].Quiet {
+		t.Error("billing rests on somebody who stopped working on it, and the report does not say so")
+	}
+	ledger, ok := byTopic["ledger"]
+	if !ok || len(ledger.Experts) == 0 {
+		t.Fatalf("ledger was not scored: %+v", byTopic)
+	}
+	if ledger.Experts[0].Quiet {
+		t.Error("ledger's expert is still in it and was wrongly marked as gone")
+	}
+}

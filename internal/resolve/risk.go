@@ -20,6 +20,11 @@ type RiskExpert struct {
 	Name string `json:"name"`
 	// Share is the fraction of the topic's expertise this person holds, 0 to 1.
 	Share float64 `json:"share"`
+	// Quiet marks an expert who has stopped working on the topic. A subject
+	// resting on one person is a risk; a subject resting on one person who has
+	// already moved on is a different and sharper one, and the two look
+	// identical without this.
+	Quiet bool `json:"quiet,omitempty"`
 }
 
 // TopicRisk is the knowledge-concentration risk for one topic: how few people
@@ -88,7 +93,10 @@ func Risk(ix *index.Index, limit int) []TopicRisk {
 		experts := make([]RiskExpert, 0, len(people))
 		for id, w := range people {
 			total += w
-			experts = append(experts, RiskExpert{ID: string(id), Name: personName(ix, id), Share: w})
+			experts = append(experts, RiskExpert{
+				ID: string(id), Name: personName(ix, id), Share: w,
+				Quiet: hasMovedOn(ix, id, model.ID(topic)),
+			})
 		}
 		if total <= 0 {
 			continue
@@ -204,6 +212,17 @@ func Departure(ix *index.Index, query string) DepartureImpact {
 		}
 	}
 	return imp
+}
+
+// hasMovedOn reports whether somebody holds a subject but has stopped working
+// on it. A source that cannot say what was recent claims nothing either way,
+// which is why an absent record is not read as absence.
+func hasMovedOn(ix *index.Index, id model.ID, topic model.ID) bool {
+	p := ix.Graph.People[ix.CanonicalID(id)]
+	if p == nil || len(p.Recent) == 0 {
+		return false
+	}
+	return p.Topics[topic] > 0 && p.Recent[topic] == 0
 }
 
 // levelRank orders the risk levels for sorting, most severe first.
