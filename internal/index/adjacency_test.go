@@ -2,6 +2,7 @@ package index
 
 import (
 	"fmt"
+	"github.com/kordloom/whodar/internal/connector"
 	"testing"
 
 	"github.com/kordloom/whodar/internal/model"
@@ -84,5 +85,51 @@ func TestNearRanksBySharedGroupsAndTopics(t *testing.T) {
 		if a.ID == "alice" {
 			t.Errorf("focal person appeared in results")
 		}
+	}
+}
+
+// TestNearIsNotTheSamePeopleForEveryone checks proximity is measured against
+// how much each person knows rather than as a raw total. Every organization has
+// a few people who touch all of it, and by raw overlap they are near everybody:
+// whoever you asked about, the answer came back as the same handful of names.
+func TestNearIsNotTheSamePeopleForEveryone(t *testing.T) {
+	t.Parallel()
+	recs := []connector.Record{
+		// Two pairs who genuinely work alongside each other.
+		{Kind: connector.KindPerson, Name: "Radio One", Email: "r1@x.com",
+			Topics: []string{"zigbee", "zigbee", "thread"}, Source: "git"},
+		{Kind: connector.KindPerson, Name: "Radio Two", Email: "r2@x.com",
+			Topics: []string{"zigbee", "zigbee", "thread"}, Source: "git"},
+		{Kind: connector.KindPerson, Name: "Storage One", Email: "s1@x.com",
+			Topics: []string{"recorder", "recorder", "history"}, Source: "git"},
+		{Kind: connector.KindPerson, Name: "Storage Two", Email: "s2@x.com",
+			Topics: []string{"recorder", "recorder", "history"}, Source: "git"},
+	}
+	// And somebody who touches everything, including both pairs.
+	sweep := []string{"zigbee", "thread", "recorder", "history"}
+	for i := range 60 {
+		sweep = append(sweep, fmt.Sprintf("area%d", i), fmt.Sprintf("area%d", i))
+	}
+	recs = append(recs, connector.Record{
+		Kind: connector.KindPerson, Name: "Sweeper", Email: "sweep@x.com",
+		Topics: sweep, Source: "git",
+	})
+
+	ix := New()
+	ix.Build(recs)
+	ix.Canonicalize()
+
+	nearest := func(who model.ID) string {
+		got := ix.Near(who, 1)
+		if len(got) == 0 {
+			t.Fatalf("%s has nobody near them", who)
+		}
+		return got[0].Name
+	}
+	if got := nearest("r1@x.com"); got != "Radio Two" {
+		t.Errorf("nearest to Radio One = %q, want their counterpart rather than the busiest person", got)
+	}
+	if got := nearest("s1@x.com"); got != "Storage Two" {
+		t.Errorf("nearest to Storage One = %q, want their counterpart rather than the busiest person", got)
 	}
 }
