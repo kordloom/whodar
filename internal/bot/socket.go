@@ -39,6 +39,9 @@ type socketEnvelope struct {
 	EnvelopeID string `json:"envelope_id"`
 	// Payload carries the event or slash command.
 	Payload struct {
+		// EventID identifies the event itself, unchanged across redeliveries,
+		// which is what makes it usable for telling a repeat from a new event.
+		EventID string `json:"event_id"`
 		// Event is the Slack event, set on events_api frames.
 		Event slackEvent `json:"event"`
 		// Slash-command fields, set on slash_commands frames.
@@ -229,6 +232,8 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 func (s *SocketRunner) session(ctx context.Context, conn wsConn) error {
 	defer func() { _ = conn.Close() }()
 	var answers sync.WaitGroup
+	// Only the read loop below touches this, so it needs no lock.
+	var handled recentEvents
 	defer answers.Wait()
 
 	// Closing the connection is what unblocks the read below, so the keepalive
@@ -276,6 +281,14 @@ func (s *SocketRunner) session(ctx context.Context, conn wsConn) error {
 			}
 			switch {
 			case env.Type == "events_api":
+				// Slack redelivers an event when an acknowledgment is slow or
+				// lost, and answering it twice means the bot replies twice to
+				// one question. The event's own id is stable across those
+				// redeliveries, so a repeat is still acknowledged and then
+				// dropped.
+				if !handled.first(env.Payload.EventID) {
+					continue
+				}
 				ev := env.Payload.Event
 				s.dispatch(ctx, &answers, func() {
 					routeEvent(ctx, s.engine, s.replier, s.botUserID, ev, s.log)
@@ -292,6 +305,43 @@ func (s *SocketRunner) session(ctx context.Context, conn wsConn) error {
 			}
 		}
 	}
+}
+
+// recentEvents remembers the events already answered, so a redelivery is not
+// answered again. It keeps a bounded window rather than everything: Slack only
+// retries for a few minutes, and a session that runs for months must not grow a
+// set for every message it ever saw.
+type recentEvents struct {
+	// seen holds the ids currently remembered.
+	seen map[string]bool
+	// order is those ids in arrival order, oldest first, for eviction.
+	order []string
+}
+
+// maxRememberedEvents bounds how many event ids a session keeps. Slack gives up
+// retrying long before this many events pass on any real workspace.
+const maxRememberedEvents = 2048
+
+// first reports whether this event has not been answered yet, and remembers it.
+// An event with no id cannot be told apart from any other, so it is treated as
+// new: answering twice is better than staying silent.
+func (r *recentEvents) first(id string) bool {
+	if id == "" {
+		return true
+	}
+	if r.seen == nil {
+		r.seen = make(map[string]bool, maxRememberedEvents)
+	}
+	if r.seen[id] {
+		return false
+	}
+	r.seen[id] = true
+	r.order = append(r.order, id)
+	if len(r.order) > maxRememberedEvents {
+		delete(r.seen, r.order[0])
+		r.order = r.order[1:]
+	}
+	return true
 }
 
 // dispatch runs fn on its own goroutine after acquiring an answer slot, so the

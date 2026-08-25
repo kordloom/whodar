@@ -378,14 +378,26 @@ func localSummary(people []model.Match, channels []model.ChannelMatch) string {
 // omitted. Unknown entries from the model are ignored, keeping the result
 // grounded.
 func reorderPeople(cands []model.Match, order []string) []model.Match {
+	// A display name shared by two candidates identifies neither. Indexed by
+	// name alone the second would quietly overwrite the first, so a reordering
+	// that said "Kim" would move whichever of the two happened to be stored
+	// last. Ambiguous names are left out entirely: the position and the email
+	// still name a person exactly, and a reference that resolves to nobody is
+	// better than one that resolves to the wrong body.
+	nameCount := make(map[string]int, len(cands))
+	for _, m := range cands {
+		if m.Person.Name != "" {
+			nameCount[strings.ToLower(m.Person.Name)]++
+		}
+	}
 	byKey := make(map[string]model.Match, len(cands)*3)
 	for i, m := range cands {
 		byKey[strconv.Itoa(i+1)] = m
 		if m.Person.Email != "" {
 			byKey[strings.ToLower(m.Person.Email)] = m
 		}
-		if m.Person.Name != "" {
-			byKey[strings.ToLower(m.Person.Name)] = m
+		if name := strings.ToLower(m.Person.Name); name != "" && nameCount[name] == 1 {
+			byKey[name] = m
 		}
 	}
 	out := make([]model.Match, 0, len(cands))

@@ -423,19 +423,21 @@ func githubRetryable(resp *http.Response) bool {
 	if resp.StatusCode != http.StatusForbidden && resp.StatusCode != http.StatusTooManyRequests {
 		return false
 	}
-	// A 429 is always a rate limit. A 403 is one when it carries a Retry-After
-	// or when the primary quota is exhausted (remaining zero). Either way the
-	// request should be retried after a wait rather than dropping the whole
-	// repository, which is what returning false here does. httputil applies a
-	// default backoff when no Retry-After is given, which is GitHub's guidance
-	// for a rate limit that omits the header.
+	// A 429 is a secondary limit: short, and worth waiting out. So is a 403
+	// carrying Retry-After, where GitHub has said how long to wait. httputil
+	// applies a default backoff when the header is absent.
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return true
 	}
 	if _, ok := httputil.RetryAfter(resp); ok {
 		return true
 	}
-	return resp.Header.Get("X-RateLimit-Remaining") == "0"
+	// An exhausted primary quota is different and must not be retried. It
+	// resets on a fixed clock that can be an hour away, so every retry fails
+	// exactly as the first did, and burning the budget on them ends in a
+	// generic rate-limit error. Returning false lets getURL report the reset
+	// time instead, which is the one thing the caller can act on.
+	return false
 }
 
 // nextLink extracts the rel="next" URL from a Link header, or empty.

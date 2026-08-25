@@ -162,6 +162,10 @@ func Load(path string, opts ...Option) (*Store, error) {
 	}
 	if len(postings) > 0 {
 		s.postings = postings
+		// Which terms belong to which episode is not stored, but inverting the
+		// postings once on load costs a single pass and spares every later
+		// removal from walking the whole vocabulary.
+		s.rebuildTerms()
 	}
 	if len(snap.Vecs) > 0 {
 		s.vecs = dequantizeEpisodeVecs(snap.Vecs)

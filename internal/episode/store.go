@@ -32,6 +32,12 @@ type Store struct {
 	// byParticipant maps a person to the episodes they took part in. It is
 	// derived on load rather than stored.
 	byParticipant map[model.ID][]string
+	// termsOf maps an episode to the terms it put in the postings, so removing
+	// one visits only its own terms. Without it every removal walks the whole
+	// vocabulary, which makes re-indexing cost the episode count times the
+	// vocabulary size. It is derived rather than stored, and a missing entry
+	// simply falls back to the full walk.
+	termsOf map[string][]string
 	// vecs holds per-episode embedding vectors when present.
 	vecs map[string][]float32
 	// halfLife is the age at which a score halves; zero uses the default.
@@ -117,13 +123,23 @@ func (s *Store) Add(ep Episode) {
 		s.vecs[stored.ID] = vec
 	}
 	indexed := strings.TrimSpace(body + " " + stored.Text() + " " + archiveText(stored.Archive))
+	var mine []string
 	for _, term := range text.Terms(indexed) {
 		posting := s.postings[term]
 		if posting == nil {
 			posting = make(map[string]float64)
 			s.postings[term] = posting
+			mine = append(mine, term)
+		} else if _, already := posting[stored.ID]; !already {
+			mine = append(mine, term)
 		}
 		posting[stored.ID]++
+	}
+	if len(mine) > 0 {
+		if s.termsOf == nil {
+			s.termsOf = make(map[string][]string)
+		}
+		s.termsOf[stored.ID] = mine
 	}
 }
 
@@ -177,12 +193,7 @@ func (s *Store) Vector(id string) ([]float32, bool) {
 // forget removes an episode's postings and participant links, so replacing it
 // cannot leave stale terms pointing at it.
 func (s *Store) forget(ep *Episode) {
-	for term, posting := range s.postings {
-		delete(posting, ep.ID)
-		if len(posting) == 0 {
-			delete(s.postings, term)
-		}
-	}
+	s.unpost(ep.ID)
 	for _, p := range ep.Participants {
 		ids := s.byParticipant[p]
 		kept := ids[:0]
@@ -206,13 +217,48 @@ func (s *Store) forget(ep *Episode) {
 // record and its participant links, so the pointer survives while the purged
 // content becomes unsearchable.
 func (s *Store) dropSearchIndex(id string) {
+	s.unpost(id)
+	delete(s.vecs, id)
+}
+
+// rebuildTerms derives, from the postings, which terms each episode
+// contributed. A store restored from disk has the postings but not that map,
+// and one pass here is what keeps removals cheap for the rest of the run.
+func (s *Store) rebuildTerms() {
+	s.termsOf = make(map[string][]string, len(s.episodes))
 	for term, posting := range s.postings {
+		for id := range posting {
+			s.termsOf[id] = append(s.termsOf[id], term)
+		}
+	}
+}
+
+// unpost removes one episode from the postings. It visits only the terms that
+// episode contributed when its terms are known, and falls back to walking the
+// whole vocabulary when they are not, which is what a store restored from disk
+// starts out as until its terms are rebuilt.
+func (s *Store) unpost(id string) {
+	terms, known := s.termsOf[id]
+	if !known {
+		for term, posting := range s.postings {
+			delete(posting, id)
+			if len(posting) == 0 {
+				delete(s.postings, term)
+			}
+		}
+		return
+	}
+	for _, term := range terms {
+		posting := s.postings[term]
+		if posting == nil {
+			continue
+		}
 		delete(posting, id)
 		if len(posting) == 0 {
 			delete(s.postings, term)
 		}
 	}
-	delete(s.vecs, id)
+	delete(s.termsOf, id)
 }
 
 // Query asks for episodes matching text, optionally narrowed to one person.
