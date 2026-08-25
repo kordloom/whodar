@@ -351,13 +351,46 @@ func foldRecords(base, delta []connector.Record) []connector.Record {
 	return out
 }
 
+// foldLinks merges two sets of subject ties, keeping the strongest claim for
+// each. Ties are not counts and must not accumulate: how much of the time two
+// subjects move together is already a share, and adding two shares together
+// would climb past one on nothing more than being re-read.
+func foldLinks(base, add []connector.TopicLink) []connector.TopicLink {
+	if len(add) == 0 {
+		return base
+	}
+	at := make(map[string]int, len(base)+len(add))
+	for i, l := range base {
+		at[l.To] = i
+	}
+	for _, l := range add {
+		if i, ok := at[l.To]; ok {
+			if l.Weight > base[i].Weight {
+				base[i].Weight = l.Weight
+			}
+			continue
+		}
+		at[l.To] = len(base)
+		base = append(base, l)
+	}
+	return base
+}
+
 // foldKey identifies the record a later record accumulates into: a person by
 // their per-source id, a channel by its slug.
 func foldKey(rec connector.Record) string {
-	if rec.Kind == connector.KindChannel {
+	switch rec.Kind {
+	case connector.KindChannel:
 		return "c\x00" + slug(rec.Name)
+	case connector.KindTopic:
+		// A subject is keyed as a subject. Folded as a person it would key on
+		// the same name slug people do, so a subject called billing and a
+		// person whose identity resolves to billing would accumulate into each
+		// other.
+		return "t\x00" + slug(rec.Name)
+	default:
+		return "p\x00" + string(personID(rec))
 	}
-	return "p\x00" + string(personID(rec))
 }
 
 // foldRecord sums add into base: it concatenates the topic and term lists that
@@ -365,7 +398,9 @@ func foldKey(rec connector.Record) string {
 // most recent activity, and fills any identity field base is missing.
 func foldRecord(base, add connector.Record) connector.Record {
 	base.Topics = append(base.Topics, add.Topics...)
+	base.RecentTopics = append(base.RecentTopics, add.RecentTopics...)
 	base.Terms = append(base.Terms, add.Terms...)
+	base.Links = foldLinks(base.Links, add.Links)
 	for _, m := range add.Members {
 		if !slices.Contains(base.Members, m) {
 			base.Members = append(base.Members, m)
