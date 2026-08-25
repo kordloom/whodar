@@ -31,6 +31,7 @@ const expStatus = document.getElementById("exp-status");
 const expRisk = document.getElementById("exp-risk");
 const expDrift = document.getElementById("exp-drift");
 const expRegions = document.getElementById("exp-regions");
+const expSpans = document.getElementById("exp-spans");
 const expDepInput = document.getElementById("exp-dep-input");
 const expDepGo = document.getElementById("exp-dep-go");
 const expDepResult = document.getElementById("exp-dep-result");
@@ -969,6 +970,15 @@ async function renderExposure() {
         "No joined work found. Index a source that records what work touched, such as git, Jira, Confluence, or GitHub."));
     }
   }
+  if (expSpans) {
+    const spans = data.spans || [];
+    if (spans.length) {
+      for (const sp of spans) expSpans.appendChild(spanCard(sp));
+    } else {
+      expSpans.appendChild(el("p", "exp-empty",
+        "No one-person connections found. Index a source that records what each piece of work touched, such as git, Jira, Confluence, or GitHub."));
+    }
+  }
   if (risk.length) {
     for (const r of risk) expRisk.appendChild(riskCard(r));
   } else {
@@ -1060,6 +1070,21 @@ function regionCard(r) {
   head.appendChild(el("span", "exp-bus", topics.length + " joined subjects"));
   card.appendChild(head);
   card.appendChild(el("p", "exp-also", topics.join(", ")));
+  return card;
+}
+
+// spanCard draws one connection that rests on a single person. It names how
+// many people hold the two subjects between them, because that is what makes
+// the finding surprising: the subjects are not short of experts, the crossing
+// between them is.
+function spanCard(sp) {
+  const card = el("div", "exp-card exp-critical");
+  const head = el("div", "exp-card-head");
+  head.appendChild(el("span", "exp-topic", sp.topic + " + " + sp.with));
+  head.appendChild(el("span", "exp-bus", "only " + sp.person));
+  card.appendChild(head);
+  card.appendChild(el("p", "exp-also",
+    (sp.experts || 0) + " people hold the two subjects, and one has ever worked across them"));
   return card;
 }
 

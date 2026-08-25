@@ -681,3 +681,66 @@ func TestExposureCarriesJoinedWork(t *testing.T) {
 		t.Errorf("region = %+v, want Ada with three joined subjects", got.Regions[0])
 	}
 }
+
+// TestExposureCarriesOnePersonConnections checks the web view is shown the
+// connections that rest on one person, the same as the command line and the
+// brief. This was missing from the web view alone for a while: the finding was
+// computed, printed, and written into the report, and the one surface most
+// people actually look at never mentioned it.
+func TestExposureCarriesOnePersonConnections(t *testing.T) {
+	t.Parallel()
+	h, err := Handler(Config{
+		Ask: func(_ context.Context, _, _, _ string, _ int) (resolve.Answer, error) {
+			return resolve.Answer{}, nil
+		},
+		Exposure: func() Exposure {
+			return Exposure{Spans: []resolve.Span{{
+				Topic: "billing", With: "ledger", Person: "Ada", PersonID: "ada@x.com",
+				Together: 0.25, Experts: 6,
+			}}}
+		},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/exposure", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("exposure = %d, want 200", rec.Code)
+	}
+	var got Exposure
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got.Spans) != 1 {
+		t.Fatalf("spans = %+v, want the connection carried through", got.Spans)
+	}
+	if got.Spans[0].Person != "Ada" || got.Spans[0].Experts != 6 {
+		t.Errorf("span = %+v, want Ada named with the six who hold the two subjects", got.Spans[0])
+	}
+}
+
+// TestExposureViewHasSomewhereToShowEveryFinding checks the page carries a
+// container for each thing the exposure payload can report. A finding that
+// reaches the browser with nothing to draw it into is invisible, and that reads
+// exactly like the finding not existing.
+func TestExposureViewHasSomewhereToShowEveryFinding(t *testing.T) {
+	t.Parallel()
+	h, err := Handler(Config{
+		Ask: func(_ context.Context, _, _, _ string, _ int) (resolve.Answer, error) {
+			return resolve.Answer{}, nil
+		},
+		Exposure: func() Exposure { return Exposure{} },
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	body := rec.Body.String()
+	for _, id := range []string{"exp-risk", "exp-drift", "exp-regions", "exp-spans"} {
+		if !strings.Contains(body, `id="`+id+`"`) {
+			t.Errorf("the page has nowhere to draw %s", id)
+		}
+	}
+}

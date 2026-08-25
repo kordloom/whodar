@@ -489,6 +489,10 @@ type Exposure struct {
 	// finding than a concentrated subject, and a list of subjects one at a time
 	// cannot show it.
 	Regions []resolve.Region `json:"regions"`
+	// Spans are the connections between two subjects that only one person has
+	// ever worked across. Both subjects may be well covered on their own, so
+	// nothing that counts experts per subject can show it.
+	Spans []resolve.Span `json:"spans"`
 }
 
 // BriefFunc builds the knowledge-risk brief for the index being served.

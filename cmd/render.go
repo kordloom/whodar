@@ -779,7 +779,7 @@ func renderRegions(w io.Writer, regions []resolve.Region, s style) {
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, s.bold(fmt.Sprintf(
-		"Joined work  %d %s where subjects that change together all rest on one person",
+		"Joined work  %d %s where subjects worked on together all rest on one person",
 		len(regions), plural2(len(regions), "body", "bodies"))))
 	for _, r := range regions {
 		shown := r.Topics

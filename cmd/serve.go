@@ -201,6 +201,7 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 				Risk:    resolve.Risk(ix, 0),
 				Drift:   resolve.Ownership(ix).Drift,
 				Regions: resolve.Regions(ix, regionsShown),
+				Spans:   resolve.SoleSpans(ix, spansShown),
 			}
 		},
 		Brief: func() report.Brief {
