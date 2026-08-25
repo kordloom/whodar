@@ -33,6 +33,11 @@ type TopicRisk struct {
 	Concentration float64 `json:"concentration"`
 	// BusFactor is how few people together hold most of the topic.
 	BusFactor int `json:"busFactor"`
+	// Weight is how much work the topic rests on, which is what separates a
+	// subject the organization depends on from one that came up twice. Every
+	// subject held by a single person is equally concentrated, so without this
+	// the report leads with whichever of them happens to sort first by name.
+	Weight float64 `json:"weight"`
 	// Experts are the strongest people for the topic, strongest first.
 	Experts []RiskExpert `json:"experts"`
 	// Includes are the other names this same body of knowledge goes by, folded
@@ -120,12 +125,19 @@ func Risk(ix *index.Index, limit int) []TopicRisk {
 		sort.Strings(includes)
 		out = append(out, TopicRisk{
 			Topic: topic, Level: level, Concentration: experts[0].Share, BusFactor: bus,
-			Experts: experts, Includes: includes,
+			Weight: total, Experts: experts, Includes: includes,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if li, lj := levelRank(out[i].Level), levelRank(out[j].Level); li != lj {
 			return li < lj
+		}
+		// Among equally concentrated subjects, the one resting on the most work
+		// is the one worth reading first: a single person holding years of a
+		// subject is a different finding from a single person holding a file
+		// they touched once.
+		if out[i].Weight != out[j].Weight {
+			return out[i].Weight > out[j].Weight
 		}
 		if out[i].Concentration != out[j].Concentration {
 			return out[i].Concentration > out[j].Concentration
