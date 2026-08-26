@@ -247,3 +247,77 @@ func TestGitJoinsGitHubByNoreplyLogin(t *testing.T) {
 		t.Errorf("git author keyed as %q, want github:octodev so it joins GitHub", octo.PersonID)
 	}
 }
+
+// TestGitStatesWholeDirectoryNamesOnly checks a compound directory name is one
+// subject, and the words inside it are searchable without being subjects.
+//
+// A directory called data_grand_lyon is one integration. Counting its words as
+// subjects too reported it as four, put them in the risk table, and connected
+// them to each other as if somebody had worked across them. A word that names a
+// directory of its own somewhere else keeps its standing: energy is stated by
+// homeassistant/components/energy, so it stays a subject wherever else it turns
+// up inside a longer name.
+func TestGitStatesWholeDirectoryNamesOnly(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	repo, err := git.PlainInit(dir, false)
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+	write := func(rel string) {
+		full := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(full, []byte("x"), 0o600); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		if _, err := wt.Add(rel); err != nil {
+			t.Fatalf("add: %v", err)
+		}
+	}
+	write("components/data_grand_lyon/sensor.py")
+	write("components/energy/sensor.py")
+	sig := &object.Signature{Name: "Ada", Email: "ada@x.com", When: time.Now()}
+	if _, err := wt.Commit("work", &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	recs, err := NewGitHistory(GitOptions{Paths: []string{dir}, SinceDays: 3650}).Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	var rec Record
+	for _, r := range recs {
+		if r.Email == "ada@x.com" {
+			rec = r
+		}
+	}
+	if rec.Email == "" {
+		t.Fatal("the author did not come back at all")
+	}
+	stated := make(map[string]bool, len(rec.Topics))
+	for _, tok := range rec.Topics {
+		stated[tok] = true
+	}
+	all := append(append([]string{}, rec.Topics...), rec.WeakTopics...)
+
+	for _, want := range []string{"data_grand_lyon", "energy"} {
+		if !stated[want] {
+			t.Errorf("%q is not stated; a whole directory name is the subject", want)
+		}
+	}
+	for _, notSubject := range []string{"grand", "lyon"} {
+		if stated[notSubject] {
+			t.Errorf("%q is stated, but it is one word of data_grand_lyon and not a subject",
+				notSubject)
+		}
+		if !slices.Contains(all, notSubject) {
+			t.Errorf("%q is missing entirely; the words must stay searchable", notSubject)
+		}
+	}
+}

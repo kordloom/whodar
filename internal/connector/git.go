@@ -727,9 +727,26 @@ func (g *GitHistory) diffShare(
 			// than guessed at. Everything that tells a real subject from a
 			// passing word reads this: without it a repository full of
 			// expertise reports none of it.
+			//
+			// Only a WHOLE directory name is stated, though. The words inside a
+			// compound one are there so somebody who types "zwave" still finds
+			// the zwave_js expert, the same way the words of a ticket summary
+			// are, and they are subjects for exactly the same reason: none. A
+			// directory called data_grand_lyon is one integration, not four. A
+			// word that names a directory of its own somewhere else, like
+			// energy, is stated by that directory and keeps its standing here.
+			stated := make(map[string]bool, 8)
+			for _, seg := range segmentNames(dirPart(name)) {
+				stated[seg] = true
+			}
+			for _, seg := range patternNames(name) {
+				stated[seg] = true
+			}
 			for _, tok := range dirs {
 				m[tok]++
-				t.curated[tok] = true
+				if stated[tok] {
+					t.curated[tok] = true
+				}
 				if fresh != nil {
 					fresh[tok]++
 				}

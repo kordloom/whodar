@@ -1250,8 +1250,11 @@ a canonical identifier to its aliases:</p>
 joins entries indexed before the file existed. Joined identifiers appear in
 answers under <code>identities</code>. See <code>examples/aliases.json</code>.</p>
 <h2 id="what-counts-as-a-subject">What counts as a subject</h2>
-<p>A subject is something a source stated: a label, a component, a directory, a
-CODEOWNERS path. Those are what risk, ownership, and the connections between
+<p>A subject is something a source stated: a label, a component, a whole directory,
+a CODEOWNERS path. A directory called <code>data_grand_lyon</code> is one integration, not
+four, so the words inside a compound name are searchable without being subjects
+of their own. A word that does name a directory somewhere keeps its standing
+wherever else it appears. Those are what risk, ownership, and the connections between
 subjects are computed over.</p>
 <p>Text is mined too, so a question asked in somebody's own words still finds the
 right person even when nothing was ever labeled. Those words stay searchable and

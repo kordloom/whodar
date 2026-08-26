@@ -648,8 +648,11 @@ answers under `identities`. See `examples/aliases.json`.
 
 ## What counts as a subject
 
-A subject is something a source stated: a label, a component, a directory, a
-CODEOWNERS path. Those are what risk, ownership, and the connections between
+A subject is something a source stated: a label, a component, a whole directory,
+a CODEOWNERS path. A directory called `data_grand_lyon` is one integration, not
+four, so the words inside a compound name are searchable without being subjects
+of their own. A word that does name a directory somewhere keeps its standing
+wherever else it appears. Those are what risk, ownership, and the connections between
 subjects are computed over.
 
 Text is mined too, so a question asked in somebody's own words still finds the

@@ -180,6 +180,15 @@ func topicsFromPatterns(patterns []string) []string {
 // pathTopics derives topic tokens from one path or pattern: extension and
 // special-filename names plus meaningful path segments, duplicates kept so
 // callers can weight by volume.
+// dirPart returns the directory a path sits in, or the path itself when it has
+// none, so a file at the root still states the subject its own name carries.
+func dirPart(p string) string {
+	if i := strings.LastIndex(p, "/"); i >= 0 {
+		return p[:i]
+	}
+	return p
+}
+
 // segmentNames returns the subjects that name a whole path segment, as opposed
 // to the words found inside a compound one. A subject standing alone as a
 // directory is a subject the repository has; a word only ever seen inside a
