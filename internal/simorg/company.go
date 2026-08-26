@@ -347,6 +347,13 @@ func BuildBigIndex(dir string) (*index.Index, error) {
 // connectors the demo uses, so the sources a scale run exercises are the ones
 // the product actually reads.
 func buildIndexFor(dir string, spec Spec) (*index.Index, error) {
+	return buildIndexFrom(dir, spec, nil)
+}
+
+// buildIndexFrom indexes a generated company from a chosen subset of its
+// sources. A nil set means all of them, which is every caller but the ablation
+// that measures what each source is worth.
+func buildIndexFrom(dir string, spec Spec, only map[string]bool) (*index.Index, error) {
 	ctx := context.Background()
 	c := buildCompany(spec)
 
@@ -401,6 +408,9 @@ func buildIndexFor(dir string, spec Spec) (*index.Index, error) {
 
 	ix := index.New()
 	for _, s := range sources {
+		if only != nil && !only[s.Name] {
+			continue
+		}
 		recs, err := s.Source.Fetch(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("simorg: %s: %w", s.Name, err)
