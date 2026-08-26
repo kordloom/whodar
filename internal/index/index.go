@@ -1181,13 +1181,13 @@ func scoreByTerms(
 			// The normalizer floors at one: an above-average profile is
 			// discounted for verbosity, but a sparse or decayed profile gets
 			// no boost, since its raw weight already says how little is there.
-			// Past normCap it grows logarithmically rather than stopping, for
-			// the reason normCap gives: a hard stop treats somebody who touched
-			// a hundred subjects the same as somebody who touched ten thousand,
-			// and in a real organization that spread is the whole question. It
-			// is the same saturation the term weight above uses, and it keeps
-			// the same guarantee: breadth always costs something, and no amount
-			// of it divides an owner's evidence away entirely.
+			// It STOPS at normCap rather than growing past it. Letting it grow
+			// logarithmically was tried, on the argument that a hard stop
+			// treats somebody who touched a hundred subjects the same as
+			// somebody who touched ten thousand; it measured worse and was
+			// reverted, because the people who own the most also appear the
+			// most. The stop is what keeps breadth from dividing an owner's
+			// evidence away entirely.
 			norm := min(max(1, 1-bm25B+bm25B*(lens.byID[id]/lens.avg)), normCap)
 			scores[id] += hit.penalty * idf * (w * (bm25K1 + 1)) / (w + bm25K1*norm)
 		}
