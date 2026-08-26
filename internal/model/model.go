@@ -2,6 +2,8 @@
 // orgs, and topics that whodar indexes and ranks.
 package model
 
+import "strings"
+
 // ID is a stable identifier for a graph entity.
 type ID string
 
@@ -93,14 +95,29 @@ type Topic struct {
 }
 
 // Salient reports whether a topic is established enough to present as a subject
-// in its own right. A curated topic counts; a topic only mined from prose has to
-// show up in more than one source to earn it. Either way a topic everybody holds
-// does not count, because it distinguishes nobody.
+// in its own right. A topic everybody holds never counts, because it
+// distinguishes nobody.
+//
+// A subject some source stated outright counts. A topic only ever mined from
+// prose has to clear two bars: several sources saw it, AND it names something
+// rather than being a single ordinary word. Appearing in two sources sounds like
+// corroboration and is not, because the commonest words appear everywhere:
+// measured on a real tracker, that rule alone promoted 7,528 mined words to
+// subjects, and they were "appearing", "avoiding", "overkill", "secondly",
+// "work". Requiring more than one word cut 97% of that while keeping the ones
+// that read like names, such as state-store, interactive-query, and jwt-bearer.
+//
+// Nothing is lost to search either way. A mined word stays in the index and
+// still matches a question; it just does not get counted as a subject the
+// organization has, reported as a risk, or connected to other subjects.
 func (t *Topic) Salient() bool {
 	if t == nil || t.Ubiquitous {
 		return false
 	}
-	return t.Curated || len(t.Sources) > 1
+	if t.Curated {
+		return true
+	}
+	return len(t.Sources) > 1 && strings.Contains(string(t.ID), "-")
 }
 
 // Tie is how two subjects are connected: how much of the time they move

@@ -646,6 +646,22 @@ Pass it once with `index --aliases`; the mapping persists in the index and
 joins entries indexed before the file existed. Joined identifiers appear in
 answers under `identities`. See `examples/aliases.json`.
 
+## What counts as a subject
+
+A subject is something a source stated: a label, a component, a directory, a
+CODEOWNERS path. Those are what risk, ownership, and the connections between
+subjects are computed over.
+
+Text is mined too, so a question asked in somebody's own words still finds the
+right person even when nothing was ever labeled. Those words stay searchable and
+are not treated as subjects on their own. A single ordinary word appearing in
+several sources is not corroboration, it is just a common word: on a real issue
+tracker read alongside its wiki, that reading promoted seven and a half thousand
+words to subjects, and they were "appearing", "avoiding", "overkill", and
+"work". A mined phrase of more than one word does earn its place, since naming
+two words together is how people name things: state-store, interactive-query,
+jwt-bearer.
+
 ## Ranking
 
 Keyword scores weight rarer query terms higher, then cap and saturate each

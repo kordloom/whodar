@@ -1249,6 +1249,19 @@ a canonical identifier to its aliases:</p>
 <p>Pass it once with <code>index --aliases</code>; the mapping persists in the index and
 joins entries indexed before the file existed. Joined identifiers appear in
 answers under <code>identities</code>. See <code>examples/aliases.json</code>.</p>
+<h2 id="what-counts-as-a-subject">What counts as a subject</h2>
+<p>A subject is something a source stated: a label, a component, a directory, a
+CODEOWNERS path. Those are what risk, ownership, and the connections between
+subjects are computed over.</p>
+<p>Text is mined too, so a question asked in somebody's own words still finds the
+right person even when nothing was ever labeled. Those words stay searchable and
+are not treated as subjects on their own. A single ordinary word appearing in
+several sources is not corroboration, it is just a common word: on a real issue
+tracker read alongside its wiki, that reading promoted seven and a half thousand
+words to subjects, and they were &quot;appearing&quot;, &quot;avoiding&quot;, &quot;overkill&quot;, and
+&quot;work&quot;. A mined phrase of more than one word does earn its place, since naming
+two words together is how people name things: state-store, interactive-query,
+jwt-bearer.</p>
 <h2 id="ranking">Ranking</h2>
 <p>Keyword scores weight rarer query terms higher, then cap and saturate each
 term's accumulated weight, so repeating a word in chat all day cannot outrank
