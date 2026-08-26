@@ -73,7 +73,14 @@ func nameMatch(ix *index.Index, query string, limit int) []model.Match {
 		switch {
 		case name != "" && name == q:
 			hits = append(hits, scored{p, 1})
-		case email != "" && (email == q || local == q):
+		case email != "" && email == q:
+			hits = append(hits, scored{p, 0.95})
+		case email != "" && local == q && !namesASubject(ix, q):
+			// A mailbox whose name matches the question only identifies a
+			// person when the question was not about a subject. Plenty of
+			// addresses are called github, billing, or support, and reading
+			// those as "the person you mean" put a mailbox above everybody who
+			// actually works on the thing being asked about.
 			hits = append(hits, scored{p, 0.95})
 		case len(asked) > 1 && nameCoversAll(name, asked):
 			hits = append(hits, scored{p, 0.9})
@@ -166,4 +173,13 @@ func withNamed(named, ranked []model.Match, limit int) []model.Match {
 		out = out[:limit]
 	}
 	return out
+}
+
+// namesASubject reports whether the question is the name of a subject the graph
+// holds, as opposed to a person.
+func namesASubject(ix *index.Index, q string) bool {
+	if ix == nil {
+		return false
+	}
+	return ix.Graph.Topics[model.ID(q)].Salient()
 }

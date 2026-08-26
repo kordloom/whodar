@@ -8,6 +8,7 @@ import (
 
 	"github.com/kordloom/whodar/internal/connector"
 	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // nameIndex builds a small company where one person owns a subject and another
@@ -108,5 +109,43 @@ func TestNameMatchNamesWhatTheyKnow(t *testing.T) {
 	why := strings.Join(ans.People[0].Reasons, " ")
 	if !strings.Contains(why, "knows vacation") {
 		t.Errorf("reasons = %v, want them to say what she knows", ans.People[0].Reasons)
+	}
+}
+
+// TestNameMatchDoesNotLetAMailboxHijackASubject checks that asking about a
+// subject returns the people who work on it, even when somebody's address
+// happens to be named after it.
+//
+// Found on a real repository: asking "github" returned the holder of
+// github@example.com ahead of every maintainer, because a matching mailbox was
+// read as naming that person and named people are placed in front of the ranked
+// answer. Addresses called billing, support, admin, and info are everywhere.
+func TestNameMatchDoesNotLetAMailboxHijackASubject(t *testing.T) {
+	t.Parallel()
+	ix := index.New()
+	ix.Graph.Topics = map[model.ID]*model.Topic{
+		"github": {ID: "github", Name: "github", Curated: true},
+	}
+	ix.Graph.People = map[model.ID]*model.Person{
+		"github@example.com": {
+			ID: "github@example.com", Name: "Aaron", Email: "github@example.com",
+		},
+		"maintainer@example.com": {
+			ID: "maintainer@example.com", Name: "Franck", Email: "maintainer@example.com",
+			Topics: map[model.ID]float64{"github": 40},
+		},
+	}
+	if got := nameMatch(ix, "github", 5); len(got) != 0 {
+		t.Errorf("a mailbox answered a question about a subject: %+v", got)
+	}
+	// Asking for the person by their address still finds them.
+	got := nameMatch(ix, "github@example.com", 5)
+	if len(got) != 1 || got[0].Person == nil || got[0].Person.Name != "Aaron" {
+		t.Errorf("asking by full address = %+v, want the person who holds it", got)
+	}
+	// And a mailbox that is not also a subject still names its holder.
+	ix.Graph.Topics = map[model.ID]*model.Topic{}
+	if got := nameMatch(ix, "github", 5); len(got) != 1 {
+		t.Errorf("with no such subject, the mailbox should still name its holder: %+v", got)
 	}
 }
