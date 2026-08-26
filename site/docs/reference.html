@@ -1264,7 +1264,12 @@ tracker read alongside its wiki, that reading promoted seven and a half thousand
 words to subjects, and they were &quot;appearing&quot;, &quot;avoiding&quot;, &quot;overkill&quot;, and
 &quot;work&quot;. A mined phrase of more than one word does earn its place, since naming
 two words together is how people name things: state-store, interactive-query,
-jwt-bearer.</p>
+jwt-bearer. It has to read as a name, though. No part of it may be grammar,
+which is what separates state-store from &quot;should have&quot; and &quot;during rebalance&quot;,
+and no part may start with a digit, which is what a ticket reference looks like.</p>
+<p>What a source states is taken as stated. If a tracker labels its tickets
+<code>kip-1076</code>, that is a subject the project has, and whodar reports it rather than
+deciding which of your labels are real ones.</p>
 <h2 id="ranking">Ranking</h2>
 <p>Keyword scores weight rarer query terms higher, then cap and saturate each
 term's accumulated weight, so repeating a word in chat all day cannot outrank

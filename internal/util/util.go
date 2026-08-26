@@ -227,3 +227,44 @@ func PersonKey(source, email, id string) string {
 	}
 	return ""
 }
+
+// GrammarWords are the words that hold a phrase together without naming any
+// part of it. They are never a subject on their own, and a phrase containing one
+// is a snatch of a sentence rather than the name of a thing.
+//
+// It stays deliberately small and holds only grammar. Verbs and nouns are not in
+// here however dull, because "update" and "support" are real integrations and
+// "change" and "parameter" are real words about real work.
+var GrammarWords = map[string]bool{
+	"a": true, "an": true, "and": true, "any": true, "are": true, "after": true,
+	"also": true, "as": true, "at": true, "be": true, "been": true, "before": true,
+	"both": true, "but": true, "by": true, "could": true, "during": true,
+	"each": true, "else": true, "for": true, "from": true, "had": true, "has": true,
+	"have": true, "here": true, "how": true, "if": true, "in": true, "into": true,
+	"is": true, "it": true, "its": true, "nor": true, "not": true, "of": true,
+	"on": true, "only": true, "or": true, "our": true, "per": true, "should": true,
+	"so": true, "some": true, "than": true, "that": true, "the": true, "their": true,
+	"them": true, "then": true, "there": true, "they": true, "this": true, "to": true,
+	"via": true, "was": true, "were": true, "what": true, "when": true, "where": true,
+	"which": true, "while": true, "who": true, "whom": true, "why": true,
+	"will": true, "with": true, "would": true, "yet": true,
+}
+
+// ReadsAsName reports whether a hyphenated phrase names something, as opposed to
+// being a run of adjacent words that happened to sit together in a sentence.
+//
+// Two tests, both learned from a real issue tracker. No part may be grammar,
+// which is what separates state-store and jwt-bearer from should-have and
+// during-rebalance. And no part may start with a digit, which is what a ticket
+// reference looks like: kip-1076, hive-3-2-0-must.
+func ReadsAsName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, w := range strings.Split(s, "-") {
+		if w == "" || GrammarWords[w] || (w[0] >= '0' && w[0] <= '9') {
+			return false
+		}
+	}
+	return true
+}

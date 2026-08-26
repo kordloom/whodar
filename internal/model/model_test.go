@@ -55,7 +55,13 @@ func TestSalientKeepsProseOutOfSubjects(t *testing.T) {
 	}, { // Test 3: A phrase from one source alone has nothing corroborating it.
 		Name:  "mined phrase in one source",
 		Topic: Topic{ID: "state-store", Sources: []string{"git"}}, WantYes: false,
-	}, { // Test 4: What everybody holds distinguishes nobody, stated or not.
+	}, { // Test 4: A phrase of grammar names nothing, however many sources saw it.
+		Name:  "mined grammar phrase",
+		Topic: Topic{ID: "should-have", Sources: []string{"git", "confluence"}}, WantYes: false,
+	}, { // Test 5: A ticket reference is not an area of work.
+		Name:  "mined ticket reference",
+		Topic: Topic{ID: "kip-1076", Sources: []string{"jira", "confluence"}}, WantYes: false,
+	}, { // Test 6: What everybody holds distinguishes nobody, stated or not.
 		Name:  "ubiquitous",
 		Topic: Topic{ID: "billing", Curated: true, Ubiquitous: true}, WantYes: false,
 	}}

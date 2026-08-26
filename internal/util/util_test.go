@@ -264,3 +264,39 @@ func TestDistinctKeepsFirstAndDropsEmptyKeys(t *testing.T) {
 		t.Errorf("Distinct(nil) = %v, want nothing", got)
 	}
 }
+
+// TestReadsAsName checks the test that separates the name of a thing from a run
+// of words that happened to sit together in a sentence.
+//
+// Both cases below are drawn from a real issue tracker read alongside its wiki.
+// Mining text for phrases is what lets a question asked in somebody's own words
+// find the right person, and it also produces "should have" and "during
+// rebalance", which are not subjects any organization has.
+func TestReadsAsName(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		In      string
+		WantYes bool
+		Why     string
+	}{
+		{"state-store", true, "two nouns naming a thing"},
+		{"jwt-bearer", true, "a real term of art"},
+		{"advertised-listeners", true, "adjective and noun, still a name"},
+		{"should-have", false, "grammar, not a subject"},
+		{"during-rebalance", false, "a preposition dragging a noun along"},
+		{"per-record", false, "same, and it read as a subject for months"},
+		{"kip-1076", false, "a ticket reference, not an area of work"},
+		{"hive-3-2-0-must", false, "a version string with a verb stuck on it"},
+		{"", false, "nothing at all"},
+		{"-leading", false, "an empty part is not a word"},
+	}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d %s", testNum, test.In), func(t *testing.T) {
+			t.Parallel()
+			if got := ReadsAsName(test.In); got != test.WantYes {
+				t.Errorf("ReadsAsName(%q) = %v, want %v: %s",
+					test.In, got, test.WantYes, test.Why)
+			}
+		})
+	}
+}

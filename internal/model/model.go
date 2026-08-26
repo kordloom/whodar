@@ -2,7 +2,11 @@
 // orgs, and topics that whodar indexes and ranks.
 package model
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/kordloom/whodar/internal/util"
+)
 
 // ID is a stable identifier for a graph entity.
 type ID string
@@ -117,7 +121,8 @@ func (t *Topic) Salient() bool {
 	if t.Curated {
 		return true
 	}
-	return len(t.Sources) > 1 && strings.Contains(string(t.ID), "-")
+	return len(t.Sources) > 1 && strings.Contains(string(t.ID), "-") &&
+		util.ReadsAsName(string(t.ID))
 }
 
 // Tie is how two subjects are connected: how much of the time they move
