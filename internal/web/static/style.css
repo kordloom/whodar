@@ -106,6 +106,22 @@ body {
   gap: 2px;
 }
 
+/* The question each group of views answers. Quiet enough to read as structure
+   rather than as another thing to click. */
+.nav-group {
+  margin: 14px 0 4px;
+  padding: 0 12px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.72;
+}
+#side-nav > a:first-child + .nav-group { margin-top: 10px; }
+/* A utility rather than one of the three questions, so it sits apart. */
+.nav-tool { margin-top: 14px; }
+
 #side-nav a {
   display: flex;
   justify-content: space-between;
@@ -748,6 +764,24 @@ section h2 {
 
 .member { color: var(--fg); }
 
+/* A person's name, wherever it appears, is a way to that person. Underlined on
+   hover rather than always, so a card naming several people does not read as a
+   row of links. */
+.person-link {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+}
+.person-link:hover, .person-link:focus-visible {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  outline: none;
+}
+
 /* Small screens: the sidebar becomes a top bar. */
 
 @media (max-width: 720px) {
@@ -768,6 +802,11 @@ section h2 {
   #side-nav { flex-direction: row; flex-wrap: wrap; }
   #side-nav a { padding: 6px 10px; }
   .nav-count { display: none; }
+  /* The sidebar is a single wrapping row here, so a group heading would sit
+     inline between two links and spend a phone's width saying nothing the
+     links do not. The grouping is orientation, and there is no room for it. */
+  .nav-group { display: none; }
+  .nav-tool { margin-top: 0; }
   .side-foot { margin-top: 0; margin-left: auto; flex-direction: row; align-items: center; gap: 12px; }
   .side-version { display: none; }
   main { padding: 24px 16px 60px; }
@@ -1181,3 +1220,24 @@ section h2 {
   font-size: 13.5px;
   line-height: 1.6;
 }
+
+/* The keyboard list. Narrow, since it is four rows and reads as a reminder
+   rather than as documentation. */
+.keys-modal { max-width: 420px; }
+.keys-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  margin: 14px 0 0;
+  align-items: baseline;
+}
+.keys-list dt {
+  font: 600 12px var(--mono);
+  color: var(--accent);
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  text-align: center;
+  white-space: nowrap;
+}
+.keys-list dd { margin: 0; color: var(--fg-2, var(--fg)); font-size: 14px; }

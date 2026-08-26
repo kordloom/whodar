@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -745,48 +746,373 @@ func TestExposureViewHasSomewhereToShowEveryFinding(t *testing.T) {
 	}
 }
 
-// TestOrgChartEndpointCarriesTheChart checks the chart reaches the browser with
-// the knowledge on each seat, not just the reporting lines. The reporting lines
-// alone are the part every company already has.
-func TestOrgChartEndpointCarriesTheChart(t *testing.T) {
-	t.Parallel()
-	h, err := Handler(Config{
-		Ask: func(_ context.Context, _, _, _ string, _ int) (resolve.Answer, error) {
-			return resolve.Answer{}, nil
-		},
-		OrgChart: func() resolve.Chart {
-			return resolve.Chart{
-				People: 2, Unplaced: 3,
-				Roots: []resolve.Seat{{
-					ID: "boss@x.com", Name: "Boss", Title: "VP",
-					Reports: []resolve.Seat{{
-						ID: "ada@x.com", Name: "Ada", Team: "Payments",
-						Knows: []string{"billing"}, Alone: []string{"billing"},
-					}},
-				}},
-			}
-		},
-	})
+// TestEveryDirectoryViewCanBeSortedAndExported checks each browsable view knows
+// how to order itself and what to put in a file.
+//
+// readStatic returns a shipped static file, so a test asserts against what the
+// browser is actually served rather than against a copy that can drift.
+func readStatic(t *testing.T, name string) string {
+	t.Helper()
+	b, err := assets.ReadFile("static/" + name)
 	if err != nil {
-		t.Fatalf("Handler: %v", err)
+		t.Fatalf("read %s: %v", name, err)
 	}
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/orgchart", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("orgchart = %d, want 200", rec.Code)
+	return string(b)
+}
+
+// readTemplate returns a shipped page template.
+func readTemplate(t *testing.T, name string) string {
+	t.Helper()
+	b, err := assets.ReadFile("templates/" + name)
+	if err != nil {
+		t.Fatalf("read %s: %v", name, err)
 	}
-	var got resolve.Chart
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decode: %v", err)
+	return string(b)
+}
+
+// Everything whodar shows is on its way somewhere else: into a ticket, a channel,
+// a review document. A view that can only be looked at is half an answer, and the
+// failure is silent, since a missing entry here just means the button quietly
+// does not appear. This reads the shipped script rather than trusting a comment.
+func TestEveryDirectoryViewCanBeSortedAndExported(t *testing.T) {
+	t.Parallel()
+	app, err := assets.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
 	}
-	if len(got.Roots) != 1 || got.Roots[0].Name != "Boss" {
-		t.Fatalf("chart = %+v, want the root carried through", got)
+	src := string(app)
+
+	// The views the directory offers, taken from the script itself.
+	block := func(name string) string {
+		i := strings.Index(src, "const "+name+" = {")
+		if i < 0 {
+			t.Fatalf("%s is missing from app.js", name)
+		}
+		depth, start := 0, strings.Index(src[i:], "{")+i
+		for j := start; j < len(src); j++ {
+			switch src[j] {
+			case '{':
+				depth++
+			case '}':
+				if depth--; depth == 0 {
+					return src[start : j+1]
+				}
+			}
+		}
+		t.Fatalf("%s is not closed in app.js", name)
+		return ""
 	}
-	if got.Unplaced != 3 {
-		t.Errorf("unplaced = %d, want it reported so a thin directory is visible", got.Unplaced)
+	views, sorts, columns := block("DIR_VIEWS"), block("DIR_SORTS"), block("DIR_COLUMNS")
+
+	// The key has to be the whole key. Matching a substring passes on "xtopics"
+	// and would have made this whole test decorative.
+	declares := func(block, view string) bool {
+		return regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(view) + `:`).MatchString(block)
 	}
-	ada := got.Roots[0].Reports
-	if len(ada) != 1 || len(ada[0].Alone) != 1 {
-		t.Errorf("seat = %+v, want the knowledge on it and not only the reporting line", ada)
+	for _, view := range []string{"people", "channels", "teams", "topics"} {
+		if !declares(views, view) {
+			t.Errorf("%s is not a directory view any more; fix this test", view)
+			continue
+		}
+		if !declares(sorts, view) {
+			t.Errorf("the %s view has no sort orders, so it can only be read one way", view)
+		}
+		if !declares(columns, view) {
+			t.Errorf("the %s view cannot be exported, so what it shows cannot leave the page", view)
+		}
+	}
+	// The mechanisms themselves have to be there for any of that to work. They
+	// live in portable.js because the org chart needs them too, and two copies
+	// would drift apart the first time one of them was fixed.
+	portable := readStatic(t, "portable.js")
+	for _, fn := range []string{"function el(", "function copyButton(", "function csvCell(",
+		"function downloadCSV(", "function exportButton("} {
+		if !strings.Contains(portable, fn) {
+			t.Errorf("portable.js has no %s", fn)
+		}
+		if strings.Contains(src, fn) {
+			t.Errorf("app.js redeclares %s; it belongs only in portable.js", fn)
+		}
+		if strings.Contains(readStatic(t, "orgchart.js"), fn) {
+			t.Errorf("orgchart.js redeclares %s; it belongs only in portable.js", fn)
+		}
+	}
+	// A shared file nobody loads is worse than no shared file, since every call
+	// through it is a ReferenceError the moment someone clicks.
+	for _, page := range []string{"index.html", "orgchart.html"} {
+		tpl := readTemplate(t, page)
+		if !strings.Contains(tpl, "/static/portable.js") {
+			t.Errorf("%s does not load portable.js, so copy and export are broken on that page", page)
+		}
+	}
+}
+
+// TestTheOrgChartCanBeTakenWithYou checks the chart offers a way out: the seats
+// on screen as a spreadsheet, and a person as a block of text. The chart is
+// where the knowledge-risk finding surfaces, and a finding nobody can carry into
+// a meeting is a finding nobody acts on.
+func TestTheOrgChartCanBeTakenWithYou(t *testing.T) {
+	t.Parallel()
+	js, tpl := readStatic(t, "orgchart.js"), readTemplate(t, "orgchart.html")
+
+	if !strings.Contains(tpl, `id="oc-export"`) {
+		t.Error("the org chart has no export control")
+	}
+	if !strings.Contains(js, `byId("oc-export"`) {
+		t.Error("the export control is not wired to anything")
+	}
+	if !strings.Contains(js, "function exportVisible(") {
+		t.Error("orgchart.js has no exportVisible")
+	}
+	// The export is only worth having if it carries the risk findings, which are
+	// the reason to draw this chart rather than any other org chart.
+	for _, col := range []string{"Holds alone", "Gone quiet", "Reports to"} {
+		if !strings.Contains(js, `"`+col+`"`) {
+			t.Errorf("the org chart export has no %q column", col)
+		}
+	}
+	// The panel has to say what the bar on the seat means, not leave it to a
+	// tooltip that never appears on a touch screen.
+	for _, want := range []string{"Only person holding", "gone quiet on"} {
+		if !strings.Contains(strings.ToLower(js), strings.ToLower(want)) {
+			t.Errorf("the detail panel never shows %q", want)
+		}
+	}
+	if !strings.Contains(js, "copyButton(") {
+		t.Error("a person in the org chart cannot be copied")
+	}
+}
+
+// TestEveryInsightCardCanBeCopied covers the four findings that exist to be
+// carried into a room: a body of work resting on one person, a crossing only one
+// person has made, a subject with a low bus factor, and an area whose declared
+// owner is not the one doing the work. They are the least useful findings to be
+// able only to look at, and were the last four cards in the app with no way out.
+func TestEveryInsightCardCanBeCopied(t *testing.T) {
+	t.Parallel()
+	src := readStatic(t, "app.js")
+
+	// checkDeparture is not a card, but it renders the finding most likely to be
+	// written down somewhere else: what leaves with a person, which goes into a
+	// handover note or a backfill request.
+	for _, card := range []string{"regionCard", "spanCard", "riskCard", "driftCard", "checkDeparture"} {
+		start := strings.Index(src, "function "+card+"(")
+		if start < 0 {
+			start = strings.Index(src, "async function "+card+"(")
+		}
+		if start < 0 {
+			t.Errorf("%s is gone; fix this test", card)
+			continue
+		}
+		// The card body runs to the next top-level close brace.
+		end := strings.Index(src[start:], "\n}")
+		if end < 0 {
+			t.Errorf("%s is not closed", card)
+			continue
+		}
+		if !strings.Contains(src[start:start+end], "copyButton(") {
+			t.Errorf("%s has no copy control, so the finding cannot leave the screen", card)
+		}
+	}
+}
+
+// TestTheNavSaysWhichQuestionEachGroupAnswers covers the sidebar's grouping.
+// whodar answers three different questions for three different people, and a
+// flat list of views hides that: who holds what, how something was done last
+// time, and where the organization is thin.
+//
+// The failure worth guarding is an orphan. Two of the three groups only exist
+// when the feature behind them is configured, so a heading has to disappear
+// with its section rather than sit above nothing.
+func TestTheNavSaysWhichQuestionEachGroupAnswers(t *testing.T) {
+	t.Parallel()
+	ask := func(_ context.Context, _, _, _ string, _ int) (resolve.Answer, error) {
+		return resolve.Answer{}, nil
+	}
+	render := func(t *testing.T, cfg Config) string {
+		t.Helper()
+		cfg.Ask, cfg.Version = ask, "test"
+		h, err := Handler(cfg)
+		if err != nil {
+			t.Fatalf("Handler: %v", err)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		return rec.Body.String()
+	}
+
+	full := render(t, Config{
+		Recall:   func(context.Context, string, string, int) (recall.Answer, error) { return recall.Answer{}, nil },
+		Exposure: func() Exposure { return Exposure{} },
+	})
+	for _, group := range []string{"Who knows what", "How it was done", "Where it is thin"} {
+		if !strings.Contains(full, group) {
+			t.Errorf("the sidebar never says %q, so the three questions are invisible again", group)
+		}
+	}
+	// The org chart belongs under the third question: what it now shows that no
+	// other org chart does is which seats hold something alone.
+	thin := strings.Index(full, "Where it is thin")
+	if chart := strings.Index(full, `href="/orgchart"`); thin < 0 || chart < thin {
+		t.Error("the org chart is not under the group about where the organization is thin")
+	}
+
+	// With recall off, its heading has to go with it.
+	bare := render(t, Config{})
+	if strings.Contains(bare, "How it was done") {
+		t.Error("the recall heading renders with no recall view under it")
+	}
+	if !strings.Contains(bare, "Who knows what") {
+		t.Error("the directory heading vanished; it does not depend on anything optional")
+	}
+}
+
+// TestEveryNamedPersonIsAWayToThatPerson covers the deep link from a result. A
+// name is the most useful thing on the screen and was the most often dead: a
+// channel listed its active members as plain text, and each knowledge-risk
+// finding named the person it rests on with no way to find out who they are.
+func TestEveryNamedPersonIsAWayToThatPerson(t *testing.T) {
+	t.Parallel()
+	src := readStatic(t, "app.js")
+
+	if !strings.Contains(src, "function personLink(") {
+		t.Fatal("app.js has no personLink; names cannot be reached")
+	}
+	// One helper, so a card added later gets the behavior by using it rather
+	// than by remembering to wire a click handler.
+	for _, card := range []string{"channelCard", "regionCard", "spanCard", "driftCard"} {
+		start := strings.Index(src, "function "+card+"(")
+		if start < 0 {
+			t.Errorf("%s is gone; fix this test", card)
+			continue
+		}
+		end := strings.Index(src[start:], "\n}")
+		if end < 0 {
+			t.Errorf("%s is not closed", card)
+			continue
+		}
+		if !strings.Contains(src[start:start+end], "personLink(") {
+			t.Errorf("%s names a person but offers no way to reach them", card)
+		}
+	}
+	// A name with no identifier behind it has to stay plain text. A button that
+	// opens nothing is worse than a label, since it invites the click.
+	link := src[strings.Index(src, "function personLink("):]
+	link = link[:strings.Index(link, "\n}")]
+	if !strings.Contains(link, "if (!id)") {
+		t.Error("personLink does not fall back to plain text without an id")
+	}
+}
+
+// TestRecallCanBeTakenWithYou covers the trenches half of the product. "How did
+// we solve this last time" is an answer that goes into a runbook or a reply, so
+// a whole session has to leave, not one card at a time.
+func TestRecallCanBeTakenWithYou(t *testing.T) {
+	t.Parallel()
+	src := readStatic(t, "app.js")
+	if !strings.Contains(src, `exportButton("Export"`) {
+		t.Error("a recall session cannot be exported")
+	}
+	if !strings.Contains(src, "whodar-recall.csv") {
+		t.Error("the recall export writes no file")
+	}
+	// The export has to match the filters on screen. Dumping everything fetched
+	// would quietly contradict what the reader is looking at.
+	if !strings.Contains(src, "currentRecallEpisodes()") {
+		t.Error("the recall export does not follow the filters on screen")
+	}
+}
+
+// TestEmptyViewsSayWhatWouldFillThem checks a view with nothing in it names the
+// source that would fill it. An empty screen is nearly always a setup problem,
+// and the person looking at it is the one who can fix it.
+func TestEmptyViewsSayWhatWouldFillThem(t *testing.T) {
+	t.Parallel()
+	src := readStatic(t, "app.js")
+	for _, want := range []string{
+		"whodar index --source git",   // people
+		"whodar index --source slack", // channels
+		"a source of record",          // teams
+		"index a CODEOWNERS file",     // ownership drift
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("no empty state mentions %q, so a blank view says nothing about how to fill it", want)
+		}
+	}
+	// The old bare form said only that there was nothing.
+	if strings.Contains(src, `"No people indexed yet."`) {
+		t.Error("the people view still has the bare empty state")
+	}
+}
+
+// TestKeyboardShortcutsAreDiscoverable checks the page says what keys it answers
+// to. A shortcut nobody can find is a shortcut nobody uses.
+func TestKeyboardShortcutsAreDiscoverable(t *testing.T) {
+	t.Parallel()
+	src := readStatic(t, "app.js")
+	if !strings.Contains(src, "function showShortcuts(") {
+		t.Fatal("there is no shortcuts list")
+	}
+	// A shortcut must never eat a character while somebody is typing a question.
+	if !strings.Contains(src, "function typing(") || !strings.Contains(src, "if (typing()") {
+		t.Error("shortcuts do not check whether the caret is in a field")
+	}
+	// A modifier chord belongs to the browser or the operating system.
+	if !strings.Contains(src, "event.metaKey || event.ctrlKey || event.altKey") {
+		t.Error("shortcuts fire with a modifier held, stealing browser chords")
+	}
+}
+
+// TestTheMobileTopBarDropsTheNavGroups checks the sidebar's group headings are
+// hidden once it becomes a single wrapping row. Inline between two links they
+// spend a phone's width saying nothing the links do not.
+func TestTheMobileTopBarDropsTheNavGroups(t *testing.T) {
+	t.Parallel()
+	css := readStatic(t, "style.css")
+	i := strings.Index(css, "@media (max-width: 720px)")
+	if i < 0 {
+		t.Fatal("the small-screen breakpoint is gone; fix this test")
+	}
+	block := css[i:]
+	if end := strings.Index(block, "\n}\n"); end > 0 {
+		block = block[:end]
+	}
+	if !strings.Contains(block, ".nav-group { display: none; }") {
+		t.Error("the nav group headings survive into the mobile top bar, where they crowd out the links")
+	}
+}
+
+// TestModalsAreRealDialogs covers what opening a panel does to the keyboard.
+// Without dialog semantics the caret stays behind the modal: Tab walks the page
+// underneath, closing starts again from the top, and nothing announces that
+// anything opened. Both panels go through one pair of helpers so a third cannot
+// be added that quietly skips it.
+func TestModalsAreRealDialogs(t *testing.T) {
+	t.Parallel()
+	src := readStatic(t, "app.js")
+
+	for _, want := range []string{
+		`setAttribute("role", "dialog")`,
+		`setAttribute("aria-modal", "true")`,
+		"function trapTab(",
+		"function openModal(",
+		"function closeModal(",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("app.js is missing %s", want)
+		}
+	}
+	// Focus has to go back where it came from, or the keyboard restarts at the
+	// top of the page every time a profile is closed.
+	if !strings.Contains(src, "modalReturn") || !strings.Contains(src, "modalReturn.focus()") {
+		t.Error("closing a dialog does not return focus to whatever opened it")
+	}
+	// No panel may be appended straight to the body, which is how one ends up
+	// without any of the above.
+	if n := strings.Count(src, "document.body.appendChild(backdrop)"); n != 1 {
+		t.Errorf("%d places append a backdrop directly; only openModal may", n)
 	}
 }

@@ -43,6 +43,11 @@ type GitOptions struct {
 	Paths []string
 	// SinceDays bounds how far back to read history; zero means one year.
 	SinceDays int
+	// StopAt is the newest commit a previous run already read, per repository
+	// path. Reading stops there, so a refresh costs what has happened since
+	// rather than the whole window again. A hash this repository no longer has,
+	// which is what a rewritten history looks like, falls back to a full read.
+	StopAt map[string]string
 	// UntilDays stops the window short of today, excluding anything more recent
 	// than this many days ago. Zero reads up to the present. It exists so an
 	// index can be built from what was known at a past date, which is the only
@@ -97,11 +102,18 @@ func defaultGitWorkers() int {
 type GitHistory struct {
 	// opts holds the ingest configuration.
 	opts GitOptions
+	// marks is the newest commit read per repository path, for the next run to
+	// stop at. Written during Fetch and read afterwards through Marks.
+	marks map[string]string
 }
+
+// Marks returns where reading stopped in each repository, so a later run can
+// resume from there rather than reading the same history again.
+func (g *GitHistory) Marks() map[string]string { return g.marks }
 
 // NewGitHistory returns a git history source over the given repositories.
 func NewGitHistory(opts GitOptions) *GitHistory {
-	return &GitHistory{opts: opts.withDefaults()}
+	return &GitHistory{opts: opts.withDefaults(), marks: make(map[string]string)}
 }
 
 // Fetch reads each repository's recent history and returns one record per
@@ -142,7 +154,21 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 				"git: %s: shallow clone, so only the most recent history exists here. "+
 					"Everything older is invisible: fetch the full history to see who built what\n", path)
 		}
-		if read == 0 {
+		// The cap truncates exactly the way a shallow clone does, and silently:
+		// a repository with a long history reads cleanly, reports a plausible
+		// number, and leaves out most of the people who built it. Measured on a
+		// real project, the default read 2,000 of 115,755 commits and found 386
+		// of 5,649 authors, and nothing in the output said so.
+		if read >= g.opts.MaxCommits {
+			fmt.Fprintf(g.opts.Log,
+				"git: %s: stopped at the --max-commits cap of %d, so anything older is "+
+					"invisible and people who have not committed recently are missing. "+
+					"Raise --max-commits to read further back\n", path, g.opts.MaxCommits)
+		}
+		// Reading nothing is normal when resuming: it means nothing has been
+		// committed since last time, which is the point of resuming. Only a run
+		// that had nowhere to resume from has a problem worth reporting.
+		if read == 0 && g.opts.StopAt[path] == "" {
 			fmt.Fprintf(g.opts.Log,
 				"git: %s: no commits were read. Check --git-since-days, which is %d, "+
 					"and that this path is a repository with history\n", path, g.opts.SinceDays)
@@ -157,6 +183,18 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 	}
 
 	names := pickNames(nameCounts)
+	// One record per author, carrying everything they touched in the window and
+	// dated at their most recent commit, so recency decay applies to the person
+	// rather than to each contribution.
+	//
+	// That is deliberate for the question whodar is usually asked, which is who
+	// to go to now, and it is invisible over a window of a year. It stops being
+	// invisible over a long one. Indexing thirteen years of home-assistant/core
+	// tripled the areas whose declared owner is out-worked, from 113 to 270,
+	// because one recent commit restores full weight to a decade of old work and
+	// whoever wrote an integration in 2017 outranks whoever maintains it today.
+	// Fixing it means carrying a time per subject rather than per author; until
+	// then, a long --git-since-days buys coverage at the cost of ranking.
 	records := make([]Record, 0, len(counts))
 	for email, c := range counts {
 		rec := Record{
@@ -441,9 +479,12 @@ func (g *GitHistory) readRepo(
 	recent map[string]map[string]int,
 	ties *togetherIndex,
 ) (read, skipped int, err error) {
-	jobs, err := g.scanCommits(ctx, path)
+	jobs, mark, err := g.scanCommits(ctx, path)
 	if err != nil {
 		return 0, 0, err
+	}
+	if mark != "" {
+		g.marks[path] = mark
 	}
 	return g.diffCommits(ctx, path, jobs, counts, names, latest, curated, recent, ties)
 }
@@ -470,10 +511,10 @@ type commitJob struct {
 // log is thousands of commits a second because it touches only commit objects;
 // everything slow happens afterwards, per commit and independently, which is
 // what makes the second phase worth running in parallel.
-func (g *GitHistory) scanCommits(ctx context.Context, path string) ([]commitJob, error) {
+func (g *GitHistory) scanCommits(ctx context.Context, path string) ([]commitJob, string, error) {
 	repo, closeRepo, err := openRepo(path)
 	if err != nil {
-		return nil, fmt.Errorf("git: open %s: %w", path, err)
+		return nil, "", fmt.Errorf("git: open %s: %w", path, err)
 	}
 	defer func() { _ = closeRepo() }()
 
@@ -487,12 +528,26 @@ func (g *GitHistory) scanCommits(ctx context.Context, path string) ([]commitJob,
 	}
 	iter, err := repo.Log(opts)
 	if err != nil {
-		return nil, fmt.Errorf("git: log %s: %w", path, err)
+		return nil, "", fmt.Errorf("git: log %s: %w", path, err)
 	}
 	defer iter.Close()
 
+	stop := g.opts.StopAt[path]
 	var jobs []commitJob
+	newest, reached := "", false
 	err = iter.ForEach(func(c *object.Commit) error {
+		// The newest commit seen, before any filtering, is where the next run
+		// stops. Marking the newest one KEPT would re-read the merges and bot
+		// commits above it every time.
+		if newest == "" {
+			newest = c.Hash.String()
+		}
+		// Everything from here down was read by an earlier run. Commits are
+		// walked newest first, so this is the whole of the saving.
+		if stop != "" && c.Hash.String() == stop {
+			reached = true
+			return storer.ErrStop
+		}
 		if len(jobs) >= g.opts.MaxCommits {
 			return storer.ErrStop
 		}
@@ -520,9 +575,25 @@ func (g *GitHistory) scanCommits(ctx context.Context, path string) ([]commitJob,
 		err = nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("git: log %s: %w", path, err)
+		return nil, "", fmt.Errorf("git: log %s: %w", path, err)
 	}
-	return jobs, nil
+	// A mark this history no longer contains means it was rewritten under us,
+	// so what was just read is the whole window and not an increment.
+	if stop != "" && !reached {
+		fmt.Fprintf(g.opts.Log, "git: %s has no commit %.12s, reading the whole window\n", path, stop)
+	}
+	// A window that stops short of today did not walk to the tip, so its newest
+	// commit is not a safe place to resume: commits between it and the tip are
+	// never reached by either run. Rather than record a position that would skip
+	// them, record none, and let the next run read the window again.
+	if g.opts.UntilDays > 0 {
+		return jobs, "", nil
+	}
+	// Nothing new means the previous mark still stands.
+	if newest == "" {
+		newest = stop
+	}
+	return jobs, newest, nil
 }
 
 // tally is one worker's share of the walk, kept to itself so the workers never

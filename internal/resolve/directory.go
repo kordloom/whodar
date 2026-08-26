@@ -38,6 +38,13 @@ type DirectoryPerson struct {
 	Org string `json:"org,omitempty"`
 	// Topics are the person's strongest expertise areas, strongest first.
 	Topics []string `json:"topics,omitempty"`
+	// Alone are the subjects this person is the only holder of. Those leave the
+	// organization the day they do, which is the finding a reporting chart
+	// cannot show and the reason to draw one at all.
+	Alone []string `json:"alone,omitempty"`
+	// Quiet are subjects they still hold and have stopped working on. Knowledge
+	// that has gone still is a sharper warning than knowledge held by few.
+	Quiet []string `json:"quiet,omitempty"`
 	// ManagerID is the person's manager's canonical id, empty for a root.
 	ManagerID string `json:"managerId,omitempty"`
 }
@@ -123,6 +130,28 @@ func BuildDirectory(ix *index.Index) Directory {
 			topicSize[tid]++
 		}
 		d.People = append(d.People, row)
+	}
+	// Who is the only holder of something, and what has gone still, filled once
+	// every person has been counted. Both are per-person readings of the same
+	// counts the topic list is built from.
+	byID := make(map[string]*model.Person, len(g.People))
+	for _, p := range g.People {
+		byID[string(p.ID)] = p
+	}
+	for i := range d.People {
+		p := byID[d.People[i].ID]
+		if p == nil {
+			continue
+		}
+		for _, name := range d.People[i].Topics {
+			tid := model.ID(name)
+			if topicSize[tid] == 1 {
+				d.People[i].Alone = append(d.People[i].Alone, name)
+			}
+			if _, still := p.Recent[tid]; !still && p.Topics[tid] > 0 {
+				d.People[i].Quiet = append(d.People[i].Quiet, name)
+			}
+		}
 	}
 	sort.Slice(d.People, func(i, j int) bool {
 		if li, lj := strings.ToLower(d.People[i].Name), strings.ToLower(d.People[j].Name); li != lj {

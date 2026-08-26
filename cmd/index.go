@@ -161,6 +161,9 @@ Start with the org chart, then merge everything else onto it:
 			canInc := incrementalCapable(source) && !usesExplicitQuery(source, jiraJQL, confluenceCQL)
 			var since time.Time
 			var incremental bool
+			// Git resumes from a commit rather than a time, so it carries its
+			// own marks. gitAfter is where this run stopped, saved below.
+			var gitAfter map[string]string
 			if merge && !full && canInc && indexExists(opts) {
 				st, serr := opts.loadState()
 				if serr != nil {
@@ -169,6 +172,17 @@ Start with the org chart, then merge everything else onto it:
 				if wm, ok := st.Get(source, scope); ok {
 					since, incremental = wm.Cursor, true
 				}
+			}
+			// Git keeps a position per repository rather than one time for the
+			// whole source, so its incremental state is decided separately.
+			// Getting this wrong is not a slow read but a wrong index: an
+			// increment that is not folded REPLACES everything git contributed
+			// with just the newest commits, and the shrink guard is the only
+			// thing that catches it.
+			var gitStops map[string]string
+			if source == "git" {
+				gitStops = gitMarks(opts, merge && !full, repoPaths)
+				incremental = len(gitStops) > 0
 			}
 			switch source {
 			case "org-csv":
@@ -203,14 +217,21 @@ Start with the org chart, then merge everything else onto it:
 				if len(repoPaths) == 0 {
 					return fmt.Errorf("%w: --repo-path is required for git", ErrBadArgs)
 				}
-				recs, err = connector.NewGitHistory(connector.GitOptions{
+				// Where the last run stopped in each repository, so a refresh
+				// reads what has happened since instead of the whole window
+				// again. Reading two years of a large project takes minutes,
+				// and almost none of it has changed since yesterday.
+				gitSrc := connector.NewGitHistory(connector.GitOptions{
 					Paths:      repoPaths,
 					SinceDays:  gitSinceDays,
 					UntilDays:  gitUntilDays,
 					MaxCommits: maxCommits,
 					Workers:    gitWorkers,
+					StopAt:     gitStops,
 					Log:        cmd.ErrOrStderr(),
-				}).Fetch(cmd.Context())
+				})
+				recs, err = gitSrc.Fetch(cmd.Context())
+				gitAfter = gitSrc.Marks()
 			case "json":
 				rc, closeJSON, jerr := jsonInput(cmd, file)
 				if jerr != nil {
@@ -243,7 +264,13 @@ Start with the org chart, then merge everything else onto it:
 			if err := saveInvocation(opts, cmd, source); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not save refresh config: %v\n", err)
 			}
-			if canInc {
+			// Git's position is a commit, not a time, so it saves its own.
+			if len(gitAfter) > 0 {
+				if err := saveGitMarks(opts, gitAfter); err != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not save the git position: %v\n", err)
+				}
+			}
+			if canInc && source != "git" {
 				return updateWatermark(opts, source, scope, full, recs)
 			}
 			return nil
@@ -517,7 +544,8 @@ func jsonInput(cmd *cobra.Command, file string) (io.Reader, func(), error) {
 }
 
 func incrementalCapable(source string) bool {
-	return source == "jira" || source == "confluence" || source == "slack" || source == "github"
+	return source == "jira" || source == "confluence" || source == "slack" ||
+		source == "github" || source == "git"
 }
 
 // usesExplicitQuery reports whether a source is driven by a raw query the
@@ -1032,4 +1060,50 @@ func writeChangesFile(path string, c index.Changes) error {
 		return fmt.Errorf("changes file: %w", err)
 	}
 	return nil
+}
+
+// gitMarks returns where a previous run stopped in each repository, so reading
+// resumes there. It is empty unless this is a merge, since a full read is meant
+// to start over, and empty on the first run, when there is nothing to resume
+// from.
+func gitMarks(opts *options, merge bool, paths []string) map[string]string {
+	if !merge || !indexExists(opts) {
+		return nil
+	}
+	st, err := opts.loadState()
+	if err != nil {
+		return nil
+	}
+	out := make(map[string]string, len(paths))
+	for _, p := range paths {
+		if wm, ok := st.Get("git", "repo:"+p); ok && wm.Mark != "" {
+			out[p] = wm.Mark
+		}
+	}
+	return out
+}
+
+// saveGitMarks records where reading stopped in each repository. Each is its own
+// watermark, since one run may cover several repositories and they advance
+// independently.
+func saveGitMarks(opts *options, marks map[string]string) error {
+	if len(marks) == 0 {
+		return nil
+	}
+	unlock, err := util.LockFile(opts.statePath() + util.LockSuffix)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	st, err := opts.loadState()
+	if err != nil {
+		return err
+	}
+	for path, mark := range marks {
+		st.Set(state.Watermark{
+			Source: "git", Scope: "repo:" + path, Mark: mark,
+			Complete: true, RanAt: time.Now(),
+		})
+	}
+	return opts.saveState(st)
 }

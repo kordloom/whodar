@@ -24,6 +24,10 @@
 	--glow: rgba(52, 211, 153, 0.13);
 	--shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 30px -10px rgba(0, 0, 0, 0.6), 0 34px 60px -24px rgba(0, 0, 0, 0.66);
 	--sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	/* A seat nobody shares, and knowledge that has gone still. Lifted and a
+	   little desaturated so they read on a near-black card without shouting. */
+	--danger: #ff6b6b;
+	--warn: #f0b429;
 }
 
 /* --- Ink: true black --- */
@@ -47,6 +51,8 @@
 	--glow: rgba(255, 255, 255, 0.055);
 	--shadow: 0 1px 2px rgba(0, 0, 0, 0.7), 0 14px 30px -10px rgba(0, 0, 0, 0.8), 0 34px 60px -24px rgba(0, 0, 0, 0.85);
 	--sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	--danger: #ff6b6b;
+	--warn: #e0a422;
 }
 
 /* --- Loom: warm parchment (loomseal) --- */
@@ -70,6 +76,9 @@
 	--glow: rgba(32, 31, 27, 0.05);
 	--shadow: 0 1px 2px rgba(45, 40, 30, 0.06), 0 10px 22px -8px rgba(45, 40, 30, 0.16), 0 26px 50px -20px rgba(45, 40, 30, 0.18);
 	--sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	/* Deeper on parchment, where a bright red glows and a light amber vanishes. */
+	--danger: #b3322f;
+	--warn: #9a6b16;
 }
 
 html, body { margin: 0; }
@@ -217,11 +226,15 @@ html, body { margin: 0; }
 
 .d-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .d-chip { padding: 4px 11px; font-size: 12px; border-radius: 999px; background: var(--chip); color: var(--fg-2); }
+/* The two risk findings, carrying the same colours as the bar on the seat, so
+   the panel answers the question the bar raises. */
+.d-chip-alone { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+.d-chip-quiet { background: transparent; color: var(--warn); border: 1px solid var(--warn); }
 
 @media (max-width: 820px) {
 	.oc-search { flex-basis: 140px; }
 	.oc-select { max-width: 110px; }
-	.oc-hint, .oc-crumbs, .oc-crumbs.on { display: none; }
+	.oc-hint, .oc-key, .oc-crumbs, .oc-crumbs.on { display: none; }
 	.oc-detail { width: 100%; }
 }
 
@@ -250,3 +263,79 @@ html, body { margin: 0; }
 .d-menu-list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 10; min-width: 176px; padding: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 2px; }
 .d-menu-list button { text-align: left; padding: 8px 11px; border: none; background: none; color: var(--fg); font: inherit; font-size: 13px; font-weight: 500; border-radius: 7px; cursor: pointer; }
 .d-menu-list button:hover { background: var(--accent-soft); color: var(--accent-2); }
+
+/* A seat holding knowledge nobody else has, and a seat whose knowledge has gone
+   still. The chart's whole reason to exist is that both are visible without
+   asking anyone, so they are marked on the node itself rather than behind a
+   click.
+
+   The mark is a filled bar rather than a coloured edge, and that is the whole
+   point of it. A chart of this size is read at around 40% zoom, where a 1px
+   border is under half a pixel and the browser thins it to nearly nothing: the
+   marks were legible held still at full size and vanished at the zoom anyone
+   would actually use. A bar is an area, so it loses width instead of presence.
+   Judged against the alternatives on a field of eighteen seats, in all three
+   themes, at four zoom levels. */
+.oc-node.oc-alone,
+.oc-node.oc-quiet { padding-left: 22px; }
+.oc-node.oc-alone::before,
+.oc-node.oc-quiet::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  /* One pixel inside the node's 15px corner, so the bar follows the card
+     rather than squaring it off. */
+  border-radius: 14px 0 0 14px;
+}
+/* Gone still is the softer finding, so it yields to being the only holder when
+   one person is both. */
+.oc-node.oc-quiet::before { background: var(--warn, #f5a524); }
+.oc-node.oc-alone::before { background: var(--danger, #e5484d); }
+
+/* Copy and export controls. The rule matches the app's so a button that does
+   the same thing looks the same on both pages; this file stays self-contained
+   because the org chart does not load the app's stylesheet. */
+.copy {
+  margin-left: 8px;
+  padding: 1px 8px;
+  font: 500 10.5px var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.copy:hover { color: var(--accent-2); border-color: var(--accent-2); }
+
+/* A coloured bar on a seat says nothing on its own, so the chart states what
+   the two marks mean without anyone having to hover a node to find out. */
+.oc-key {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  gap: 14px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  z-index: 3;
+}
+.oc-key-i { display: inline-flex; align-items: center; gap: 6px; }
+.oc-key-bar { width: 4px; height: 13px; border-radius: 2px; }
+.oc-key-alone { background: var(--danger, #e5484d); }
+.oc-key-quiet { background: var(--warn, #f5a524); }
+
+/* The at-risk filter, on. */
+.oc-btn2.on {
+  border-color: var(--danger, #e5484d);
+  color: var(--danger, #e5484d);
+}

@@ -62,6 +62,7 @@ const dirStatus = document.getElementById("dir-status");
 const dirList = document.getElementById("dir-list");
 const sideNav = document.getElementById("side-nav");
 const dirSort = document.getElementById("dir-sort");
+const dirControls = document.querySelector(".dir-controls");
 const facetTeam = document.getElementById("facet-team");
 const facetOrg = document.getElementById("facet-org");
 
@@ -268,13 +269,6 @@ function render(data) {
   }
 }
 
-function el(tag, cls, text) {
-  const node = document.createElement(tag);
-  if (cls) node.className = cls;
-  if (text != null) node.textContent = text;
-  return node;
-}
-
 function chips(parent, items) {
   if (!items || !items.length) return;
   const wrap = el("div", "chips");
@@ -354,6 +348,76 @@ async function openProfile(id) {
   }
 }
 
+// A dialog has to say it is one, keep the keyboard inside itself, and hand
+// focus back where it came from. Without that, opening a profile leaves the
+// caret behind the modal: Tab walks the page underneath, and nothing announces
+// that anything opened at all.
+let modalReturn = null;
+
+// openModal marks a backdrop as a dialog, moves focus into it, and remembers
+// what to give focus back to.
+function openModal(backdrop, label) {
+  backdrop.setAttribute("role", "dialog");
+  backdrop.setAttribute("aria-modal", "true");
+  if (label) backdrop.setAttribute("aria-label", label);
+  modalReturn = document.activeElement;
+  document.body.appendChild(backdrop);
+  const first = backdrop.querySelector(
+    "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])");
+  (first || backdrop).focus();
+  if (!first) backdrop.setAttribute("tabindex", "-1");
+}
+
+// closeModal removes a dialog and returns focus to whatever opened it, so the
+// keyboard does not start again from the top of the page.
+function closeModal(backdrop) {
+  if (!backdrop) return;
+  backdrop.remove();
+  if (modalReturn && document.contains(modalReturn)) modalReturn.focus();
+  modalReturn = null;
+}
+
+// trapTab keeps Tab inside the open dialog, cycling at either end.
+function trapTab(event) {
+  const backdrop = document.querySelector(".modal-backdrop[role='dialog']");
+  if (!backdrop || event.key !== "Tab") return;
+  const stops = [...backdrop.querySelectorAll(
+    "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")]
+    .filter((n) => n.offsetParent !== null);
+  if (!stops.length) {
+    event.preventDefault();
+    return;
+  }
+  const first = stops[0], last = stops[stops.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+// personLink renders somebody's name as a way to reach them.
+//
+// A name is the most useful thing on the screen and was the most often dead: a
+// channel listed its active members as plain text, and every knowledge-risk
+// finding named the person it rests on without offering any way to find out who
+// they are. It falls back to plain text when the finding carries a name but no
+// identifier, since a button that cannot open anything is worse than a label.
+function personLink(name, id) {
+  const label = name || id || "";
+  if (!id) return document.createTextNode(label);
+  const button = el("button", "person-link", label);
+  button.type = "button";
+  button.title = "Show everything whodar knows about " + label;
+  button.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    openProfile(id);
+  });
+  return button;
+}
+
 function safeHref(url) {
   var s = String(url == null ? "" : url).trim();
   return /^(https?:|mailto:)/i.test(s) ? s : "#";
@@ -426,24 +490,91 @@ function showProfile(p) {
   }
   modal.appendChild(rows);
   backdrop.appendChild(modal);
-  document.body.appendChild(backdrop);
+  openModal(backdrop, "Profile: " + (p.name || p.email || "person"));
   setParam("person", p.id);
 }
 
 function closeProfile() {
   const open = document.getElementById("profile-modal");
   if (open) {
-    open.remove();
+    closeModal(open);
     setParam("person", "");
   }
 }
 
+// typing reports whether the caret is somewhere a keystroke means a character
+// rather than a command, so a shortcut never eats a letter mid-question.
+function typing() {
+  const node = document.activeElement;
+  if (!node) return false;
+  const tag = node.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || node.isContentEditable;
+}
+
+// showShortcuts toggles the list of keys. Shortcuts nobody can discover are
+// shortcuts nobody uses, so the page says what it answers to.
+function showShortcuts() {
+  const open = document.getElementById("keys-modal");
+  if (open) {
+    closeModal(open);
+    return;
+  }
+  const backdrop = el("div", "modal-backdrop");
+  backdrop.id = "keys-modal";
+  backdrop.addEventListener("click", (ev) => {
+    if (ev.target === backdrop) closeModal(backdrop);
+  });
+  const box = el("div", "modal keys-modal");
+  box.appendChild(el("h2", null, "Keyboard"));
+  const list = el("dl", "keys-list");
+  const nav = [...sideNav.querySelectorAll("a")];
+  for (const [key, what] of [
+    ["/", "Search, or focus the question box"],
+    ["1 - " + Math.min(nav.length, 9), "Jump to a section in the sidebar"],
+    ["?", "Show or hide this list"],
+    ["Esc", "Close whatever is open"],
+  ]) {
+    list.appendChild(el("dt", null, key));
+    list.appendChild(el("dd", null, what));
+  }
+  box.appendChild(list);
+  backdrop.appendChild(box);
+  openModal(backdrop, "Keyboard shortcuts");
+}
+
+document.addEventListener("keydown", trapTab);
+
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeProfile();
-  const tag = document.activeElement && document.activeElement.tagName;
-  if (event.key === "/" && tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+  if (event.key === "Escape") {
+    const keys = document.getElementById("keys-modal");
+    if (keys) {
+      closeModal(keys);
+      return;
+    }
+    closeProfile();
+    return;
+  }
+  if (typing() || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (event.key === "/") {
     event.preventDefault();
     (currentView === "ask" ? qInput : dirFilter).focus();
+    return;
+  }
+  if (event.key === "?") {
+    event.preventDefault();
+    showShortcuts();
+    return;
+  }
+  // A digit goes to that entry in the sidebar, counted as it is displayed, so
+  // the number beside a section in the shortcuts list is the one that works.
+  if (event.key >= "1" && event.key <= "9") {
+    const nav = [...sideNav.querySelectorAll("a")];
+    const target = nav[Number(event.key) - 1];
+    if (target) {
+      event.preventDefault();
+      target.click();
+      if (target.getAttribute("href").startsWith("#")) location.hash = target.getAttribute("href");
+    }
   }
 });
 
@@ -463,9 +594,7 @@ function channelCard(c, query, i) {
     sub.appendChild(document.createTextNode("Active: "));
     members.forEach((m, i) => {
       if (i) sub.appendChild(document.createTextNode(", "));
-      const span = el("span", "member", m.name || m.email || "");
-      if (m.email) span.title = m.email;
-      sub.appendChild(span);
+      sub.appendChild(personLink(m.name || m.email || "", m.email || m.id));
     });
     card.appendChild(sub);
   }
@@ -481,28 +610,25 @@ function channelCard(c, query, i) {
   return card;
 }
 
-function copyButton(text) {
-  const button = el("button", "copy", "copy");
-  button.type = "button";
-  button.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      button.textContent = "copied";
-      setTimeout(() => (button.textContent = "copy"), 1200);
-    } catch (err) {
-      button.textContent = "failed";
-    }
-  });
-  return button;
-}
-
 // Directory views: one fetch, cached for the page's life, filtered client side.
 
 const DIR_VIEWS = {
-  people: { title: "People", empty: "No people indexed yet." },
-  channels: { title: "Channels", empty: "No channels indexed yet." },
-  teams: { title: "Teams", empty: "No teams indexed yet." },
-  topics: { title: "Topics", empty: "No topics indexed yet." },
+  people: {
+    title: "People",
+    empty: "No people indexed yet. Any source with authors fills this: try whodar index --source git --repo-path <a repository>.",
+  },
+  channels: {
+    title: "Channels",
+    empty: "No channels indexed yet. Channels come from Slack, so this stays empty until whodar index --source slack has run.",
+  },
+  teams: {
+    title: "Teams",
+    empty: "No teams indexed yet. Teams come from a source of record such as an org CSV or a directory, not from activity.",
+  },
+  topics: {
+    title: "Topics",
+    empty: "No topics indexed yet. Subjects are read out of the work itself, so indexing any source will fill this.",
+  },
 };
 
 let dirPromise = null;
@@ -633,6 +759,7 @@ async function renderDirectory(view) {
   const sorts = fillSorts(view);
   const chosen = sorts.find(([k]) => k === dirSort?.value) || sorts[0];
   if (chosen) shown = shown.slice().sort(chosen[2]);
+  fillExport(view, () => shown);
 
   dirList.replaceChildren();
   for (const r of shown) dirList.appendChild(directoryRow(view, r));
@@ -671,6 +798,36 @@ const DIR_SORTS = {
   ],
 };
 
+// DIR_COLUMNS are what each view exports, so a download is the table the reader
+// is looking at rather than a dump of the whole index.
+const DIR_COLUMNS = {
+  people: [
+    ["Name", (r) => r.name || r.id],
+    ["Email", (r) => r.email],
+    ["Title", (r) => r.title],
+    ["Team", (r) => r.team],
+    ["Org", (r) => r.org],
+    ["Knows", (r) => (r.topics || []).join("; ")],
+  ],
+  topics: [
+    ["Subject", (r) => r.name],
+    ["People", (r) => r.people],
+    ["Still active", (r) => r.active],
+    ["Leads", (r) => r.lead],
+  ],
+  teams: [
+    ["Team", (r) => r.name],
+    ["Org", (r) => r.org],
+    ["People", (r) => r.people],
+    ["Works on", (r) => (r.topics || []).join("; ")],
+  ],
+  channels: [
+    ["Channel", (r) => r.name],
+    ["Topic", (r) => r.topic],
+    ["Members", (r) => r.members],
+  ],
+};
+
 // cmpText orders two possibly-missing strings the way a reader expects.
 function cmpText(a, b) {
   return String(a || "").toLowerCase().localeCompare(String(b || "").toLowerCase());
@@ -692,6 +849,26 @@ function fillSorts(view) {
   if (sorts.some(([k]) => k === keep)) dirSort.value = keep;
   dirSort.hidden = sorts.length < 2;
   return sorts;
+}
+
+// fillExport keeps one export button in the controls, pointed at whatever the
+// current view is showing right now.
+function fillExport(view, rows) {
+  if (!dirControls) return;
+  const cols = DIR_COLUMNS[view];
+  const existing = dirControls.querySelector(".dir-export");
+  if (existing) existing.remove();
+  if (!cols) return;
+  const button = exportButton("Export CSV", () => {
+    const shown = rows();
+    downloadCSV(
+      "whodar-" + view + ".csv",
+      cols.map(([h]) => h),
+      shown.map((r) => cols.map(([, get]) => get(r))),
+    );
+  });
+  button.classList.add("dir-export");
+  dirControls.appendChild(button);
 }
 
 // rowText flattens a directory row for filtering.
@@ -726,7 +903,19 @@ function dirPersonRow(p) {
   card.appendChild(name);
   const sub = [p.title, p.team, p.org].filter(Boolean).join(" · ");
   if (sub) card.appendChild(el("div", "sub", sub));
-  if (p.email) card.appendChild(el("div", "sub", p.email));
+  if (p.email) {
+    const line = el("div", "sub", p.email);
+    line.appendChild(copyButton(p.email, "copy email"));
+    card.appendChild(line);
+  }
+  // Everything whodar knows about them, in one paste: for a ticket, a handover
+  // note, or the message you are about to write asking for help.
+  name.appendChild(copyButton(() => [
+    p.name || p.id,
+    [p.title, p.team, p.org].filter(Boolean).join(" · "),
+    p.email || "",
+    (p.topics || []).length ? "Knows: " + (p.topics || []).join(", ") : "",
+  ].filter(Boolean).join("\n"), "copy all"));
   chips(card, p.topics);
   return card;
 }
@@ -912,13 +1101,35 @@ function applyRecallFilters() {
   recallList.replaceChildren();
   if (!eps.length) {
     recallStatus.textContent = total
-      ? "No conversations match these filters."
-      : "Nothing found in the conversations you took part in.";
+      ? "No conversations match these filters. Widen the date range or turn a source back on."
+      : "Nothing found in the conversations you took part in. Recall only ever covers your own, so an empty result here usually means the sources you talk in are not indexed yet.";
     return;
   }
   recallStatus.textContent = "";
+  // A whole session leaves too, not just one card at a time. This is the half
+  // of the product for people in the trenches, and "how did we solve this last
+  // time" is an answer that goes into a runbook or a reply to somebody else.
+  if (recallCount && !recallCount.querySelector(".copy")) {
+    recallCount.appendChild(exportButton("Export", () => {
+      const rows = currentRecallEpisodes().map((e) => [
+        e.when || "", sourceMeta(e.source).label, e.title || "",
+        (e.participants || []).map((p) => p.name || p.email || p).join("; "),
+        e.summary || "", e.permalink || "",
+      ]);
+      downloadCSV("whodar-recall.csv",
+        ["When", "Source", "Title", "Who", "Summary", "Link"], rows);
+    }));
+  }
+  shownRecall = eps;
   for (const ep of eps) recallList.appendChild(recallCard(ep));
 }
+
+// shownRecall is what the recall view is displaying right now, so an export
+// matches the filters on screen rather than dumping everything fetched.
+let shownRecall = [];
+
+// currentRecallEpisodes returns what is on screen.
+function currentRecallEpisodes() { return shownRecall; }
 
 // recallCard builds the card for one remembered conversation.
 // SOURCE_META gives each tool a distinct color and label, so a glance tells you
@@ -982,6 +1193,9 @@ function recallCard(ep) {
 
   const foot = el("div", "rc-foot");
   if (ep.permalink) {
+    head.appendChild(copyButton(ep.permalink, "copy link"));
+  }
+  if (ep.permalink) {
     const link = el("a", "rc-open");
     link.href = safeHref(ep.permalink);
     link.target = "_blank";
@@ -1041,6 +1255,31 @@ async function renderExposure() {
         "No joined work found. Index git, Jira, Confluence, or GitHub: those record which subjects one piece of work touched."));
     }
   }
+  // The findings are what goes into a planning conversation, so they leave as a
+  // file rather than as a screenshot of a screen somebody had open once.
+  if (expStatus && expStatus.parentElement && !expStatus.parentElement.querySelector(".exp-export")) {
+    const b = exportButton("Export findings", () => {
+      const out = [];
+      for (const r of risk) {
+        out.push(["Concentration", r.topic, r.level || "", r.busFactor,
+          (r.experts || []).map((e) => e.name + " " + Math.round((e.share || 0) * 100) + "%").join("; ")]);
+      }
+      for (const s of (data.spans || [])) {
+        out.push(["One-person connection", (s.topics || []).join(" + "), "", s.experts, s.person]);
+      }
+      for (const r of (data.regions || [])) {
+        out.push(["Joined work", (r.topics || []).join("; "), "", (r.topics || []).length, r.lead]);
+      }
+      for (const d of drift) {
+        out.push(["Ownership drift", d.topic, d.why || "", "", "declared " +
+          (d.declared || []).join("; ") + "; actually " + (d.actual || "")]);
+      }
+      downloadCSV("whodar-findings.csv",
+        ["Finding", "Subject", "Detail", "Count", "People"], out);
+    });
+    b.classList.add("exp-export");
+    expStatus.parentElement.appendChild(b);
+  }
   if (expSpans) {
     const spans = data.spans || [];
     if (spans.length) {
@@ -1058,7 +1297,9 @@ async function renderExposure() {
   if (drift.length) {
     for (const d of drift) expDrift.appendChild(driftCard(d));
   } else {
-    expDrift.appendChild(el("p", "exp-empty", "No ownership drift found, or no declared ownership indexed."));
+    expDrift.appendChild(el("p", "exp-empty",
+      "No ownership drift found. If that seems unlikely, nothing here declares ownership yet: "
+      + "index a CODEOWNERS file to compare what is written down against who does the work."));
   }
   fillDeparturePeople();
   // A departure check is shareable the same way a query is: /?dep=Gavin+Hudson
@@ -1115,6 +1356,26 @@ async function checkDeparture(who) {
   head.appendChild(el("span", "exp-topic", imp.name || imp.person));
   head.appendChild(el("span", "exp-level", sole.length ? "sole owner" : top.length ? "top expert" : "covered"));
   head.appendChild(el("span", "exp-bus", sole.length + " sole, " + top.length + " leading"));
+  // What leaves with somebody is the one finding here that gets written down
+  // somewhere else: a handover note, a succession conversation, a backfill
+  // request. It copies as prose rather than as a list of topic names, because
+  // that is what the person reading it three weeks later needs.
+  head.appendChild(copyButton(() => {
+    const name = imp.name || imp.person;
+    const lines = [];
+    if (sole.length) {
+      lines.push("If " + name + " leaves, nobody else has any expertise in "
+        + sole.length + " area" + (sole.length === 1 ? "" : "s") + ": " + sole.join(", ") + ".");
+    }
+    if (top.length) {
+      lines.push(name + " is the strongest expert in " + top.join(", ")
+        + ", though others remain.");
+    }
+    if (!sole.length && !top.length) {
+      lines.push(name + " leads nothing on their own. Every area they work in has another expert.");
+    }
+    return lines.join("\n\n");
+  }, "copy handover"));
   card.appendChild(head);
   if (sole.length) {
     card.appendChild(el("p", "exp-also", "Nobody else has any expertise in these:"));
@@ -1137,8 +1398,12 @@ function regionCard(r) {
   const topics = r.topics || [];
   const card = el("div", "exp-card exp-critical");
   const head = el("div", "exp-card-head");
-  head.appendChild(el("span", "exp-topic", r.lead));
+  const lead = el("span", "exp-topic");
+  lead.appendChild(personLink(r.lead, r.leadId));
+  head.appendChild(lead);
   head.appendChild(el("span", "exp-bus", topics.length + " joined subjects"));
+  head.appendChild(copyButton(() =>
+    r.lead + " leads all " + topics.length + " of these, and they move together: " + topics.join(", ")));
   card.appendChild(head);
   card.appendChild(el("p", "exp-also", topics.join(", ")));
   return card;
@@ -1153,7 +1418,13 @@ function spanCard(sp) {
   const head = el("div", "exp-card-head");
   const topics = sp.topics || [];
   head.appendChild(el("span", "exp-topic", topics.join(" + ")));
-  head.appendChild(el("span", "exp-bus", "only " + sp.person));
+  const only = el("span", "exp-bus");
+  only.appendChild(document.createTextNode("only "));
+  only.appendChild(personLink(sp.person, sp.personId));
+  head.appendChild(only);
+  head.appendChild(copyButton(() =>
+    sp.person + " is the only person who has worked across " + topics.join(" and ")
+      + ", though " + (sp.experts || 0) + " people hold those subjects individually"));
   card.appendChild(head);
   card.appendChild(el("p", "exp-also",
     (sp.experts || 0) + " people hold "
@@ -1169,6 +1440,11 @@ function riskCard(r) {
   head.appendChild(el("span", "exp-topic", r.topic));
   head.appendChild(el("span", "exp-level", r.level || "ok"));
   head.appendChild(el("span", "exp-bus", "bus factor " + r.busFactor));
+  head.appendChild(copyButton(() => {
+    const who = (r.experts || []).map((e) => e.name + " " + Math.round(e.share * 100) + "%");
+    return r.topic + ": bus factor " + r.busFactor
+      + (who.length ? ", held by " + who.join(", ") : "");
+  }));
   card.appendChild(head);
   if (r.includes && r.includes.length) {
     card.appendChild(el("p", "exp-also", "also called " + r.includes.join(", ")));
@@ -1197,12 +1473,22 @@ function driftCard(d) {
   const card = el("div", "exp-card exp-drift-card");
   const head = el("div", "exp-card-head");
   head.appendChild(el("span", "exp-topic", d.topic));
+  head.appendChild(copyButton(() =>
+    d.topic + " is declared to " + (d.declared || []).join(", ")
+      + " but the work is " + d.actual + "'s"));
   card.appendChild(head);
   const row = el("div", "exp-expert");
   row.appendChild(el("span", "exp-dim", "declared"));
-  row.appendChild(el("span", "exp-declared", (d.declared || []).join(", ")));
+  const declared = el("span", "exp-declared");
+  (d.declared || []).forEach((name, i) => {
+    if (i) declared.appendChild(document.createTextNode(", "));
+    declared.appendChild(personLink(name, (d.declaredIds || [])[i]));
+  });
+  row.appendChild(declared);
   row.appendChild(el("span", "exp-dim", "actual"));
-  row.appendChild(el("span", "exp-actual", d.actual));
+  const actual = el("span", "exp-actual");
+  actual.appendChild(personLink(d.actual, d.actualId));
+  row.appendChild(actual);
   card.appendChild(row);
   return card;
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kordloom/whodar/internal/eval"
 	"github.com/kordloom/whodar/internal/feedback"
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/recall"
@@ -848,4 +849,129 @@ func renderOwnership(w io.Writer, report resolve.OwnershipReport, s style) {
 			s.dim("declared"), s.warn(strings.Join(d.Declared, ", ")),
 			s.dim("→ actual"), s.accent(d.Actual))
 	}
+}
+
+// renderEval prints a measurement: the score first, then the numbers that say
+// how much to trust it.
+func renderEval(w io.Writer, r eval.Result, s style) {
+	if r.Declared == 0 {
+		fmt.Fprintln(w, s.dim(
+			"Nothing declares ownership in this index, so there is nothing to score against."))
+		fmt.Fprintln(w, s.dim(
+			"Add a CODEOWNERS source, or a source of record that assigns areas to people."))
+	} else {
+		// Ranked leads because it is the number a change to ranking moves.
+		// Agreement is mostly a statement about how much of the organization
+		// was indexed, and reading it as a score has misled every time.
+		fmt.Fprintln(w, s.bold(fmt.Sprintf(
+			"Ranked     %.1f%%   %d of %d areas where the declared owner has work here at all",
+			100*r.Ranked, r.Held, r.Answerable)))
+		fmt.Fprintln(w, s.dim(fmt.Sprintf(
+			"Agreement  %.1f%%   %d of %d declared areas, counting owners who never appear in what was indexed",
+			100*r.Agreement, r.Held, r.Declared)))
+		// The three buckets are three different problems, and only the last is
+		// a judgement call about ranking.
+		fmt.Fprintf(w, "  %s\n", s.dim(fmt.Sprintf(
+			"of the %d that disagree: %d have no recorded work at all, %d work elsewhere but never here, %d are out-worked in their own area",
+			r.Declared-r.Held, r.Silent, r.Unworked, r.Trailing)))
+	}
+
+	fmt.Fprintf(w, "\n%s\n", s.bold("Identity"))
+	fmt.Fprintf(w, "  %d records resolve to %d people, %d of them by inference\n", r.Records, r.People, r.Joins)
+	if r.Unlinked > 0 {
+		// This is the ceiling on the score above, not a footnote: work under an
+		// unjoined handle is attributed to nobody, and its owner cannot agree.
+		fmt.Fprintf(w, "  %s\n", s.warn(fmt.Sprintf(
+			"%d handles never found a person, so their work counts for no one", r.Unlinked)))
+	}
+
+	fmt.Fprintf(w, "\n%s\n", s.bold("Coverage"))
+	fmt.Fprintf(w, "  %d subjects, %d of them real; %d connections between them\n", r.Topics, r.Salient, r.Ties)
+	fmt.Fprintf(w, "  %d connection%s rest on one person, in %d bod%s of work led by one person\n",
+		r.Spans, plural(r.Spans), r.Regions, map[bool]string{true: "y", false: "ies"}[r.Regions == 1])
+	if len(r.Sources) > 0 {
+		fmt.Fprintf(w, "  %s\n", s.dim("from "+strings.Join(r.Sources, ", ")))
+	}
+}
+
+// renderEvalChanges prints what moved since a saved measurement, regressions
+// first. A change that bought one number by quietly spending another is the
+// thing this exists to catch, so nothing is summarized away.
+func renderEvalChanges(w io.Writer, changes []eval.Change, comparable bool, s style) {
+	fmt.Fprintf(w, "\n%s\n", s.bold("Against the baseline"))
+	if !comparable {
+		fmt.Fprintf(w, "  %s\n", s.warn(
+			"Different sources were indexed, so these two runs are not comparable."))
+		return
+	}
+	if len(changes) == 0 {
+		fmt.Fprintf(w, "  %s\n", s.dim("Nothing moved."))
+		return
+	}
+	for _, c := range changes {
+		mark, paint := "·", s.dim
+		if c.Scored {
+			if c.Better {
+				mark, paint = "+", s.accent
+			} else {
+				mark, paint = "-", s.bad
+			}
+		}
+		delta := c.Delta()
+		sign := "+"
+		if delta < 0 {
+			sign = ""
+		}
+		var shown string
+		// Both scores are rates between zero and one. Printing one of them as a
+		// count rounded it to "1 -> 1 (+0)" and hid a real movement entirely.
+		if c.Name == "agreement" || c.Name == "ranked" {
+			shown = fmt.Sprintf("%.1f%% -> %.1f%% (%s%.1f)", 100*c.Before, 100*c.After, sign, 100*delta)
+		} else {
+			shown = fmt.Sprintf("%.0f -> %.0f (%s%.0f)", c.Before, c.After, sign, delta)
+		}
+		fmt.Fprintf(w, "  %s %-10s %s\n", paint(mark), c.Name, shown)
+	}
+}
+
+// renderEvalHead prints the comparison over the areas both runs could answer,
+// which is the one that survives a difference in coverage. It leads, because
+// the overall scores below it move for reasons that are not about quality.
+func renderEvalHead(w io.Writer, h eval.Head, ok bool, s style) {
+	fmt.Fprintf(w, "\n%s\n", s.bold("On the same questions"))
+	if !ok {
+		fmt.Fprintf(w, "  %s\n", s.dim(
+			"The baseline recorded no per-area verdicts, so only the totals below can be compared."))
+		return
+	}
+	delta := h.AfterHeld - h.BeforeHeld
+	sign, paint := "+", s.accent
+	switch {
+	case delta < 0:
+		sign, paint = "", s.bad
+	case delta == 0:
+		paint = s.dim
+	}
+	fmt.Fprintf(w, "  %s   %d of %d correct, was %d (%s%d)\n",
+		paint(fmt.Sprintf("%.1f%%", 100*h.Rate())), h.AfterHeld, h.Areas, h.BeforeHeld,
+		sign, delta)
+	fmt.Fprintf(w, "  %s\n", s.dim(fmt.Sprintf("was %.1f%% over the same %d areas", 100*h.Was(), h.Areas)))
+	// Which areas moved matters more than the count. A change that wins ten and
+	// loses ten has not improved anything, and the total alone hides it.
+	if len(h.Won) > 0 {
+		fmt.Fprintf(w, "  %s %s\n", s.accent("won "), evalSample(h.Won))
+	}
+	if len(h.Lost) > 0 {
+		fmt.Fprintf(w, "  %s %s\n", s.bad("lost"), evalSample(h.Lost))
+	}
+}
+
+// evalSample names a few areas and says how many more there were, so a long
+// list stays readable without pretending it was short.
+func evalSample(areas []string) string {
+	const show = 6
+	if len(areas) <= show {
+		return strings.Join(areas, ", ")
+	}
+	return fmt.Sprintf("%s and %d more", strings.Join(areas[:show], ", "), len(areas)-show)
 }

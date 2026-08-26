@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>whodar</title>
   <script src="/static/theme.js?v=10"></script>
-  <link rel="stylesheet" href="/static/style.css?v=17">
+  <link rel="stylesheet" href="/static/style.css?v=21">
   <link rel="icon" type="image/png" href="/static/whodar-logo.png">
 </head>
 <body>
@@ -17,7 +17,12 @@
       <p class="side-tag">know who knows</p>
       <nav id="side-nav">
         <a href="#/" data-view="ask">Ask</a>
-        {{if .Recall}}<a href="#/recall" data-view="recall">Recall</a>{{end}}
+
+        {{/* whodar answers three different questions for three different
+             people, and a flat list of views hides that. The headings are the
+             questions: who holds what, how it was done last time, and where the
+             organization is thin. */}}
+        <p class="nav-group">Who knows what</p>
         <a href="#/people" data-view="people">People
           <span class="nav-count" data-count="people"></span></a>
         <a href="#/channels" data-view="channels">Channels
@@ -26,9 +31,15 @@
           <span class="nav-count" data-count="teams"></span></a>
         <a href="#/topics" data-view="topics">Topics
           <span class="nav-count" data-count="topics"></span></a>
+
+        {{if .Recall}}<p class="nav-group">How it was done</p>
+        <a href="#/recall" data-view="recall">Recall</a>{{end}}
+
+        <p class="nav-group">Where it is thin</p>
         {{if .Exposure}}<a href="#/exposure" data-view="exposure">Exposure</a>{{end}}
-        {{if .CLI}}<a href="#/cli" data-view="cli">Command line</a>{{end}}
         <a href="/orgchart">Org chart</a>
+
+        {{if .CLI}}<a class="nav-tool" href="#/cli" data-view="cli">Command line</a>{{end}}
       </nav>
       <div class="side-foot">
       <div class="side-themes" role="group" aria-label="Theme">
@@ -244,6 +255,7 @@
     </main>
   </div>
 
-  <script src="/static/app.js?v=17"></script>
+  <script src="/static/portable.js?v=1"></script>
+  <script src="/static/app.js?v=22"></script>
 </body>
 </html>

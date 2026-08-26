@@ -1,8 +1,10 @@
 package connector
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -319,5 +321,204 @@ func TestGitStatesWholeDirectoryNamesOnly(t *testing.T) {
 		if !slices.Contains(all, notSubject) {
 			t.Errorf("%q is missing entirely; the words must stay searchable", notSubject)
 		}
+	}
+}
+
+// TestGitResumesFromTheLastCommitRead checks a second run reads only what has
+// happened since the first, and reports the new position.
+//
+// Without this, refreshing an index costs exactly what building it cost: reading
+// two years of a large repository took 155 seconds, and a refresh that had
+// nothing new to find took 152. Everything below is about that being safe as
+// well as fast, because an increment that is folded wrongly does not read slowly,
+// it produces a wrong index.
+func TestGitResumesFromTheLastCommitRead(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	repo, err := git.PlainInit(dir, false)
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+	add := func(rel string, n int) {
+		t.Helper()
+		full := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(full, []byte(fmt.Sprint(n)), 0o600); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		if _, err := wt.Add(rel); err != nil {
+			t.Fatalf("add: %v", err)
+		}
+		sig := &object.Signature{Name: "Ada", Email: "ada@x.com", When: time.Now()}
+		if _, err := wt.Commit(fmt.Sprintf("change %d", n), &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+	}
+	for i := range 3 {
+		add("billing/main", i)
+	}
+
+	// First read: everything, and a position to resume from.
+	first := NewGitHistory(GitOptions{Paths: []string{dir}, SinceDays: 3650})
+	if _, err := first.Fetch(context.Background()); err != nil {
+		t.Fatalf("first Fetch: %v", err)
+	}
+	mark := first.Marks()[dir]
+	if mark == "" {
+		t.Fatal("no position was reported, so a refresh has nothing to resume from")
+	}
+
+	// Nothing has changed, so a resumed read finds nothing and the position holds.
+	quiet := NewGitHistory(GitOptions{
+		Paths: []string{dir}, SinceDays: 3650, StopAt: map[string]string{dir: mark},
+	})
+	recs, err := quiet.Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("quiet Fetch: %v", err)
+	}
+	if len(recs) != 0 {
+		t.Errorf("a repository with nothing new produced %d records; a refresh would fold them again", len(recs))
+	}
+	if got := quiet.Marks()[dir]; got != mark {
+		t.Errorf("position moved to %.12s with nothing new; want it to stay at %.12s", got, mark)
+	}
+
+	// Two more commits: only those are read.
+	add("ledger/main", 4)
+	add("ledger/main", 5)
+	caught := NewGitHistory(GitOptions{
+		Paths: []string{dir}, SinceDays: 3650, StopAt: map[string]string{dir: mark},
+	})
+	if _, err := caught.Fetch(context.Background()); err != nil {
+		t.Fatalf("catch-up Fetch: %v", err)
+	}
+	if got := caught.Marks()[dir]; got == mark || got == "" {
+		t.Errorf("position did not advance after new commits: %.12s", got)
+	}
+}
+
+// TestGitReadsEverythingWhenThePositionIsGone checks a mark this history no
+// longer contains falls back to reading the window, rather than silently
+// reading nothing. That is what a rewritten history looks like.
+func TestGitReadsEverythingWhenThePositionIsGone(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	repo, err := git.PlainInit(dir, false)
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+	full := filepath.Join(dir, "billing", "main")
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(full, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := wt.Add("billing/main"); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	sig := &object.Signature{Name: "Ada", Email: "ada@x.com", When: time.Now()}
+	if _, err := wt.Commit("only", &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	var out bytes.Buffer
+	src := NewGitHistory(GitOptions{
+		Paths: []string{dir}, SinceDays: 3650, Log: &out,
+		StopAt: map[string]string{dir: "0000000000000000000000000000000000000000"},
+	})
+	recs, err := src.Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if len(recs) == 0 {
+		t.Error("a position this history does not have read nothing; want the whole window")
+	}
+	if !strings.Contains(out.String(), "reading the whole window") {
+		t.Errorf("nothing said the position was gone: %q", out.String())
+	}
+}
+
+// TestGitKeepsNoPositionForABoundedWindow checks a read that stops short of
+// today records no position.
+//
+// Its newest commit is not the tip, so resuming there would step over
+// everything between the two and never read it. Measured: a window ending 30
+// days ago followed by a refresh saw 32,564 of 32,886 commits, losing 322 of
+// them silently.
+func TestGitKeepsNoPositionForABoundedWindow(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	repo, err := git.PlainInit(dir, false)
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+	full := filepath.Join(dir, "billing", "main")
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(full, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := wt.Add("billing/main"); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	sig := &object.Signature{Name: "Ada", Email: "ada@x.com", When: time.Now().AddDate(0, 0, -90)}
+	if _, err := wt.Commit("old", &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	src := NewGitHistory(GitOptions{Paths: []string{dir}, SinceDays: 3650, UntilDays: 30})
+	if _, err := src.Fetch(context.Background()); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if got := src.Marks()[dir]; got != "" {
+		t.Errorf("a bounded window recorded %.12s to resume from; want none", got)
+	}
+}
+
+// TestGitSaysWhenTheCommitCapTruncates covers the failure that is invisible in
+// the result. A capped read succeeds, reports a believable number of commits,
+// and quietly omits everyone who has not committed recently, so an index built
+// over a long history looks the same as a company where almost nobody built
+// anything. Measured on a real project the default read 2,000 of 115,755
+// commits and found 386 of 5,649 authors, with nothing in the output saying so.
+func TestGitSaysWhenTheCommitCapTruncates(t *testing.T) {
+	t.Parallel()
+	dir := newFixtureRepo(t)
+
+	read := func(max int) string {
+		t.Helper()
+		var log bytes.Buffer
+		g := NewGitHistory(GitOptions{Paths: []string{dir}, MaxCommits: max, Log: &log})
+		if _, err := g.Fetch(context.Background()); err != nil {
+			t.Fatalf("fetch with cap %d: %v", max, err)
+		}
+		return log.String()
+	}
+
+	const want = "max-commits cap"
+	// The fixture holds four commits, so a cap of two has to stop short.
+	if out := read(2); !strings.Contains(out, want) {
+		t.Errorf("a truncated read said nothing about the cap; log was:\n%s", out)
+	}
+	// A cap nothing reaches must stay quiet, or the warning is noise that gets
+	// ignored on the run where it matters.
+	if out := read(500); strings.Contains(out, want) {
+		t.Errorf("an untruncated read warned about the cap anyway; log was:\n%s", out)
 	}
 }

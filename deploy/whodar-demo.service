@@ -8,10 +8,14 @@ User=whodar
 Group=whodar
 # The demo builds a simulated company in memory at start and serves it read only.
 # Nothing is persisted and no credentials are involved, so a restart is a clean slate.
-ExecStart=/opt/whodar/bin/whodar demo --big --open=false --addr 127.0.0.1:8766
+ExecStart=/opt/whodar/bin/whodar demo --big --open=false --addr 127.0.0.1:8766 --data-dir /var/lib/whodar-demo
 Restart=always
 RestartSec=2
 TimeoutStartSec=60
+# Somewhere writable to keep the attestation signing key. Without it the data
+# directory defaults under the home directory, which ProtectHome makes
+# unreachable, and every restart signs findings with a fresh throwaway key.
+StateDirectory=whodar-demo
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full

@@ -246,7 +246,7 @@ resolved PagerDuty incidents.</p>
 <tr>
 <td><code>--full</code></td>
 <td>off</td>
-<td>jira, confluence, github, slack</td>
+<td>git, jira, confluence, github, slack</td>
 <td>With <code>--merge</code>, re-read everything and recompact instead of only what changed.</td>
 </tr>
 <tr>
@@ -462,7 +462,7 @@ resolved PagerDuty incidents.</p>
 </tbody>
 </table>
 <h3 id="incremental-re-indexing">Incremental re-indexing</h3>
-<p>Re-indexing Jira, Confluence, GitHub, or Slack with <code>--merge</code> is incremental: it
+<p>Re-indexing git, Jira, Confluence, GitHub, or Slack with <code>--merge</code> is incremental: it
 fetches only the items changed since the last run and folds them into the index,
 keeping everyone it did not re-read. A per-source watermark is kept in
 <code>index.state.json</code> beside the index. Other sources always read in full.</p>
@@ -474,6 +474,14 @@ since re-counting those every time would inflate their weight. A full run
 reads them.</li>
 <li>Slack reads only messages posted since the watermark. An edit to an older
 message is missed until a full run.</li>
+<li>Git resumes from the last commit it read, per repository, rather than from a
+time. A pull request branched three weeks ago and merged today carries
+three-week-old dates, so a time would step straight over it. Reading two years
+of a large repository takes minutes and a refresh takes about a second, since
+almost nothing is new. A history that has been rewritten no longer contains
+the commit, which is the signal to read the window again, and a window ending
+short of today records no position at all: its newest commit is not the tip,
+so resuming there would skip everything in between.</li>
 </ul>
 <p>Pass <code>--full</code> to re-read everything and recompact, which also picks up anything
 an incremental run skipped. A source driven by an explicit <code>--jira-jql</code> or

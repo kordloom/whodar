@@ -12,6 +12,7 @@
 		canvas: document.getElementById("oc-canvas"),
 		links: document.getElementById("oc-links"),
 		nodes: document.getElementById("oc-nodes"),
+		risk: document.getElementById("oc-risk"),
 		empty: document.getElementById("oc-empty"),
 		detail: document.getElementById("oc-detail"),
 		search: document.getElementById("oc-search"),
@@ -77,7 +78,8 @@
 			byId.set(p.id, p);
 			nodes.set(p.id, {
 				id: p.id, kind: "person", name: p.name || p.id, title: p.title || "",
-				team: p.team || "", email: p.email || "", topics: p.topics || [], childIds: [],
+				team: p.team || "", org: p.org || "", email: p.email || "", topics: p.topics || [],
+				alone: p.alone || [], quiet: p.quiet || [], childIds: [],
 			});
 		});
 		var edges = 0;
@@ -196,7 +198,13 @@
 		var d = domNodes.get(n.id);
 		if (d) return d;
 		d = document.createElement("div");
-		d.className = "oc-node" + (n.kind === "team" ? " oc-team" : "") + (rootSet.has(n.id) ? " oc-root" : "");
+		// A reporting chart everyone already has. What makes this one worth
+		// drawing is which seats hold something nobody else does, so those are
+		// marked on the node rather than a click away.
+		d.className = "oc-node" + (n.kind === "team" ? " oc-team" : "")
+			+ (rootSet.has(n.id) ? " oc-root" : "")
+			+ ((n.alone && n.alone.length) ? " oc-alone" : "")
+			+ ((!(n.alone || []).length && (n.quiet || []).length) ? " oc-quiet" : "");
 		d.dataset.id = n.id;
 		var body = '<div class="oc-txt"><div class="nm"></div>';
 		if (n.kind === "person") body += '<div class="ti"></div>';
@@ -210,6 +218,12 @@
 		d.querySelector(".nm").textContent = n.name;
 		if (n.kind === "person") d.querySelector(".ti").textContent = n.title || " ";
 		if (n.team) d.querySelector(".tm").textContent = n.team;
+		if (n.alone && n.alone.length) {
+			d.title = "Only person holding: " + n.alone.join(", ")
+				+ ((n.quiet || []).length ? "\nStopped working on: " + n.quiet.join(", ") : "");
+		} else if (n.quiet && n.quiet.length) {
+			d.title = "Stopped working on: " + n.quiet.join(", ");
+		}
 		el.nodes.appendChild(d);
 		domNodes.set(n.id, d);
 		return d;
@@ -304,13 +318,18 @@
 	}
 	function applyFilters() {
 		var q = el.search.value.trim().toLowerCase(), team = el.team.value, topic = el.topic.value;
-		var any = q || team || topic;
+		var risk = el.risk && el.risk.getAttribute("aria-pressed") === "true";
+		var any = q || team || topic || risk;
 		if (q) nodes.forEach(function (n, id) {
 			if (n.kind === "person" && nodeMatches(n, q))
 				for (var p = parentOf(id); p != null; p = parentOf(p)) collapsed.delete(p);
 		});
 		var passes = function (n) {
-			return nodeMatches(n, q) && (!team || n.team === team) && (!topic || (n.topics || []).indexOf(topic) >= 0);
+			return nodeMatches(n, q) && (!team || n.team === team)
+				&& (!topic || (n.topics || []).indexOf(topic) >= 0)
+				// A team node has no knowledge of its own, so it stays visible
+				// and its people are what the risk filter narrows.
+				&& (!risk || n.kind !== "person" || (n.alone || []).length > 0);
 		};
 		domNodes.forEach(function (d, id) {
 			var n = nodes.get(id), ok = passes(n);
@@ -414,9 +433,29 @@
 			(mgr ? '<div class="d-people">' + personRow(mgr) + '</div>' : '<div class="d-empty-line">Top of the organization</div>') + '</div>';
 		h += '<div class="d-sec"><div class="d-lab">Direct reports · ' + reports.length + '</div>' +
 			(reports.length ? '<div class="d-people">' + reports.map(personRow).join("") + '</div>' : '<div class="d-empty-line">None</div>') + '</div>';
+		// The bar on the seat says there is a risk here. This says what it is,
+		// which until now was only reachable by hovering the node.
+		if ((n.alone || []).length) h += '<div class="d-sec d-risk"><div class="d-lab">Only person holding</div><div class="d-chips">' +
+			n.alone.map(function (t) { return '<span class="d-chip d-chip-alone">' + esc(t) + '</span>'; }).join("") + '</div></div>';
+		if ((n.quiet || []).length) h += '<div class="d-sec d-risk"><div class="d-lab">Holds, but has gone quiet on</div><div class="d-chips">' +
+			n.quiet.map(function (t) { return '<span class="d-chip d-chip-quiet">' + esc(t) + '</span>'; }).join("") + '</div></div>';
 		if (topics.length) h += '<div class="d-sec"><div class="d-lab">Works on</div><div class="d-chips">' +
 			topics.map(function (t) { return '<span class="d-chip">' + esc(t) + '</span>'; }).join("") + '</div></div>';
 		el.detail.innerHTML = h;
+		// The whole seat as one block of text, for a ticket or a handover note.
+		el.detail.querySelector(".d-hero-txt h2").appendChild(copyButton(function () {
+			var mgrName = mgr ? ((nodes.get(mgr) || {}).name || "") : "";
+			var lines = [n.name];
+			if (n.title) lines.push(n.title);
+			if (n.team) lines.push("Team: " + n.team + (n.org ? " (" + n.org + ")" : ""));
+			if (n.email) lines.push(n.email);
+			if (mgrName) lines.push("Reports to: " + mgrName);
+			if (reports.length) lines.push("Direct reports: " + reports.length);
+			if ((n.alone || []).length) lines.push("Only person holding: " + n.alone.join(", "));
+			if ((n.quiet || []).length) lines.push("Gone quiet on: " + n.quiet.join(", "));
+			if (topics.length) lines.push("Works on: " + topics.join(", "));
+			return lines.join("\n");
+		}, "copy"));
 		paintAvatars(el.detail);
 		el.detail.querySelector(".d-close").onclick = closeDetail;
 		var fb = el.detail.querySelector('[data-act="focus"]'); if (fb) fb.onclick = function () { focusNode(id); };
@@ -527,6 +566,37 @@
 		};
 	}
 	var _toastT = null;
+	// exportVisible writes out the seats currently placed, in the order they are
+	// drawn. Filters, the at-risk toggle and every collapsed branch have already
+	// decided what "placed" means, so this matches the screen rather than dumping
+	// the whole company back at the reader: with At risk on it is the roster of
+	// single points of failure, which is the thing anyone actually leaves a
+	// meeting wanting.
+	function exportVisible() {
+		var rows = [];
+		positions.forEach(function (pos, id) {
+			var n = nodes.get(id);
+			if (!n || n.kind !== "person") return;
+			var mgr = parentOf(id);
+			rows.push([pos.y, pos.x, [
+				n.name || "", n.title || "", n.team || "", n.org || "", n.email || "",
+				mgr ? ((nodes.get(mgr) || {}).name || "") : "",
+				(n.childIds || []).length,
+				(n.alone || []).join("; "),
+				(n.quiet || []).join("; "),
+				(n.topics || []).join("; ")
+			]]);
+		});
+		if (!rows.length) { toast("Nothing on screen to export"); return; }
+		// Reading order: down the chart, then across.
+		rows.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
+		downloadCSV("whodar-org-chart.csv", [
+			"Name", "Title", "Team", "Org", "Email", "Reports to", "Direct reports",
+			"Holds alone", "Gone quiet", "Works on"
+		], rows.map(function (r) { return r[2]; }));
+		toast("Exported " + rows.length + (rows.length === 1 ? " seat" : " seats"));
+	}
+
 	function toast(msg) {
 		var t = document.getElementById("oc-toast");
 		if (!t) { t = document.createElement("div"); t.id = "oc-toast"; t.className = "oc-toast"; el.stage.appendChild(t); }
@@ -568,6 +638,19 @@
 		byId("oc-expand", function (b) { b.onclick = function () { collapsed.clear(); render(); fit(); }; });
 		byId("oc-collapse", function (b) {
 			b.onclick = function () { collapsed.clear(); nodes.forEach(function (n, id) { if (parentOf(id) == null && n.childIds.length) collapsed.add(id); }); render(); fit(); };
+		});
+		byId("oc-export", function (b) { b.onclick = exportVisible; });
+		byId("oc-risk", function (b) {
+			b.onclick = function () {
+				var on = b.getAttribute("aria-pressed") === "true";
+				b.setAttribute("aria-pressed", on ? "false" : "true");
+				b.classList.toggle("on", !on);
+				// Opening every branch is the point: a sole holder six levels
+				// down is exactly the one nobody knows about.
+				if (!on) collapsed.clear();
+				render();
+				applyFilters();
+			};
 		});
 		byId("oc-myteam", function (b) {
 			var me = (document.body.getAttribute("data-me") || "").trim();

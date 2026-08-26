@@ -43,6 +43,13 @@ type Watermark struct {
 	Complete bool `json:"complete"`
 	// RanAt is when the watermark was last written.
 	RanAt time.Time `json:"ran_at"`
+	// Mark is a position only the source understands, used where a time is not
+	// a safe cursor. Git is the case that needs it: a pull request branched
+	// three weeks ago and merged today carries three-week-old dates, so reading
+	// "everything since the newest timestamp" would step straight over it. The
+	// newest commit read is exact, and a history that was rewritten simply
+	// fails to contain it, which is the signal to read the whole window again.
+	Mark string `json:"mark,omitempty"`
 }
 
 // Key composes the map key for a source and scope. The separator is a byte that

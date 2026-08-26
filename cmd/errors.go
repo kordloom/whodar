@@ -37,3 +37,6 @@ var ErrShrunkSource = errors.New("source returned much less than before")
 // replacing index from writing an empty result over a good one, which is what
 // an expired token would otherwise do silently.
 var ErrNoRecords = errors.New("nothing was read from any source")
+
+// ErrEval indicates a measurement could not be read, written, or compared.
+var ErrEval = errors.New("cannot evaluate")

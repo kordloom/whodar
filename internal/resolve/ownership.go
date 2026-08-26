@@ -23,6 +23,10 @@ type OwnerDrift struct {
 	Why string `json:"why"`
 	// ActualID is the actual expert's canonical id.
 	ActualID string `json:"actualId"`
+	// DeclaredIDs are the owners of record by canonical id, in the same order
+	// as Declared, so a reader can be taken to the person rather than shown a
+	// name they then have to go and look up.
+	DeclaredIDs []string `json:"declaredIds,omitempty"`
 }
 
 // How an owner of record stands in relation to the area they own.
@@ -151,6 +155,65 @@ func (r OwnershipReport) Share() float64 {
 // whodar was not pointed at looks like an owner who does nothing, so the share
 // it reports is an upper bound on drift rather than a measurement of it.
 func Ownership(ix *index.Index) OwnershipReport {
+	report := OwnershipReport{}
+	for _, a := range OwnedAreas(ix) {
+		report.Declared++
+		switch a.Standing {
+		case StandingHeld:
+			report.Held++
+			continue // the declared owner is the one doing the work: no drift
+		case standingSilent:
+			report.Silent++
+		case standingUnworked:
+			report.Unworked++
+		default:
+			report.Trailing++
+		}
+		report.Drift = append(report.Drift, OwnerDrift{
+			Topic: a.Topic, Declared: a.Declared, DeclaredIDs: a.DeclaredIDs,
+			Actual: a.Actual, ActualID: a.ActualID, Why: a.Standing,
+		})
+	}
+	sort.Slice(report.Drift, func(i, j int) bool { return report.Drift[i].Topic < report.Drift[j].Topic })
+	return report
+}
+
+// StandingHeld marks an area whose owner of record is also the person doing the
+// work. The other three standings say why an area is not held.
+const StandingHeld = "owner leads their own area"
+
+// OwnedArea is one declared area set against who actually does the work there.
+type OwnedArea struct {
+	// Topic is the area a source of record assigned an owner.
+	Topic string `json:"topic"`
+	// Standing is StandingHeld, or which of the three ways the owner of record
+	// is not the person leading it.
+	Standing string `json:"standing"`
+	// Declared names the owners of record, alphabetically, and DeclaredIDs
+	// their canonical ids in the same order.
+	Declared    []string `json:"declared,omitempty"`
+	DeclaredIDs []string `json:"declaredIds,omitempty"`
+	// Actual is the person the work says leads it, and ActualID their id.
+	Actual   string `json:"actual,omitempty"`
+	ActualID string `json:"actualId,omitempty"`
+}
+
+// Answerable reports whether this area can fairly be used to judge ranking. An
+// owner with no recorded work in the area could not be named first by any
+// ranking, so scoring those measures how much was indexed rather than how well
+// it ranks.
+func (a OwnedArea) Answerable() bool {
+	return a.Standing == StandingHeld || a.Standing == standingTrailing
+}
+
+// OwnedAreas returns every area with an owner of record, sorted by area, set
+// against who the work says leads it.
+//
+// Ownership summarizes this into counts. It is exported separately because a
+// count cannot answer whether two indexes did better or worse on the SAME
+// areas, and comparing overall scores across indexes that answer different
+// questions has been wrong every time it was tried.
+func OwnedAreas(ix *index.Index) []OwnedArea {
 	declared := make(map[model.ID]map[model.ID]bool)
 	for id, p := range ix.Graph.People {
 		canon := ix.CanonicalID(id)
@@ -163,36 +226,39 @@ func Ownership(ix *index.Index) OwnershipReport {
 			m[canon] = true
 		}
 	}
-	report := OwnershipReport{}
+	var out []OwnedArea
 	for _, tr := range Risk(ix, 0) {
 		owners := declared[model.ID(tr.Topic)]
 		if len(owners) == 0 || len(tr.Experts) == 0 {
 			continue
 		}
-		report.Declared++
 		actual := actualOwner(ix, tr)
+		area := OwnedArea{Topic: tr.Topic, Actual: actual.Name, ActualID: actual.ID}
 		if owners[ix.CanonicalID(model.ID(actual.ID))] {
-			report.Held++
-			continue // the declared owner is the one doing the work: no drift
+			area.Standing = StandingHeld
+		} else {
+			area.Standing = ownerStanding(ix, owners, model.ID(tr.Topic))
 		}
-		names := make([]string, 0, len(owners))
+		type owner struct{ Name, ID string }
+		list := make([]owner, 0, len(owners))
 		for oid := range owners {
-			names = append(names, personName(ix, oid))
+			list = append(list, owner{Name: personName(ix, oid), ID: string(oid)})
 		}
-		sort.Strings(names)
-		why := ownerStanding(ix, owners, model.ID(tr.Topic))
-		switch why {
-		case standingSilent:
-			report.Silent++
-		case standingUnworked:
-			report.Unworked++
-		default:
-			report.Trailing++
-		}
-		report.Drift = append(report.Drift, OwnerDrift{
-			Topic: tr.Topic, Declared: names, Actual: actual.Name, ActualID: actual.ID, Why: why,
+		// Sorted by name, and the ids carried along, so the two slices stay in
+		// step. Sorting the names alone and the ids separately would pair each
+		// person with somebody else's identifier.
+		sort.Slice(list, func(i, j int) bool {
+			if list[i].Name != list[j].Name {
+				return list[i].Name < list[j].Name
+			}
+			return list[i].ID < list[j].ID
 		})
+		for _, o := range list {
+			area.Declared = append(area.Declared, o.Name)
+			area.DeclaredIDs = append(area.DeclaredIDs, o.ID)
+		}
+		out = append(out, area)
 	}
-	sort.Slice(report.Drift, func(i, j int) bool { return report.Drift[i].Topic < report.Drift[j].Topic })
-	return report
+	sort.Slice(out, func(i, j int) bool { return out[i].Topic < out[j].Topic })
+	return out
 }

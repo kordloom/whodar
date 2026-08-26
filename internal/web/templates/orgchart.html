@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>whodar · org chart</title>
   <script src="/static/theme.js?v=18"></script>
-  <link rel="stylesheet" href="/static/orgchart.css?v=19">
+  <link rel="stylesheet" href="/static/orgchart.css?v=22">
   <link rel="icon" type="image/png" href="/static/whodar-logo.png">
 </head>
 <body class="oc-body" data-me="{{.Me}}">
@@ -27,6 +27,8 @@
     <select id="oc-topic" class="oc-select" aria-label="Filter by topic"><option value="">All topics</option></select>
 
     <button id="oc-myteam" class="oc-btn2" type="button" title="Jump to my part of the org">My team</button>
+    <button id="oc-risk" class="oc-btn2" type="button" aria-pressed="false" title="Show only the people who are the sole holder of something">At risk</button>
+    <button id="oc-export" class="oc-btn2" type="button" title="Download the seats now on screen, as a spreadsheet">Export</button>
 
     <div class="oc-grow"></div>
 
@@ -58,11 +60,16 @@
       <div id="oc-nodes" class="oc-nodes"></div>
     </div>
     <div class="oc-hint">Drag to pan · scroll to zoom · click anyone for detail</div>
+    <div class="oc-key" aria-label="What the marks on a seat mean">
+      <span class="oc-key-i"><i class="oc-key-bar oc-key-alone"></i>Only holder</span>
+      <span class="oc-key-i"><i class="oc-key-bar oc-key-quiet"></i>Gone quiet</span>
+    </div>
     <div id="oc-contact" class="oc-contact" hidden></div>
     <div id="oc-empty" class="oc-empty" hidden></div>
   </main>
 
   <aside id="oc-detail" class="oc-detail" hidden></aside>
-  <script src="/static/orgchart.js?v=20"></script>
+  <script src="/static/portable.js?v=1"></script>
+  <script src="/static/orgchart.js?v=21"></script>
 </body>
 </html>

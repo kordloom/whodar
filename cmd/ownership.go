@@ -29,11 +29,20 @@ Examples:
 				return noIndexError(err)
 			}
 			report := resolve.Ownership(ix)
+			// The three buckets ship with the share, because the share alone is
+			// not actionable: an owner with no recorded work anywhere is usually
+			// an unjoined identity, an owner who never worked in their own area
+			// is paper ownership, and only the third is a judgement call about
+			// ranking. The human view has said so all along; anything reading
+			// the JSON could not tell them apart.
 			view := map[string]any{
 				"drift":    report.Drift,
 				"declared": report.Declared,
 				"held":     report.Held,
 				"share":    report.Share(),
+				"silent":   report.Silent,
+				"unworked": report.Unworked,
+				"trailing": report.Trailing,
 			}
 			return opts.render(cmd.OutOrStdout(), view, func(w io.Writer, s style) {
 				renderOwnership(w, report, s)

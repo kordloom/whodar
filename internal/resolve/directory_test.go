@@ -4,9 +4,11 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"github.com/kordloom/whodar/internal/connector"
 	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/model"
 )
 
 // TestBuildDirectory verifies the directory lists people, channels, teams,
@@ -50,5 +52,55 @@ func TestBuildDirectory(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, d.Topics); diff != "" {
 		t.Errorf("topics mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestDirectoryMarksWhoHoldsSomethingAlone checks each person carries the two
+// readings that make an organization chart worth drawing: what nobody else
+// holds, and what they have stopped touching.
+//
+// Reporting lines are the part every company already has. Whether a seat is the
+// only one holding something is the part nobody can see, and it is what turns
+// the chart from a directory into a risk view.
+func TestDirectoryMarksWhoHoldsSomethingAlone(t *testing.T) {
+	t.Parallel()
+	ix := index.New()
+	ix.Graph.Topics = map[model.ID]*model.Topic{
+		"billing": {ID: "billing", Name: "billing", Curated: true},
+		"ledger":  {ID: "ledger", Name: "ledger", Curated: true},
+	}
+	ix.Graph.People = map[model.ID]*model.Person{
+		"ada@x.com": {
+			ID: "ada@x.com", Name: "Ada",
+			// Ada alone holds ledger, and has stopped working on it.
+			Topics: map[model.ID]float64{"billing": 5, "ledger": 4},
+			Recent: map[model.ID]float64{"billing": 2},
+		},
+		"bo@x.com": {
+			ID: "bo@x.com", Name: "Bo",
+			Topics: map[model.ID]float64{"billing": 3},
+			Recent: map[model.ID]float64{"billing": 3},
+		},
+	}
+	ix.Canonicalize()
+
+	d := BuildDirectory(ix)
+	byName := make(map[string]DirectoryPerson, len(d.People))
+	for _, p := range d.People {
+		byName[p.Name] = p
+	}
+	ada, bo := byName["Ada"], byName["Bo"]
+	if diff := cmp.Diff([]string{"ledger"}, ada.Alone, cmpopts.EquateEmpty()); diff != "" {
+		t.Errorf("Ada alone (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"ledger"}, ada.Quiet, cmpopts.EquateEmpty()); diff != "" {
+		t.Errorf("Ada quiet (-want +got):\n%s", diff)
+	}
+	// Two people hold billing, so neither holds it alone.
+	if len(bo.Alone) != 0 {
+		t.Errorf("Bo alone = %v, want nothing: billing has two holders", bo.Alone)
+	}
+	if len(bo.Quiet) != 0 {
+		t.Errorf("Bo quiet = %v, want nothing: Bo is still working on billing", bo.Quiet)
 	}
 }

@@ -300,3 +300,38 @@ func TestReadsAsName(t *testing.T) {
 		})
 	}
 }
+
+// TestNormalizeEmailKeepsAGitHubUsername covers the address that carries a
+// person's identity behind the plus instead of in front of it. Folding it the
+// usual way keeps the account number and discards the human, which is exactly
+// the half no source of record ever writes down: a CODEOWNERS file says
+// @cmroche and the history only ever says 1007595+cmroche@users.noreply.github.com.
+func TestNormalizeEmailKeepsAGitHubUsername(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		In         string
+		WantResult string
+	}{{ // Test 0: The account id goes, the username stays.
+		In: "1007595+cmroche@users.noreply.github.com", WantResult: "cmroche@users.noreply.github.com",
+	}, { // Test 1: Older addresses carry the username alone.
+		In: "cmroche@users.noreply.github.com", WantResult: "cmroche@users.noreply.github.com",
+	}, { // Test 2: Case and spacing still normalize.
+		In: "  1007595+CmRoche@Users.NoReply.GitHub.com ", WantResult: "cmroche@users.noreply.github.com",
+	}, { // Test 3: An ordinary plus-tag still folds the other way, since
+		// alice+ci@x.com and alice@x.com really are one mailbox.
+		In: "alice+ci@x.com", WantResult: "alice@x.com",
+	}, { // Test 4: A plus-tag on a domain that merely looks similar is not
+		// GitHub's, so it folds normally.
+		In: "1007595+cmroche@noreply.github.com", WantResult: "1007595@noreply.github.com",
+	}, { // Test 5: A trailing plus leaves nothing to take, so nothing changes.
+		In: "12345+@users.noreply.github.com", WantResult: "12345+@users.noreply.github.com",
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			if got := NormalizeEmail(test.In); got != test.WantResult {
+				t.Errorf("NormalizeEmail(%q) = %q, want %q", test.In, got, test.WantResult)
+			}
+		})
+	}
+}

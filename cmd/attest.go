@@ -93,11 +93,14 @@ func (o *options) attestKey() (ed25519.PrivateKey, error) {
 	if _, err := rand.Read(fresh); err != nil {
 		return nil, fmt.Errorf("attest: generate key: %w", err)
 	}
+	// Name the directory in both failures. The default sits under the home
+	// directory, and a hardened service unit usually cannot reach that, so the
+	// message has to say which path was refused or the remedy is invisible.
 	if err := os.MkdirAll(o.dataDir, 0o700); err != nil {
-		return nil, fmt.Errorf("attest: %w", err)
+		return nil, fmt.Errorf("attest: cannot create %s: %w", o.dataDir, err)
 	}
 	if err := os.WriteFile(path, fresh, 0o600); err != nil {
-		return nil, fmt.Errorf("attest: save key: %w", err)
+		return nil, fmt.Errorf("attest: cannot save the key in %s: %w", o.dataDir, err)
 	}
 	return ed25519.NewKeyFromSeed(fresh), nil
 }

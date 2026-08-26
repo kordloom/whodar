@@ -192,6 +192,12 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 		return modeReadiness(ctx, ix, opts.pol, cfg)
 	}
 
+	// One sealer for every surface. Built twice, the two would warn twice and,
+	// when no key can be kept, generate DIFFERENT keys: the same finding would
+	// then be signed under one identity through the API and another through the
+	// command-line view, which is worse than not signing it.
+	sealer := attestFn(ix, opts, cmd.ErrOrStderr())
+
 	handler, err := web.Handler(web.Config{
 		Ask: ask, Feedback: vote, Person: person, Version: version, AuthToken: token,
 		Directory: &dir, Modes: modes, Recall: recallFn(ix, cfg, token), RecallMe: cfg.recallMe,
@@ -204,7 +210,6 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 				Spans:   resolve.SoleSpans(ix, spansShown),
 			}
 		},
-		OrgChart: func() resolve.Chart { return resolve.OrgChart(ix) },
 		Brief: func() report.Brief {
 			all := resolve.Risk(ix, 0)
 			exposed := report.Exposures(all)
@@ -223,11 +228,11 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 		Departure: func(person string) resolve.DepartureImpact {
 			return resolve.Departure(ix, person)
 		},
-		Attest: attestFn(ix, opts, cmd.ErrOrStderr()),
+		Attest: sealer,
 		Related: func(topic string, limit int) []resolve.TopicRelation {
 			return resolve.Related(ix, topic, limit)
 		},
-		CLI:   cliFn(ix, ask, attestFn(ix, opts, cmd.ErrOrStderr())),
+		CLI:   cliFn(ix, ask, sealer),
 		Log:   cmd.ErrOrStderr(),
 		Ready: func() bool { return ix != nil && len(ix.Graph.People) > 0 },
 	})
@@ -349,7 +354,14 @@ func attestFn(ix *index.Index, opts *options, logw io.Writer) web.AttestFunc {
 			fmt.Fprintf(logw, "whodar: attest disabled: %v\n", genErr)
 			return nil
 		}
-		fmt.Fprintf(logw, "whodar: attest signing with an in-memory key (%v)\n", err)
+		// Say what this costs and how to stop paying it. Signed findings that
+		// cannot be checked against a stable key after a restart are worth
+		// much less than the feature promises, and the fix is one flag.
+		fmt.Fprintf(logw,
+			"whodar: attest signing with a key held only in memory: %v\n"+
+				"  findings signed now will not verify against this install after a restart.\n"+
+				"  point --data-dir at somewhere writable to keep one key, "+
+				"such as a systemd StateDirectory.\n", err)
 		priv = key
 	}
 	pub, ok := priv.Public().(ed25519.PublicKey)

@@ -27,6 +27,25 @@ import (
 )
 
 // DefaultHalfLife is the age at which a dated record's weight halves.
+//
+// Measured, not chosen. Swept against home-assistant/core with everything else
+// held fixed, so all five runs answered the same 1,100 declared areas over the
+// same 68,142 subjects, scored on how often the declared owner of an area is
+// also the person whodar names (see `whodar eval` and CONTRIBUTING):
+//
+//	30 days   64.8%
+//	90 days   71.0%
+//	180 days  72.0%   <- here
+//	365 days  72.3%
+//	no decay  71.5%
+//
+// The suspicion worth recording is the one this killed: that ranking favours
+// whoever contributed most over whoever maintains an area now, and that a
+// shorter half-life would correct it. It does not. Leaning harder on recency
+// costs seven points, because how much someone has done in an area is most of
+// what makes them the person to ask. The curve is flat from 90 days out, so
+// there is nothing to win here; spend the effort on identity linkage, where
+// most disagreements actually come from.
 const DefaultHalfLife = 180 * 24 * time.Hour
 
 // Field weights scale how strongly each signal contributes to a score. An

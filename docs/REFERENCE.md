@@ -57,7 +57,7 @@ Builds or extends the index from one source per run.
 | ------------------- | --------- | ---------- | ------------------------------------------------ |
 | `--source`          | `org-csv` | all        | Which source to ingest.                          |
 | `--merge`           | off       | all        | Add to the existing index instead of replacing. Re-indexing an incremental source this way fetches only what changed. |
-| `--full`            | off       | jira, confluence, github, slack | With `--merge`, re-read everything and recompact instead of only what changed. |
+| `--full`            | off       | git, jira, confluence, github, slack | With `--merge`, re-read everything and recompact instead of only what changed. |
 | `--allow-shrink`    | off       | all        | Accept a source returning far less than last time, otherwise refused as a truncated read. |
 | `--aliases`         |           | all        | JSON alias file joining one person across sources. |
 | `--half-life-days`  | `180`     | all        | Days for a dated record's weight to halve; `0` disables decay. |
@@ -96,7 +96,7 @@ Builds or extends the index from one source per run.
 
 ### Incremental re-indexing
 
-Re-indexing Jira, Confluence, GitHub, or Slack with `--merge` is incremental: it
+Re-indexing git, Jira, Confluence, GitHub, or Slack with `--merge` is incremental: it
 fetches only the items changed since the last run and folds them into the index,
 keeping everyone it did not re-read. A per-source watermark is kept in
 `index.state.json` beside the index. Other sources always read in full.
@@ -108,6 +108,14 @@ keeping everyone it did not re-read. A per-source watermark is kept in
   reads them.
 - Slack reads only messages posted since the watermark. An edit to an older
   message is missed until a full run.
+- Git resumes from the last commit it read, per repository, rather than from a
+  time. A pull request branched three weeks ago and merged today carries
+  three-week-old dates, so a time would step straight over it. Reading two years
+  of a large repository takes minutes and a refresh takes about a second, since
+  almost nothing is new. A history that has been rewritten no longer contains
+  the commit, which is the signal to read the window again, and a window ending
+  short of today records no position at all: its newest commit is not the tip,
+  so resuming there would skip everything in between.
 
 Pass `--full` to re-read everything and recompact, which also picks up anything
 an incremental run skipped. A source driven by an explicit `--jira-jql` or

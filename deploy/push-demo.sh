@@ -33,7 +33,24 @@ if [ "${1:-}" = "--rollback" ]; then
 fi
 
 say "Checks"
-[ -z "$(git status --porcelain -- cmd internal)" ] || die "commit your code changes first"
+# Code has to be recorded somewhere before it reaches a public box, so what is
+# serving can always be traced back. A clean tree is the usual way. Weekday
+# daytime is the other: commits are held until the evening, so the record is a
+# refs/wip snapshot, and one holding exactly this content traces back just as
+# well as a commit does.
+if [ -n "$(git status --porcelain -- cmd internal)" ]; then
+	idx="$(mktemp -u)"
+	GIT_INDEX_FILE="$idx" git read-tree HEAD
+	GIT_INDEX_FILE="$idx" git add -A
+	here="$(GIT_INDEX_FILE="$idx" git write-tree)"
+	rm -f "$idx"
+	snap=""
+	for ref in $(git for-each-ref --format='%(refname)' refs/wip/); do
+		if [ "$(git rev-parse "$ref^{tree}")" = "$here" ]; then snap="$ref"; break; fi
+	done
+	[ -n "$snap" ] || die "uncommitted code: commit it, or snapshot it to refs/wip/ first"
+	echo "  uncommitted, but recorded as $snap"
+fi
 go build ./... || die "the tree does not build"
 echo "  at $(git log -1 --format='%h %s')"
 

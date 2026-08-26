@@ -21,6 +21,18 @@ func NormalizeEmail(email string) string {
 		return e
 	}
 	local, domain := e[:at], e[at+1:]
+	// GitHub's private commit address is the one place the plus runs the other
+	// way. In 1007595+cmroche@users.noreply.github.com the account id is in
+	// front and the username behind, so the usual fold keeps the meaningless
+	// half and throws the person away: it leaves 1007595@users.noreply.github.com,
+	// which matches no handle any source of record ever writes down. Measured on
+	// home-assistant/core, 424 of 1,272 authors commit under this form.
+	if domain == githubNoReply {
+		if plus := strings.IndexByte(local, '+'); plus >= 0 && plus+1 < len(local) {
+			local = local[plus+1:]
+		}
+		return local + "@" + domain
+	}
 	// Drop a plus-tag: alice+ci@x.com and alice@x.com are the same mailbox.
 	// Dots are left alone because many corporate domains make first.last
 	// significant, so folding them would merge distinct people.
@@ -29,6 +41,11 @@ func NormalizeEmail(email string) string {
 	}
 	return local + "@" + domain
 }
+
+// githubNoReply is the domain GitHub issues private commit addresses on. It
+// carries a username rather than a mailbox, which is why it is normalized
+// differently from every other address.
+const githubNoReply = "users.noreply.github.com"
 
 // roleLocals are email local-parts that name a function or shared team mailbox
 // rather than one person, so an address at one of them must not be used to merge
