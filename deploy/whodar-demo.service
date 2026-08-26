@@ -1,0 +1,21 @@
+[Unit]
+Description=whodar public demo (simulated company, sample data only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=whodar
+Group=whodar
+# The demo builds a simulated company in memory at start and serves it read only.
+# Nothing is persisted and no credentials are involved, so a restart is a clean slate.
+ExecStart=/opt/whodar/bin/whodar demo --big --open=false --addr 127.0.0.1:8766
+Restart=always
+RestartSec=2
+TimeoutStartSec=60
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

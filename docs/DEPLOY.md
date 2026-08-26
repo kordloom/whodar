@@ -44,6 +44,25 @@ Install the unit from deploy/whodar-bot.service, then enable it:
 The unit runs as a dedicated user, restarts on failure, and restricts filesystem
 access to the data directory.
 
+## The public demo
+
+demo.whodar.dev is a systemd service behind Caddy, not the container in
+docker-compose.yml, and nothing in the release flow touches it. Cutting a
+release publishes artifacts and deploys the marketing site; the demo box keeps
+serving whatever binary it already had until somebody pushes a new one.
+
+    deploy/push-demo.sh              # build, install, restart, verify
+    deploy/push-demo.sh --rollback   # put the previous binary back
+
+The script refuses to run with uncommitted code, checks the new binary starts
+before it replaces the old one, keeps the previous binary beside it, and fails
+loudly if the served page comes back without the views it should have.
+
+The unit is `deploy/whodar-demo.service`. It runs as an unprivileged user with
+no write access outside its own directory, restarts on failure, and rebuilds the
+simulated company on start, which takes a few seconds. Caddy serves a retrying
+holding page for that window rather than an error.
+
 ## Organization policy
 
 To lock a managed deployment to strict egress, place a locked policy at

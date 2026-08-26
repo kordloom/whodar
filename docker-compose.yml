@@ -6,6 +6,10 @@
 # sources: seeded, open, no secrets, discarded when it stops. The tunnel profile
 # publishes that same demo at a public hostname through Cloudflare, TLS and DNS
 # included. Serve is the real web UI over an index you build into ./data.
+#
+# NOTE: demo.whodar.dev does NOT run this. It is a systemd service behind Caddy
+# on a box with no Docker installed; see docs/DEPLOY.md and deploy/push-demo.sh.
+# These profiles are for running whodar yourself.
 services:
   demo:
     build: .
