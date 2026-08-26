@@ -204,6 +204,7 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 				Spans:   resolve.SoleSpans(ix, spansShown),
 			}
 		},
+		OrgChart: func() resolve.Chart { return resolve.OrgChart(ix) },
 		Brief: func() report.Brief {
 			all := resolve.Risk(ix, 0)
 			exposed := report.Exposures(all)

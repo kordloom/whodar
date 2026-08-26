@@ -744,3 +744,49 @@ func TestExposureViewHasSomewhereToShowEveryFinding(t *testing.T) {
 		}
 	}
 }
+
+// TestOrgChartEndpointCarriesTheChart checks the chart reaches the browser with
+// the knowledge on each seat, not just the reporting lines. The reporting lines
+// alone are the part every company already has.
+func TestOrgChartEndpointCarriesTheChart(t *testing.T) {
+	t.Parallel()
+	h, err := Handler(Config{
+		Ask: func(_ context.Context, _, _, _ string, _ int) (resolve.Answer, error) {
+			return resolve.Answer{}, nil
+		},
+		OrgChart: func() resolve.Chart {
+			return resolve.Chart{
+				People: 2, Unplaced: 3,
+				Roots: []resolve.Seat{{
+					ID: "boss@x.com", Name: "Boss", Title: "VP",
+					Reports: []resolve.Seat{{
+						ID: "ada@x.com", Name: "Ada", Team: "Payments",
+						Knows: []string{"billing"}, Alone: []string{"billing"},
+					}},
+				}},
+			}
+		},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/orgchart", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("orgchart = %d, want 200", rec.Code)
+	}
+	var got resolve.Chart
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got.Roots) != 1 || got.Roots[0].Name != "Boss" {
+		t.Fatalf("chart = %+v, want the root carried through", got)
+	}
+	if got.Unplaced != 3 {
+		t.Errorf("unplaced = %d, want it reported so a thin directory is visible", got.Unplaced)
+	}
+	ada := got.Roots[0].Reports
+	if len(ada) != 1 || len(ada[0].Alone) != 1 {
+		t.Errorf("seat = %+v, want the knowledge on it and not only the reporting line", ada)
+	}
+}

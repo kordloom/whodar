@@ -155,8 +155,8 @@ func ownerRecord(owner string, patterns []string) Record {
 		Source: "codeowners",
 		Weight: 1,
 		Name:   owner,
-		Topics: topicsFromPatterns(patterns),
 	}
+	rec.Topics, rec.WeakTopics = topicsFromPatterns(patterns)
 	if after, ok := strings.CutPrefix(owner, "@"); ok {
 		rec.PersonID = "codeowners:" + strings.ToLower(after)
 	} else {
@@ -168,13 +168,31 @@ func ownerRecord(owner string, patterns []string) Record {
 // topicsFromPatterns derives topic tags from the path segments of patterns,
 // mapping file extensions and special filenames to the words people search and
 // dropping generic directory names.
-func topicsFromPatterns(patterns []string) []string {
-	var topics []string
+//
+// A whole path segment is a subject the file declares. The words inside a
+// compound one are returned separately, so a question typed as "billing" still
+// reaches the owner of billing-retries without billing becoming a subject the
+// organization has. The git connector draws the same line for the same reason.
+func topicsFromPatterns(patterns []string) (stated, words []string) {
+	named := make(map[string]bool)
+	var all []string
 	for _, p := range patterns {
-		topics = append(topics, pathTopics(p)...)
+		all = append(all, pathTopics(p)...)
+		for _, seg := range segmentNames(p) {
+			named[seg] = true
+		}
+		for _, seg := range patternNames(p) {
+			named[seg] = true
+		}
 	}
-	topics = util.Distinct(topics, func(t string) string { return t })
-	return topics
+	for _, t := range util.Distinct(all, func(t string) string { return t }) {
+		if named[t] {
+			stated = append(stated, t)
+			continue
+		}
+		words = append(words, t)
+	}
+	return stated, words
 }
 
 // pathTopics derives topic tokens from one path or pattern: extension and

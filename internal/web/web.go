@@ -121,6 +121,9 @@ type Config struct {
 	// Related reports the topics that share a topic's experts, at
 	// /api/related; nil disables it.
 	Related RelatedFunc
+	// OrgChart builds the organization chart, when a source of record placed
+	// people under one another.
+	OrgChart OrgChartFunc
 	// CLI renders what a command line invocation prints for this same index,
 	// at /api/cli; nil disables it.
 	CLI CLIFunc
@@ -185,6 +188,9 @@ func Handler(cfg Config) (http.Handler, error) {
 	}
 	if cfg.Related != nil {
 		mux.HandleFunc("/api/related", relatedHandler(cfg.Related))
+	}
+	if cfg.OrgChart != nil {
+		mux.HandleFunc("/api/orgchart", orgChartHandler(cfg.OrgChart))
 	}
 	if cfg.CLI != nil {
 		mux.HandleFunc("/api/cli", cliHandler(cfg.CLI))
@@ -493,6 +499,23 @@ type Exposure struct {
 	// ever worked across. Both subjects may be well covered on their own, so
 	// nothing that counts experts per subject can show it.
 	Spans []resolve.Span `json:"spans"`
+}
+
+// OrgChartFunc builds the organization chart for the index being served.
+type OrgChartFunc func() resolve.Chart
+
+// orgChartHandler serves the organization chart: who reports to whom, and what
+// whodar knows about each of them.
+func orgChartHandler(fn OrgChartFunc) http.HandlerFunc {
+	if fn == nil {
+		panic("orgChartHandler: OrgChartFunc required")
+	}
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(fn()); err != nil {
+			return
+		}
+	}
 }
 
 // BriefFunc builds the knowledge-risk brief for the index being served.
