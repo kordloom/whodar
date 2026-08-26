@@ -61,6 +61,7 @@ const dirFilter = document.getElementById("dir-filter");
 const dirStatus = document.getElementById("dir-status");
 const dirList = document.getElementById("dir-list");
 const sideNav = document.getElementById("side-nav");
+const dirSort = document.getElementById("dir-sort");
 const facetTeam = document.getElementById("facet-team");
 const facetOrg = document.getElementById("facet-org");
 
@@ -629,6 +630,10 @@ async function renderDirectory(view) {
     if (facetOrg.value) shown = shown.filter((r) => r.org === facetOrg.value);
   }
 
+  const sorts = fillSorts(view);
+  const chosen = sorts.find(([k]) => k === dirSort?.value) || sorts[0];
+  if (chosen) shown = shown.slice().sort(chosen[2]);
+
   dirList.replaceChildren();
   for (const r of shown) dirList.appendChild(directoryRow(view, r));
   if (rows.length === 0) {
@@ -638,6 +643,55 @@ async function renderDirectory(view) {
   } else {
     dirStatus.textContent = String(rows.length);
   }
+}
+
+// DIR_SORTS are the orderings each view offers, first one being its default.
+// A list of a few hundred rows sorted one way answers one question; sorting is
+// what lets the same list answer "what is biggest", "what is alphabetical", and
+// "what has nobody left on it".
+const DIR_SORTS = {
+  people: [
+    ["name", "Name", (a, b) => cmpText(a.name, b.name)],
+    ["subjects", "Most subjects", (a, b) => (b.topics || []).length - (a.topics || []).length],
+    ["team", "Team", (a, b) => cmpText(a.team, b.team) || cmpText(a.name, b.name)],
+  ],
+  topics: [
+    ["people", "Most people", (a, b) => b.people - a.people || cmpText(a.name, b.name)],
+    ["name", "Name", (a, b) => cmpText(a.name, b.name)],
+    ["thin", "Fewest people", (a, b) => a.people - b.people || cmpText(a.name, b.name)],
+    ["stale", "Nobody active", (a, b) => (a.active || 0) - (b.active || 0) || cmpText(a.name, b.name)],
+  ],
+  teams: [
+    ["people", "Most people", (a, b) => b.people - a.people || cmpText(a.name, b.name)],
+    ["name", "Name", (a, b) => cmpText(a.name, b.name)],
+  ],
+  channels: [
+    ["members", "Most members", (a, b) => b.members - a.members || cmpText(a.name, b.name)],
+    ["name", "Name", (a, b) => cmpText(a.name, b.name)],
+  ],
+};
+
+// cmpText orders two possibly-missing strings the way a reader expects.
+function cmpText(a, b) {
+  return String(a || "").toLowerCase().localeCompare(String(b || "").toLowerCase());
+}
+
+// fillSorts puts the orderings for a view in the dropdown, keeping the current
+// choice when the reader switches back to a view that has it.
+function fillSorts(view) {
+  const sorts = DIR_SORTS[view] || [];
+  if (!dirSort) return sorts;
+  const keep = dirSort.value;
+  dirSort.replaceChildren();
+  for (const [key, label] of sorts) {
+    const opt = document.createElement("option");
+    opt.value = key;
+    opt.textContent = label;
+    dirSort.appendChild(opt);
+  }
+  if (sorts.some(([k]) => k === keep)) dirSort.value = keep;
+  dirSort.hidden = sorts.length < 2;
+  return sorts;
 }
 
 // rowText flattens a directory row for filtering.
@@ -707,6 +761,11 @@ function dirTeamRow(t) {
   card.appendChild(el("div", "name", t.name));
   const sub = [t.org, t.people + (t.people === 1 ? " person" : " people")].filter(Boolean).join(" · ");
   if (sub) card.appendChild(el("div", "sub", sub));
+  // What the team actually works on, so the row says something about the team
+  // rather than only counting it.
+  if (t.topics && t.topics.length) {
+    card.appendChild(el("p", "exp-also", t.topics.join(", ")));
+  }
   activate(card, () => {
     pendingTeamFacet = t.name;
     dirFilter.value = "";
@@ -722,7 +781,14 @@ function dirTopicRow(t) {
   card.tabIndex = 0;
   card.title = "Ask who knows about this";
   card.appendChild(el("span", "name", t.name));
-  card.appendChild(el("span", "count", t.people + (t.people === 1 ? " person" : " people")));
+  // Who to ask, without a second click. A count alone makes every row look the
+  // same and answers nothing.
+  if (t.lead) card.appendChild(el("span", "sub", t.lead));
+  const people = t.people + (t.people === 1 ? " person" : " people");
+  // Nobody working on something several people know is the finding worth
+  // seeing in a list, so it is said rather than left to arithmetic.
+  const active = t.active === 0 ? "none active" : t.active + " active";
+  card.appendChild(el("span", "count", people + " · " + active));
   activate(card, () => runAsk(t.name));
   return card;
 }
@@ -730,6 +796,11 @@ function dirTopicRow(t) {
 dirFilter.addEventListener("input", () => {
   if (currentView !== "ask") renderDirectory(currentView);
 });
+if (dirSort) {
+  dirSort.addEventListener("change", () => {
+    if (currentView !== "ask") renderDirectory(currentView);
+  });
+}
 facetTeam.addEventListener("change", () => renderDirectory("people"));
 facetOrg.addEventListener("change", () => renderDirectory("people"));
 

@@ -41,7 +41,13 @@ func TestBuildDirectory(t *testing.T) {
 		d.Teams[0].People != 2 || d.Teams[0].Org != "Payments" {
 		t.Errorf("teams = %+v", d.Teams)
 	}
-	want := []DirectoryTopic{{Name: "billing", People: 2}, {Name: "retries", People: 1}}
+	// A subject row says who holds the most of it, so the list answers without
+	// another click, and how many still work on it, so a subject several people
+	// know and nobody touches is visible rather than hidden behind a headcount.
+	want := []DirectoryTopic{
+		{Name: "billing", People: 2, Lead: "Al Ono"},
+		{Name: "retries", People: 1, Lead: "Zoe Lang"},
+	}
 	if diff := cmp.Diff(want, d.Topics); diff != "" {
 		t.Errorf("topics mismatch (-want +got):\n%s", diff)
 	}

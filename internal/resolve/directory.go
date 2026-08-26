@@ -60,6 +60,9 @@ type DirectoryTeam struct {
 	Org string `json:"org,omitempty"`
 	// People is how many people the team has.
 	People int `json:"people"`
+	// Topics are what the team works on most, so the row says something about
+	// the team rather than only counting it.
+	Topics []string `json:"topics,omitempty"`
 }
 
 // DirectoryTopic is one row of the topic directory.
@@ -68,6 +71,13 @@ type DirectoryTopic struct {
 	Name string `json:"name"`
 	// People is how many people carry the topic.
 	People int `json:"people"`
+	// Lead is the display name of whoever holds the most of it, so a row says
+	// who to ask without another click.
+	Lead string `json:"lead,omitempty"`
+	// Active is how many of those people have worked on it lately. A subject
+	// several people know and nobody still touches is the interesting case, and
+	// a bare head count hides it.
+	Active int `json:"active"`
 }
 
 // BuildDirectory assembles the directory from the index graph.
@@ -77,6 +87,9 @@ func BuildDirectory(ix *index.Index) Directory {
 
 	teamSize := make(map[model.ID]int)
 	topicSize := make(map[model.ID]int)
+	// What each team's people work on, summed, so a team row can say what the
+	// team is about instead of only how many are in it.
+	teamWeight := make(map[model.ID]map[model.ID]float64)
 	for _, p := range g.People {
 		row := DirectoryPerson{
 			ID:        string(p.ID),
@@ -92,6 +105,16 @@ func BuildDirectory(ix *index.Index) Directory {
 		if t := g.Teams[p.TeamID]; t != nil {
 			row.Team = t.Name
 			teamSize[p.TeamID]++
+			into := teamWeight[p.TeamID]
+			if into == nil {
+				into = make(map[model.ID]float64)
+				teamWeight[p.TeamID] = into
+			}
+			for tid, w := range p.Topics {
+				if g.Topics[tid].Salient() {
+					into[tid] += w
+				}
+			}
 		}
 		if o := g.Orgs[p.OrgID]; o != nil {
 			row.Org = o.Name
@@ -123,7 +146,10 @@ func BuildDirectory(ix *index.Index) Directory {
 	})
 
 	for tid, t := range g.Teams {
-		row := DirectoryTeam{Name: t.Name, People: teamSize[tid]}
+		row := DirectoryTeam{
+			Name: t.Name, People: teamSize[tid],
+			Topics: topTopics(teamWeight[tid], 4),
+		}
 		if o := g.Orgs[t.OrgID]; o != nil {
 			row.Org = o.Name
 		}
@@ -162,7 +188,28 @@ func BuildDirectory(ix *index.Index) Directory {
 		}
 	}
 	for name, people := range holders {
-		d.Topics = append(d.Topics, DirectoryTopic{Name: name, People: len(people)})
+		row := DirectoryTopic{Name: name, People: len(people)}
+		var best float64
+		for id := range people {
+			p := g.People[id]
+			if p == nil {
+				continue
+			}
+			var mine, recent float64
+			for tid, w := range p.Topics {
+				if groups[string(tid)] == name || string(tid) == name {
+					mine += w
+					recent += p.Recent[tid]
+				}
+			}
+			if recent > 0 {
+				row.Active++
+			}
+			if mine > best || (mine == best && p.Name < row.Lead) {
+				best, row.Lead = mine, p.Name
+			}
+		}
+		d.Topics = append(d.Topics, row)
 	}
 	if len(d.Topics) == 0 {
 		for tid, count := range topicSize {
