@@ -114,24 +114,19 @@ const driftMargin = 1.0
 // claim is worth making at all. Below it the finding is a coin toss between two
 // people with a change each.
 //
-// Checked against every drift finding on home-assistant/core, scored from raw
-// git rather than from whodar: is the named person also the top focused
-// committer of that component and its tests?
+// Swept against raw git on three repositories at once, with the whole-graph
+// owner in place, scored by eval/verify_drift.py:
 //
-//	none  72% correct of 48 findings
-//	5     80% of 40
-//	10    86% of 23
-//	14    90% of 20
-//	20    100% of 12
+//	floor  home-assistant   prometheus   cli/cli
+//	3      60/81  74%       3/3          clean
+//	5      58/79  73%       3/3          clean
+//	7      46/59  77%       2/2          clean
 //
-// Precision is bought with findings, and this end of the curve is deliberate.
-// Higher is tempting, and two things argue against it: a hundred percent of
-// twelve is a small sample rather than a strong guarantee, and this is an
-// absolute quantity of work tuned on a repository with a hundred and fifteen
-// thousand commits, so a large floor could report nothing at all on a small one
-// and has not been tested there. Raise it once there is a second repository to
-// check against.
-const minDriftEvidence = 5.0
+// Three sits on the frontier: the most correct findings at effectively the
+// same precision. Seven buys three points of precision with a quarter of the
+// findings, which is the wrong trade for a report whose reader can check any
+// line against the history themselves.
+const minDriftEvidence = 3.0
 
 // workIn is how much real work somebody has done in one area. Weight a source
 // of record assigned does not count, or an owner would look active in an area
@@ -195,21 +190,42 @@ func displaced(ix *index.Index, owners map[model.ID]bool, challenger model.ID, t
 	return mine >= most*driftMargin
 }
 
-// actualOwner picks the person an area has really moved to.
+// actualOwnerOf picks whoever has done the most direct work in the area, over
+// everyone in the graph. The risk view's expert list cannot be used for this:
+// it is capped at five for display and ranked by affinity share, and affinity
+// on a common word is diluted by everyone who has ever typed it, so the person
+// with the most focused work in the area is routinely not on it. On a real
+// project the top committer of an area, eleven focused changes, was invisible
+// to ownership for exactly that reason. The capped list keeps its job, which is
+// being read; deciding ownership is not it.
 //
-// Where the source can tell focused work from a sweep, the answer is whoever
-// has done the most focused work inside the area, taken raw. Git can tell: a
-// commit touching more than a tie's worth of subjects earns no Direct credit,
-// so Direct is already clean of the people who touch everything. Discounting
-// it further by career breadth was measured and named one-commit passers-by
-// over nine-commit maintainers in eight of nine wrong findings, because among
-// genuine challengers the discount rewards having done least elsewhere.
-//
-// Where the source cannot tell, which is any record without direct work, raw
-// weight would hand every area to the busiest person in the organization, so
-// their weight is discounted by the square root of their whole career. It is a
-// proxy for the distinction the data cannot draw, kept only where it is the
-// best available.
+// It returns false when nobody has direct work in the area, and the caller
+// falls back to the discounted ranking over the displayed experts, which is
+// the best available where no source can tell focused work from sweeping.
+func actualOwnerOf(ix *index.Index, topic model.ID) (RiskExpert, bool) {
+	var best model.ID
+	var bestScore float64
+	for id, p := range ix.Graph.People {
+		if len(p.Direct) == 0 {
+			continue
+		}
+		canon := ix.CanonicalID(id)
+		score := p.Direct[topic]
+		if score > bestScore || (score == bestScore && score > 0 && canon < best) {
+			best, bestScore = canon, score
+		}
+	}
+	if bestScore <= 0 {
+		return RiskExpert{}, false
+	}
+	return RiskExpert{ID: string(best), Name: personName(ix, best)}, true
+}
+
+// actualOwner is the fallback for areas where no source could tell focused
+// work from sweeping: raw weight would hand every area to the busiest person in
+// the organization, so each candidate is discounted by the square root of their
+// whole career. A proxy for a distinction the data cannot draw, kept only where
+// it is the best available.
 func actualOwner(ix *index.Index, tr TopicRisk) RiskExpert {
 	topic := model.ID(tr.Topic)
 	best, bestScore := tr.Experts[0], -1.0
@@ -218,26 +234,20 @@ func actualOwner(ix *index.Index, tr TopicRisk) RiskExpert {
 		if p == nil {
 			continue
 		}
-		var score float64
-		if len(p.Direct) > 0 {
-			score = p.Direct[topic]
-		} else {
-			here := p.Topics[topic] - p.Stated[topic]
-			if here <= 0 {
-				continue
-			}
-			var total float64
-			for tid, w := range p.Topics {
-				if work := w - p.Stated[tid]; work > 0 {
-					total += work
-				}
-			}
-			if total <= 0 {
-				continue
-			}
-			score = here / math.Sqrt(total)
+		here := p.Topics[topic] - p.Stated[topic]
+		if here <= 0 {
+			continue
 		}
-		if score > bestScore {
+		var total float64
+		for tid, w := range p.Topics {
+			if work := w - p.Stated[tid]; work > 0 {
+				total += work
+			}
+		}
+		if total <= 0 {
+			continue
+		}
+		if score := here / math.Sqrt(total); score > bestScore {
 			best, bestScore = e, score
 		}
 	}
@@ -373,7 +383,10 @@ func OwnedAreas(ix *index.Index) []OwnedArea {
 		if allTeams(owners) {
 			continue
 		}
-		actual := actualOwner(ix, tr)
+		actual, ok := actualOwnerOf(ix, model.ID(tr.Topic))
+		if !ok {
+			actual = actualOwner(ix, tr)
+		}
 		area := OwnedArea{Topic: tr.Topic, Actual: actual.Name, ActualID: actual.ID}
 		switch {
 		case owners[ix.CanonicalID(model.ID(actual.ID))]:
