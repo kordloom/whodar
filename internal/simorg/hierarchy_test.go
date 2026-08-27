@@ -30,11 +30,11 @@ func TestEveryoneReportsSomewhere(t *testing.T) {
 	var roots, self int
 	for _, email := range order {
 		r := byEmail[email]
-		switch {
-		case r.manager == r.email:
+		switch r.manager {
+		case r.email:
 			self++
 			t.Errorf("%s (%s) is their own manager", r.email, r.title)
-		case r.manager == "":
+		case "":
 			roots++
 		default:
 			if _, ok := byEmail[r.manager]; !ok {

@@ -34,7 +34,7 @@ func TestHostileQueries(t *testing.T) {
 		{"unicode", "誰がカフカを知っていますか"},
 		{"emoji", "🔥🔥🔥 who owns 🚀"},
 		{"combining marks", strings.Repeat("é", 200)},
-		{"rtl override", "who knows ‮kafka"},
+		{"rtl override", "who knows \u202ekafka"},
 		{"very long token", strings.Repeat("kafka", 4000)},
 		{"very long question", "who knows " + strings.Repeat("kafka ", 3000)},
 		{"only stopwords", "the a an of to and is are was"},
