@@ -1343,3 +1343,7 @@ section h2 {
 .crossfig .cf-one { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
 .crossfig .cf-lab { fill: var(--accent); font-weight: 600; }
 .crossfig figcaption { margin-top: 8px; color: var(--muted); font-size: 13px; }
+.nav-tool-btn { background: none; border: none; color: var(--muted); font: inherit; font-size: 14.5px; font-weight: 500; padding: 8px 12px; border-radius: 8px; text-align: left; cursor: pointer; width: 100%; }
+.nav-tool-btn:hover { color: var(--fg); background: var(--accent-soft); }
+.fb-how-p { margin: 0 0 12px; color: var(--fg-2, var(--fg)); font-size: 14px; line-height: 1.55; }
+.keys-modal pre.story-install { display: flex; justify-content: space-between; align-items: center; gap: 10px; }

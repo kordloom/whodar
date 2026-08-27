@@ -58,3 +58,27 @@ func TestConfigBadMode(t *testing.T) {
 		t.Fatalf("err = %v, want ErrUnknownMode", err)
 	}
 }
+
+// TestFeedbackBundleKnob covers the policy key that pins the redacted feedback
+// bundle off. The bundle never sends itself, but an organization that wants no
+// report of any shape composed on its machines gets a lock, not a promise.
+func TestFeedbackBundleKnob(t *testing.T) {
+	t.Parallel()
+	p, err := (Config{Mode: "strict", FeedbackBundle: "deny"}).Policy()
+	if err != nil {
+		t.Fatalf("policy: %v", err)
+	}
+	if p.AllowFeedbackBundle() {
+		t.Error("deny did not pin the bundle off")
+	}
+	p, err = (Config{Mode: "strict"}).Policy()
+	if err != nil {
+		t.Fatalf("policy: %v", err)
+	}
+	if !p.AllowFeedbackBundle() {
+		t.Error("the default forbids the bundle; it should only be pinned off explicitly")
+	}
+	if _, err := (Config{Mode: "strict", FeedbackBundle: "sometimes"}).Policy(); err == nil {
+		t.Error("a typo in a privacy control parsed silently")
+	}
+}

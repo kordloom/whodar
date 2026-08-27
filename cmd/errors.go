@@ -40,3 +40,9 @@ var ErrNoRecords = errors.New("nothing was read from any source")
 
 // ErrEval indicates a measurement could not be read, written, or compared.
 var ErrEval = errors.New("cannot evaluate")
+
+// ErrFeedback indicates the feedback bundle could not be written.
+var ErrFeedback = errors.New("cannot write feedback")
+
+// ErrPolicy indicates the organization policy forbids the requested action.
+var ErrPolicy = errors.New("forbidden by policy")

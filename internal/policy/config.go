@@ -20,6 +20,9 @@ type Config struct {
 	PrivateChannels string `json:"private_channels"`
 	// Archive is "allow" or "deny" for retaining conversation content.
 	Archive string `json:"archive"`
+	// FeedbackBundle is "allow" or "deny" for composing the redacted feedback
+	// bundle a user can hand-carry to the makers.
+	FeedbackBundle string `json:"feedback_bundle"`
 }
 
 // Load reads a policy Config from path. found is false when the file is absent;
@@ -61,6 +64,13 @@ func (c Config) Policy() (Policy, error) {
 	}
 	if !archiveOK {
 		p = p.WithoutArchive()
+	}
+	feedbackOK, err := parseAllowDeny("feedback_bundle", c.FeedbackBundle)
+	if err != nil {
+		return Policy{}, err
+	}
+	if !feedbackOK {
+		p = p.WithoutFeedbackBundle()
 	}
 	return p, nil
 }

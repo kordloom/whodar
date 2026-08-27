@@ -90,6 +90,9 @@ type Policy struct {
 	privateOff bool
 	// archiveOff pins retention of conversation content off.
 	archiveOff bool
+	// feedbackOff pins the feedback bundle off, so not even a hand-carried
+	// report can be composed on this machine.
+	feedbackOff bool
 }
 
 // New returns a Policy with the given mode and lock state.
@@ -116,6 +119,19 @@ func (p Policy) AllowPrivateChannels() bool { return !p.privateOff }
 // organization that keeps a short retention period on purpose can pin this
 // off, so no local archive outlives the record its own policy deletes.
 func (p Policy) AllowArchive() bool { return !p.archiveOff }
+
+// AllowFeedbackBundle reports whether composing the redacted feedback bundle
+// is permitted. The bundle never sends itself anywhere, but an organization
+// that wants no report of any shape leaving its walls can pin even the manual
+// path off, and a lock enforces what a promise only asserts.
+func (p Policy) AllowFeedbackBundle() bool { return !p.feedbackOff }
+
+// WithoutFeedbackBundle returns a copy that forbids composing the bundle.
+func (p Policy) WithoutFeedbackBundle() Policy {
+	c := p
+	c.feedbackOff = true
+	return c
+}
 
 // WithoutArchive returns a copy that forbids retaining conversation content.
 func (p Policy) WithoutArchive() Policy {

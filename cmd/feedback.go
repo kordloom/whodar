@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -27,7 +29,8 @@ index and survive re-indexing.
   whodar feedback list
   whodar feedback clear --person alice@corp.com`,
 	}
-	cmd.AddCommand(newFeedbackRecordCmd(opts), newFeedbackListCmd(opts), newFeedbackClearCmd(opts))
+	cmd.AddCommand(newFeedbackRecordCmd(opts), newFeedbackListCmd(opts), newFeedbackClearCmd(opts),
+		newFeedbackBundleCmd(opts), newFeedbackSummaryCmd(opts))
 	return cmd
 }
 
@@ -180,4 +183,88 @@ func applyFeedback(ix *index.Index, opts *options, errOut io.Writer) *feedback.S
 	}
 	ix.SetFeedback(store.All())
 	return store
+}
+
+// newFeedbackBundleCmd builds the bundle subcommand, which composes the
+// redacted report a user can choose to hand to whodar's makers.
+//
+// Composing and sending are deliberately two different acts. This command only
+// writes a file, so the claim that every byte can be read before it leaves is
+// not a promise about behavior but a property of the design: there is nothing
+// here that could send.
+func newFeedbackBundleCmd(opts *options) *cobra.Command {
+	var out string
+	cmd := &cobra.Command{
+		Use:   "bundle",
+		Short: "Write the redacted feedback report, to read and send by hand",
+		Long: `Compose a file summarizing the feedback recorded on this machine: vote counts,
+the shape of the questions voted on, and the comments typed with the votes.
+Queries, names, addresses, and message text never appear in it; a question
+asked of whodar is itself a fact about your organization, so only its word
+count leaves. The file is written to disk and nothing more: read it, then
+attach it to a GitHub issue or an email yourself, or do neither.
+
+An organization can forbid even this with "feedback_bundle": "deny" in its
+policy file.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if !opts.pol.AllowFeedbackBundle() {
+				return fmt.Errorf("%w: the organization policy pins the feedback bundle off", ErrPolicy)
+			}
+			store, err := opts.loadFeedback()
+			if err != nil {
+				return err
+			}
+			b := feedback.NewBundle(version, store.All())
+			data, err := json.MarshalIndent(b, "", "  ")
+			if err != nil {
+				return fmt.Errorf("%w: encode bundle: %w", ErrFeedback, err)
+			}
+			if out == "" {
+				out = "whodar-feedback.json"
+			}
+			if err := os.WriteFile(out, append(data, '\n'), 0o600); err != nil {
+				return fmt.Errorf("%w: write %s: %w", ErrFeedback, out, err)
+			}
+			return opts.render(cmd.OutOrStdout(), b, func(w io.Writer, s style) {
+				fmt.Fprintln(w, s.bold("Wrote "+out))
+				fmt.Fprintf(w, "  %d vote%s, %d comment%s. Queries appear only as word counts.\n",
+					b.Votes.Total, plural(b.Votes.Total), len(b.Comments), plural(len(b.Comments)))
+				fmt.Fprintln(w, s.dim("  Read the whole file, then attach it to a GitHub issue or an email"))
+				fmt.Fprintln(w, s.dim("  yourself. It sends nothing on its own."))
+			})
+		},
+	}
+	cmd.Flags().StringVarP(&out, "out", "o", "", "Where to write the bundle (default whodar-feedback.json).")
+	return cmd
+}
+
+// newFeedbackSummaryCmd builds the summary subcommand: the same arithmetic the
+// bundle carries, shown in place for whoever runs the instance.
+func newFeedbackSummaryCmd(opts *options) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "summary",
+		Short: "Show what the recorded feedback amounts to",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			store, err := opts.loadFeedback()
+			if err != nil {
+				return err
+			}
+			b := feedback.NewBundle(version, store.All())
+			return opts.render(cmd.OutOrStdout(), b, func(w io.Writer, s style) {
+				if b.Votes.Total == 0 {
+					fmt.Fprintln(w, s.dim("No feedback recorded yet. Votes on answers land here."))
+					return
+				}
+				fmt.Fprintln(w, s.bold(fmt.Sprintf("%d votes  %d helpful, %d not",
+					b.Votes.Total, b.Votes.Helpful, b.Votes.NotHelpful)))
+				fmt.Fprintf(w, "  %d on people, %d on channels\n", b.Votes.OnPeople, b.Votes.OnChannels)
+				for _, c := range b.Comments {
+					fmt.Fprintf(w, "  %s %s\n", s.dim("["+c.Vote+"]"), c.Comment)
+				}
+			})
+		},
+	}
+	return cmd
 }

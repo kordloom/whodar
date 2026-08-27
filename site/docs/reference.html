@@ -1370,6 +1370,51 @@ can be denied the same way. See <code>examples/policy.json</code>.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="whodar-feedback-bundle">whodar feedback bundle</h2>
+<p>Writes the redacted feedback report a user can choose to hand to whodar's
+makers. Composing and sending are two different acts by design: this command
+only writes a file, so every byte can be read before it goes anywhere, and
+nothing in the binary can send it.</p>
+<p>The full schema, so what can appear in the file is known before it is asked
+for (<code>whodar-feedback-bundle/1</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>schema</code>, <code>note</code></td>
+<td>The format name, and the redaction statement itself</td>
+</tr>
+<tr>
+<td><code>version</code></td>
+<td>The whodar build that wrote the bundle</td>
+</tr>
+<tr>
+<td><code>votes</code></td>
+<td>Counts only: total, helpful, not, on people, on channels</td>
+</tr>
+<tr>
+<td><code>queryShapes</code></td>
+<td>Per vote: the question's word count and the verdict</td>
+</tr>
+<tr>
+<td><code>comments</code></td>
+<td>The notes typed with votes, verbatim, with times</td>
+</tr>
+</tbody>
+</table>
+<p>Queries, names, addresses, and message text never appear: a question asked of
+whodar is itself a fact about your organization, so only its word count
+leaves. The one free text is what was typed as feedback, carried because it
+was written to be read by someone fixing the product.</p>
+<p>An organization can pin even this manual path off with
+<code>&quot;feedback_bundle&quot;: &quot;deny&quot;</code> in its policy file; the lock enforces what a
+promise only asserts. <code>whodar feedback summary</code> shows the same arithmetic in
+place without writing anything.</p>
 
 			<div class="doc-foot">
 				<a class="dpn prev" href="/docs/privacy"><span>← Previous</span><b>Privacy and encryption</b></a>

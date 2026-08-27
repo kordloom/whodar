@@ -759,3 +759,31 @@ Everything lives under `--data-dir` (default `~/.whodar`):
 | `license.json`  | The signed license, when one is installed. Verified offline against a key in the binary. |
 | `index.sources.json` | The per-source records the index was built from, redacted to stemmed terms, so a `--merge` rebuilds without re-reading every source. Encrypted with the same key as the index. |
 | `index.state.json` | Per-source incremental watermarks: the newest activity time indexed for each source and scope, so a `--merge` fetches only what changed. Plain JSON of timestamps and scope names. |
+
+## whodar feedback bundle
+
+Writes the redacted feedback report a user can choose to hand to whodar's
+makers. Composing and sending are two different acts by design: this command
+only writes a file, so every byte can be read before it goes anywhere, and
+nothing in the binary can send it.
+
+The full schema, so what can appear in the file is known before it is asked
+for (`whodar-feedback-bundle/1`):
+
+| Field | What it holds |
+|-------------------|--------------------------------------------------------|
+| `schema`, `note`  | The format name, and the redaction statement itself    |
+| `version`         | The whodar build that wrote the bundle                 |
+| `votes`           | Counts only: total, helpful, not, on people, on channels |
+| `queryShapes`     | Per vote: the question's word count and the verdict    |
+| `comments`        | The notes typed with votes, verbatim, with times       |
+
+Queries, names, addresses, and message text never appear: a question asked of
+whodar is itself a fact about your organization, so only its word count
+leaves. The one free text is what was typed as feedback, carried because it
+was written to be read by someone fixing the product.
+
+An organization can pin even this manual path off with
+`"feedback_bundle": "deny"` in its policy file; the lock enforces what a
+promise only asserts. `whodar feedback summary` shows the same arithmetic in
+place without writing anything.

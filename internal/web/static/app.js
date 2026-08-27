@@ -502,6 +502,36 @@ function closeProfile() {
   }
 }
 
+// The feedback bundle is offered, never sent: this panel only explains the
+// command that writes the redacted file, because a web page with nothing to
+// send is the strongest possible privacy claim about what it sends.
+function showFeedbackHow() {
+  const backdrop = el("div", "modal-backdrop");
+  backdrop.id = "fbhow-modal";
+  backdrop.addEventListener("click", (ev) => {
+    if (ev.target === backdrop) closeModal(backdrop);
+  });
+  const box = el("div", "modal keys-modal");
+  box.appendChild(el("h2", null, "Tell us how it went"));
+  const p1 = el("p", "fb-how-p",
+    "Your votes on answers stay on this machine and tune your own ranking. " +
+    "If you want to send us what they amount to, one command writes a file:");
+  const pre = el("pre", "story-install", "whodar feedback bundle");
+  pre.appendChild(copyButton("whodar feedback bundle"));
+  const p2 = el("p", "fb-how-p",
+    "It holds vote counts, the word counts of the questions, and the comments " +
+    "you typed. Queries, names, and messages never appear in it. Read the " +
+    "file, then attach it to a GitHub issue or an email yourself. Nothing here " +
+    "can send it, on purpose.");
+  box.appendChild(p1);
+  box.appendChild(pre);
+  box.appendChild(p2);
+  backdrop.appendChild(box);
+  openModal(backdrop, "How to send feedback");
+}
+const fbHow = document.getElementById("fb-how");
+if (fbHow) fbHow.addEventListener("click", showFeedbackHow);
+
 // typing reports whether the caret is somewhere a keystroke means a character
 // rather than a command, so a shortcut never eats a letter mid-question.
 function typing() {
