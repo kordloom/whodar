@@ -109,6 +109,10 @@ def main():
     window = 365
     if "--window-days" in sys.argv:
         window = int(sys.argv[sys.argv.index("--window-days") + 1])
+    else:
+        print("verify_drift: using the default 365-day window; if the index was"
+              " built with --max-commits, match --window-days to its reach or"
+              " the score is meaningless", file=sys.stderr)
 
     drift = [x for x in (json.load(open(findings)).get("drift") or [])
              if "leads less" in (x.get("why") or "")]
