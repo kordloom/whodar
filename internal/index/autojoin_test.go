@@ -421,3 +421,71 @@ func TestAutoJoinLinksShortenedHandles(t *testing.T) {
 		})
 	}
 }
+
+// TestSameSurnameJoinsOnePersonWhoseGivenNameDiffers covers one maintainer whose
+// two records disagree about their given name: a commit signed one way and a
+// CODEOWNERS entry resolving to another. Nothing else links them, and on
+// prometheus/prometheus that split put an area its owner had committed to
+// fifty-three times down as having moved to somebody else.
+func TestSameSurnameJoinsOnePersonWhoseGivenNameDiffers(t *testing.T) {
+	t.Parallel()
+
+	subjects := []string{"remote-write", "series-churn", "head-compaction", "block-storage"}
+	ix := New()
+	ix.Build([]connector.Record{
+		{Kind: connector.KindPerson, Name: "György Krajcsovits", Email: "gyorgy.k@corp.com",
+			Topics: subjects, Source: "git"},
+		{Kind: connector.KindPerson, Name: "George Krajcsovits", Email: "krajorama@users.noreply.github.com",
+			Topics: subjects, Source: "git"},
+	})
+	ix.AutoJoin()
+	ix.Canonicalize()
+	if got := len(ix.Graph.People); got != 1 {
+		names := make([]string, 0, got)
+		for _, p := range ix.Graph.People {
+			names = append(names, p.Name)
+		}
+		t.Errorf("one maintainer resolves to %d people (%v), want 1", got, names)
+	}
+}
+
+// TestSameSurnameKeepsTwoColleaguesApart is the guard that matters, and the one
+// shared subjects cannot provide on its own. Two people who share a surname AND
+// a team share plenty of subjects precisely because they work together, so
+// subject overlap argues for merging the very pair that must never be merged.
+// Two real mailboxes are two people.
+func TestSameSurnameKeepsTwoColleaguesApart(t *testing.T) {
+	t.Parallel()
+
+	subjects := []string{"remote-write", "series-churn", "head-compaction", "block-storage"}
+	ix := New()
+	ix.Build([]connector.Record{
+		{Kind: connector.KindPerson, Name: "Dan Cermak", Email: "dan.cermak@corp.com",
+			Topics: subjects, Source: "git"},
+		{Kind: connector.KindPerson, Name: "Jan Cermak", Email: "jan.cermak@corp.com",
+			Topics: subjects, Source: "git"},
+	})
+	ix.AutoJoin()
+	ix.Canonicalize()
+	if got := len(ix.Graph.People); got != 2 {
+		t.Errorf("two colleagues sharing a surname and a team merged into %d; "+
+			"they have two real addresses and are two people", got)
+	}
+}
+
+// TestSameSurnameNeedsSharedSubjects checks a surname alone never merges anyone.
+func TestSameSurnameNeedsSharedSubjects(t *testing.T) {
+	t.Parallel()
+	ix := New()
+	ix.Build([]connector.Record{
+		{Kind: connector.KindPerson, Name: "Miko Sternberg", Email: "miko@corp.com",
+			Topics: []string{"billing-retries", "payment-gateway"}, Source: "git"},
+		{Kind: connector.KindPerson, Name: "Eric Sternberg", Email: "eric@users.noreply.github.com",
+			Topics: []string{"search-indexing", "query-planner"}, Source: "git"},
+	})
+	ix.AutoJoin()
+	ix.Canonicalize()
+	if got := len(ix.Graph.People); got != 2 {
+		t.Errorf("two people sharing only a surname merged into %d", got)
+	}
+}

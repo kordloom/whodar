@@ -343,6 +343,7 @@ func (ix *Index) AutoJoin() JoinResult {
 		}
 	}
 	joins = append(joins, sameNameJoins(g, r)...)
+	joins = append(joins, sameSurnameJoins(g, r)...)
 	sort.Strings(blocked)
 	ix.joins = pruneJoins(mergeJoins(ix.joins, joins), ix)
 	return JoinResult{Joined: len(joins), Joins: joins, Ambiguous: blocked}
@@ -449,6 +450,93 @@ func sameNameJoins(g *model.Graph, r *identity.Resolver) []Join {
 		})
 	}
 	return out
+}
+
+// minSurname is how long a surname must be before it is distinctive enough to
+// join two records on. Short ones are held by too many unrelated people.
+const minSurname = 5
+
+// sameSurnameJoins merges one person whose two records disagree about their
+// given name. A commit signed György Krajcsovits and a CODEOWNERS entry
+// resolving to George Krajcsovits are the same maintainer, and nothing joins
+// them: the addresses share no local part, the handle matches neither name, and
+// sameNameJoins needs the whole name to agree.
+//
+// It is worth catching because of what it costs. Ownership drift is a claim
+// that the person written down is no longer the one doing the job, so a split
+// owner holds a fraction of their own work and any passer-by clears the bar. On
+// prometheus/prometheus this exact split put tsdb, an area its owner had
+// committed to fifty-three times, down as having moved to somebody else.
+//
+// Three guards, and the third is the one that matters. The surname must be
+// distinctive and held by exactly two records, or it is a common name. They
+// must share several real subjects. And at least one side must be a private
+// commit address rather than a real mailbox, because two colleagues who share a
+// surname have two real addresses, and they are also the pair most likely to
+// share subjects: they work together. Without that guard, shared subjects argue
+// FOR merging the very people who must not be merged.
+//
+// Measured across home-assistant/core, prometheus/prometheus and cli/cli, this
+// makes exactly one merge, the correct one. The candidates it declines share no
+// subjects at all: Dan and Jan Cermak, Guillaume and Kai Winter, Miko and Eric
+// Stern.
+func sameSurnameJoins(g *model.Graph, r *identity.Resolver) []Join {
+	bySurname := make(map[string][]model.ID)
+	for id, p := range g.People {
+		if handleOnly(id) {
+			continue
+		}
+		fields := strings.Fields(strings.ToLower(strings.TrimSpace(p.Name)))
+		if len(fields) < 2 {
+			continue
+		}
+		surname := fields[len(fields)-1]
+		if len(surname) < minSurname {
+			continue
+		}
+		c := r.Canonical(id)
+		if !slices.Contains(bySurname[surname], c) {
+			bySurname[surname] = append(bySurname[surname], c)
+		}
+	}
+	surnames := make([]string, 0, len(bySurname))
+	for surname := range bySurname {
+		surnames = append(surnames, surname)
+	}
+	sort.Strings(surnames)
+
+	var out []Join
+	for _, surname := range surnames {
+		ids := bySurname[surname]
+		if len(ids) != 2 {
+			continue
+		}
+		slices.Sort(ids)
+		if !privateCommitAddress(ids[0]) && !privateCommitAddress(ids[1]) {
+			continue
+		}
+		if sharedSubjects(g, g.People[ids[0]], g.People[ids[1]]) < minSameNameSubjects {
+			continue
+		}
+		r.Union(ids[0], ids[1])
+		target := r.Canonical(ids[0])
+		other := ids[1]
+		if target == ids[1] {
+			other = ids[0]
+		}
+		out = append(out, Join{
+			Alias: other, Canonical: target,
+			Confidence: confSameName, Reason: "same surname, one private address, and shared subjects",
+		})
+	}
+	return out
+}
+
+// privateCommitAddress reports whether an id is one GitHub issues in place of a
+// real mailbox, which is the shape a second record of one person usually takes.
+func privateCommitAddress(id model.ID) bool {
+	_, ok := util.GitHubNoreplyLogin(string(id))
+	return ok
 }
 
 // sharedSubjects counts the real subjects two people both hold. Scaffolding
