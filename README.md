@@ -14,18 +14,18 @@
 
 Someone at your company already knows the answer. whodar tells you who.
 Point it at the tools your org already uses, ask in plain words, and get the
-people to talk to and the channels to ask in, each with the reason and
-confidence behind it. Local by default, with or without an LLM.
+people to talk to and the channels to ask in, each with the reasons and the
+strength of the match. Local by default, with or without an LLM.
 
 ## See it
 
-Ask from the terminal and get people, channels, reasons, and confidence:
+Ask from the terminal and get people, channels, reasons, and match strength:
 
 <p align="center">
   <img src="docs/whodar-cli.gif" alt="whodar in the terminal" width="90%">
 </p>
 
-Or serve the local web UI, where every result carries a confidence badge and
+Or serve the local web UI, where every result carries a strength badge and
 feedback buttons, a query lives in the URL so answers are shareable, clicking
 a person shows everything whodar knows about them, and a sidebar browses the
 whole graph: people, channels, teams, and topics:
@@ -62,8 +62,8 @@ proves your archive matches it.
 
 ## Quickstart
 
-No data yet? Explore a simulated company across all eight sources, no
-credentials needed:
+No data yet? Explore a simulated company, no credentials needed, and take the
+two-minute guided tour from the sidebar:
 
     whodar demo
 
@@ -80,16 +80,17 @@ runs the first index:
 
 Prefer copy-paste? Every source has a recipe in [docs/CONNECT.md](docs/CONNECT.md),
 with the exact credential to create, the command to run, and how to verify it
-worked: `slack`, `github`, `jira`, `confluence`, `pagerduty`, `git`, and `codeowners`.
+worked: `slack`, `github`, `jira`, `confluence`, `pagerduty`, `graph`, `git`, and
+`codeowners`.
 
 ## How it works
 
 | Piece     | What it does                                                                                                    |
 | --------- | --------------------------------------------------------------------------------------------------------------- |
-| Sources   | Eight pluggable connectors feed one graph of people, teams, topics, and channels. Adding a source is one small interface. |
-| Identity  | One human stays one node: sources join by email, and an alias file joins handle-only identifiers like a GitHub login. |
-| Ranking   | Owners beat chatterboxes: repetition saturates while explicit signals stay strong. Recency counts, every answer carries a confidence, and results explain which words hit where. |
-| Feedback  | Confirm or correct a result and future rankings move, without burying the evidence.                              |
+| Sources   | Ten pluggable sources feed one graph of people, teams, topics, and channels. Adding one is a single small interface. |
+| Identity  | One human stays one node: sources join by email, GitHub noreply logins fold automatically, measured auto-join rules link handles and second mailboxes, and an alias file covers the rest. |
+| Ranking   | Owners beat chatterboxes: repetition saturates while explicit signals stay strong. Recency counts, every answer carries its match strength, and results explain which words hit where. |
+| Feedback  | Confirm or correct a result and future rankings move, without burying the evidence. A redacted bundle you read before sending is the only way feedback ever leaves. |
 | Modes     | Keyword needs no model and always works; semantic and LLM answers run on local Ollama, or on Claude, Gemini, and OpenAI behind explicit opt-in. |
 | Frontends | The CLI, web UI, Slack bot, and an MCP server for agents like Claude Code all share one engine.                   |
 
