@@ -16,6 +16,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/storer"
+
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // readRepo walks one repository's log, accumulating per-author topic counts,
@@ -40,7 +42,88 @@ func (g *GitHistory) readRepo(
 	if mark != "" {
 		g.marks[path] = mark
 	}
+	jobs = unshareSquashMailboxes(jobs)
 	return g.diffCommits(ctx, path, jobs, counts, names, latest, curated, recent, direct, ties)
+}
+
+// unshareSquashMailboxes re-keys commits caught in a shared squash mailbox: a
+// GitHub noreply address that authored commits under two or more different
+// names is not a person, it is an artifact of squash-merging, and every commit
+// under it inflates whoever the address nominally belongs to with other
+// people's work. Measured on esphome, one such address carried three real
+// maintainers and cost four ownership answers.
+//
+// Each commit under a shared mailbox moves to the author name's own email when
+// the window shows one: the email that authored commits under that name alone.
+// A person with two such emails gets their most active one, which is the same
+// human either way. A single-word name is never re-keyed, since a bare given
+// name identifies nobody, and a commit whose name has no unique email stays
+// where it was: mis-keyed but at least untouched by guesswork.
+func unshareSquashMailboxes(jobs []commitJob) []commitJob {
+	namesOf := make(map[string]map[string]bool)
+	for _, j := range jobs {
+		nm := normName(j.Name)
+		if nm == "" {
+			continue
+		}
+		if namesOf[j.Email] == nil {
+			namesOf[j.Email] = make(map[string]bool)
+		}
+		namesOf[j.Email][nm] = true
+	}
+	shared := make(map[string]bool)
+	for email, nms := range namesOf {
+		if _, ok := util.GitHubNoreplyLogin(email); ok && len(nms) >= 2 {
+			shared[email] = true
+		}
+	}
+	if len(shared) == 0 {
+		return jobs
+	}
+	// An email uniquely named by one multi-word name, outside the shared set,
+	// is that person's own mailbox; count activity to pick a primary.
+	own := make(map[string]map[string]int)
+	for _, j := range jobs {
+		nm := normName(j.Name)
+		if nm == "" || shared[j.Email] || len(namesOf[j.Email]) != 1 {
+			continue
+		}
+		if own[nm] == nil {
+			own[nm] = make(map[string]int)
+		}
+		own[nm][j.Email]++
+	}
+	for i, j := range jobs {
+		if !shared[j.Email] {
+			continue
+		}
+		nm := normName(j.Name)
+		if nm == "" || !strings.Contains(strings.TrimSpace(j.Name), " ") {
+			continue
+		}
+		best, bestN := "", 0
+		for email, n := range own[nm] {
+			if n > bestN || (n == bestN && email < best) {
+				best, bestN = email, n
+			}
+		}
+		if best != "" {
+			jobs[i].Email = best
+		}
+	}
+	return jobs
+}
+
+// normName reduces a display name to its letters, so J. Nick Koston and
+// J.Nick Koston are one name.
+func normName(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		if r >= 'a' && r <= 'z' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // commitJob is one commit worth walking: everything cheap about it, read once

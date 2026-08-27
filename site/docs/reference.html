@@ -521,11 +521,16 @@ connect needs a terminal; scripts use <code>whodar index</code>.</p>
 <td>off</td>
 <td>Report which sources are configured, without prompting.</td>
 </tr>
+<tr>
+<td><code>--forget</code></td>
+<td>off</td>
+<td>Remove the named source's saved credentials from the OS keychain.</td>
+</tr>
 </tbody>
 </table>
 <p>With no argument it shows a menu of every source, marked configured or not. With a
-source (<code>org-csv</code>, <code>codeowners</code>, <code>git</code>, <code>slack</code>, <code>github</code>, <code>jira</code>, <code>confluence</code>, or
-<code>pagerduty</code>) it sets up just that one.</p>
+source (<code>org-csv</code>, <code>codeowners</code>, <code>git</code>, <code>slack</code>, <code>github</code>, <code>jira</code>, <code>confluence</code>,
+<code>pagerduty</code>, or <code>graph</code>) it sets up just that one.</p>
 <h2 id="whodar-vault">whodar vault</h2>
 <p>Encrypts the on-disk index at rest so a stolen disk or a stray backup cannot read
 your people graph. Encryption turns on whenever a key is configured, through
@@ -927,6 +932,51 @@ with <code>--feedback off|low|normal|high</code> on <code>ask</code>, <code>serv
 gentle 1.1x capped at two votes, high is 1.5x capped at four, off ignores
 votes entirely. Votes live in <code>feedback.json</code> under the data directory and
 survive re-indexing.</p>
+<h3 id="whodar-feedback-bundle">whodar feedback bundle</h3>
+<p>Writes the redacted feedback report a user can choose to hand to whodar's
+makers. Composing and sending are two different acts by design: this command
+only writes a file, so every byte can be read before it goes anywhere, and
+nothing in the binary can send it.</p>
+<p>The full schema, so what can appear in the file is known before it is asked
+for (<code>whodar-feedback-bundle/1</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>schema</code>, <code>note</code></td>
+<td>The format name, and the redaction statement itself</td>
+</tr>
+<tr>
+<td><code>version</code></td>
+<td>The whodar build that wrote the bundle</td>
+</tr>
+<tr>
+<td><code>votes</code></td>
+<td>Counts only: total, helpful, not, on people, on channels</td>
+</tr>
+<tr>
+<td><code>queryShapes</code></td>
+<td>Per vote: the question's word count and the verdict</td>
+</tr>
+<tr>
+<td><code>comments</code></td>
+<td>The notes typed with votes, verbatim, with times</td>
+</tr>
+</tbody>
+</table>
+<p>Queries, names, addresses, and message text never appear: a question asked of
+whodar is itself a fact about your organization, so only its word count
+leaves. The one free text is what was typed as feedback, carried because it
+was written to be read by someone fixing the product.</p>
+<p>An organization can pin even this manual path off with
+<code>&quot;feedback_bundle&quot;: &quot;deny&quot;</code> in its policy file; the lock enforces what a
+promise only asserts. <code>whodar feedback summary</code> shows the same arithmetic in
+place without writing anything.</p>
 <h2 id="whodar-fact">whodar fact</h2>
 <pre><code>whodar fact record SUBJECT RELATION OBJECT [--detail D] [--source S]
 whodar fact list [SUBJECT] [--relation R] [--source S] [--json]
@@ -1370,51 +1420,6 @@ can be denied the same way. See <code>examples/policy.json</code>.</p>
 </tr>
 </tbody>
 </table>
-<h2 id="whodar-feedback-bundle">whodar feedback bundle</h2>
-<p>Writes the redacted feedback report a user can choose to hand to whodar's
-makers. Composing and sending are two different acts by design: this command
-only writes a file, so every byte can be read before it goes anywhere, and
-nothing in the binary can send it.</p>
-<p>The full schema, so what can appear in the file is known before it is asked
-for (<code>whodar-feedback-bundle/1</code>):</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>What it holds</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>schema</code>, <code>note</code></td>
-<td>The format name, and the redaction statement itself</td>
-</tr>
-<tr>
-<td><code>version</code></td>
-<td>The whodar build that wrote the bundle</td>
-</tr>
-<tr>
-<td><code>votes</code></td>
-<td>Counts only: total, helpful, not, on people, on channels</td>
-</tr>
-<tr>
-<td><code>queryShapes</code></td>
-<td>Per vote: the question's word count and the verdict</td>
-</tr>
-<tr>
-<td><code>comments</code></td>
-<td>The notes typed with votes, verbatim, with times</td>
-</tr>
-</tbody>
-</table>
-<p>Queries, names, addresses, and message text never appear: a question asked of
-whodar is itself a fact about your organization, so only its word count
-leaves. The one free text is what was typed as feedback, carried because it
-was written to be read by someone fixing the product.</p>
-<p>An organization can pin even this manual path off with
-<code>&quot;feedback_bundle&quot;: &quot;deny&quot;</code> in its policy file; the lock enforces what a
-promise only asserts. <code>whodar feedback summary</code> shows the same arithmetic in
-place without writing anything.</p>
 
 			<div class="doc-foot">
 				<a class="dpn prev" href="/docs/privacy"><span>← Previous</span><b>Privacy and encryption</b></a>

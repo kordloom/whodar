@@ -341,6 +341,9 @@ Microsoft Graph (Entra ID). It is the org-chart source that stays current withou
 re-exporting a CSV.</p>
 <p><strong>1. Get a token.</strong> Obtain a bearer token that can read <code>User.Read.All</code>.</p>
 <p><strong>2. Connect:</strong></p>
+<pre><code>whodar connect graph
+</code></pre>
+<p>Or by hand:</p>
 <pre><code>export WHODAR_GRAPH_TOKEN=your-graph-token
 whodar index --source graph --merge
 </code></pre>
