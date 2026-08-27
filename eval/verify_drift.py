@@ -1,59 +1,109 @@
 #!/usr/bin/env python3
-"""Check every drift finding against raw git, independently of whodar.
+"""Check ownership-drift findings against the history, not against whodar.
 
-A finding is right when whodar's "actual" owner is also the top focused
-committer of that area in the same window: component plus its tests, bots
-excluded, and any commit touching more than 18 components excluded because a
-codemod is not ownership.
+whodar eval scores ranking against declared ownership, but it reads the same
+index the finding came from, so it cannot say whether a finding is TRUE. This
+reads raw git and nothing else, and asks one question of each reported area: is
+the person whodar names also the one who has worked in that area most?
+
+Two exclusions, both learned the hard way. Bots are not people. And a commit
+touching a large part of the tree is a codemod rather than ownership: counting
+those made every finding look wrong, because the sweep authors appear
+everywhere.
+
+Usage:  verify_drift.py <repo> <ownership-json>  [--window-days N]
 """
-import json, os, subprocess, sys, collections
+import collections, json, os, subprocess, sys
 
-repo, findings = sys.argv[1], sys.argv[2]
-d = json.load(open(findings))
-drift = [x for x in d["drift"] if "leads less" in (x.get("why") or "")]
+# A commit touching more than this many distinct directories is a sweep, not
+# work on an area. Measured on home-assistant/core, the rival authors of every
+# checked finding were commits of 900 to 1271 components.
+MAX_BREADTH = 18
 
-def git(*a):
-    return subprocess.run(["git", "-C", repo, *a], capture_output=True, text=True).stdout
 
-# One pass over history: commit -> (author, components touched).
-raw = git("log", "--since=365 days ago", "--no-merges", "--format=%H%x00%an", "--name-only")
-commits, cur, author, files = [], None, None, []
-for line in raw.split("\n"):
-    if "\x00" in line:
-        if cur: commits.append((author, files))
-        cur, files = line, []
-        author = line.split("\x00", 1)[1]
-    elif line.strip():
-        files.append(line)
-if cur: commits.append((author, files))
+def commits(repo, window):
+    """Yield (author, [paths]) for each non-merge commit in the window."""
+    out = subprocess.run(
+        ["git", "-C", repo, "log", f"--since={window} days ago", "--no-merges",
+         "--format=%H%x00%an", "--name-only"],
+        capture_output=True, text=True).stdout
+    author, files = None, []
+    for line in out.split("\n"):
+        if "\x00" in line:
+            if author is not None:
+                yield author, files
+            author, files = line.split("\x00", 1)[1], []
+        elif line.strip():
+            files.append(line)
+    if author is not None:
+        yield author, files
 
-per = collections.defaultdict(collections.Counter)
-for author, files in commits:
-    if "[bot]" in author or "dependabot" in author:
-        continue
-    comps = {p.split("/")[2] for p in files
-             if p.startswith(("homeassistant/components/", "tests/components/")) and len(p.split("/")) > 2}
-    if not comps or len(comps) > 18:
-        continue
-    for c in comps:
-        per[c][author] += 1
 
-right = wrong = skipped = 0
-misses = []
-for x in drift:
-    comp = x["topic"].replace("-", "_")
-    if not os.path.isdir(os.path.join(repo, "homeassistant/components", comp)) or not per[comp]:
-        skipped += 1
-        continue
-    top = per[comp].most_common(1)[0]
-    if x["actual"] == top[0]:
-        right += 1
-    else:
-        wrong += 1
-        mine = per[comp].get(x["actual"], 0)
-        misses.append((comp, x["actual"], mine, top[0], top[1]))
+def directories(repo):
+    """Map a normalized directory name to every path with that basename.
 
-total = right + wrong
-print(f"  correct {right} / {total} = {100*right//total if total else 0}%   (skipped {skipped} with no component)")
-for c, a, m, t, n in misses[:10]:
-    print(f"    MISS {c:22} whodar={a} ({m}) git-top={t} ({n})")
+    A subject is usually a directory somewhere. Which directory differs by
+    project, so this finds them rather than assuming a layout.
+    """
+    found = collections.defaultdict(set)
+    for root, dirs, _ in os.walk(repo):
+        dirs[:] = [d for d in dirs if d != ".git"]
+        for d in dirs:
+            rel = os.path.relpath(os.path.join(root, d), repo)
+            found[d.lower().replace("_", "-")].add(rel)
+    return found
+
+
+def main():
+    repo, findings = sys.argv[1], sys.argv[2]
+    window = 365
+    if "--window-days" in sys.argv:
+        window = int(sys.argv[sys.argv.index("--window-days") + 1])
+
+    drift = [x for x in (json.load(open(findings)).get("drift") or [])
+             if "leads less" in (x.get("why") or "")]
+    dirs = directories(repo)
+
+    # Who worked where, counting a commit once per area it touched.
+    worked = collections.defaultdict(collections.Counter)
+    for author, files in commits(repo, window):
+        if "[bot]" in author or "dependabot" in author:
+            continue
+        touched = {os.path.dirname(p) for p in files if "/" in p}
+        if len(touched) > MAX_BREADTH:
+            continue
+        for path in touched:
+            worked[path][author] += 1
+
+    right = wrong = skipped = 0
+    misses = []
+    for x in drift:
+        key = x["topic"].lower().replace("_", "-")
+        paths = dirs.get(key)
+        if not paths:
+            skipped += 1
+            continue
+        tally = collections.Counter()
+        for p in paths:
+            for path, who in worked.items():
+                if path == p or path.startswith(p + "/"):
+                    tally.update(who)
+        if not tally:
+            skipped += 1
+            continue
+        top, n = tally.most_common(1)[0]
+        if x["actual"] == top:
+            right += 1
+        else:
+            wrong += 1
+            misses.append((x["topic"], x["actual"], tally.get(x["actual"], 0), top, n))
+
+    total = right + wrong
+    pct = (100 * right // total) if total else 0
+    print(f"  correct {right} / {total} = {pct}%   (skipped {skipped}: no matching directory)")
+    for topic, who, mine, top, n in misses[:8]:
+        print(f"    MISS {topic:24} whodar={who} ({mine})  git-top={top} ({n})")
+
+
+if __name__ == "__main__":
+    main()

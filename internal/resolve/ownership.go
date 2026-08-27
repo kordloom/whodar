@@ -3,6 +3,7 @@ package resolve
 import (
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/model"
@@ -64,6 +65,34 @@ func ownerStanding(ix *index.Index, owners map[model.ID]bool, topic model.ID) st
 	default:
 		return standingTrailing
 	}
+}
+
+// isTeam reports whether an owner of record is a team rather than a person. A
+// CODEOWNERS entry may name @org/team, which keeps its slash through to the id.
+//
+// A team cannot be displaced, because a team does not commit. Measured on
+// prometheus/prometheus, whose CODEOWNERS assigns almost everything to
+// @prometheus/default-maintainers: every area it owns looked as though the work
+// had moved away, because the owner of record could never have done any. Both
+// verifiable findings there were wrong for this one reason. Whodar cannot
+// enumerate a team's membership from a CODEOWNERS file, so the honest answer is
+// that these areas cannot be judged, not that they have drifted.
+func isTeam(id model.ID) bool {
+	s := string(id)
+	if i := strings.IndexByte(s, ':'); i >= 0 {
+		s = s[i+1:]
+	}
+	return strings.Contains(s, "/")
+}
+
+// allTeams reports whether every owner of record for an area is a team.
+func allTeams(owners map[model.ID]bool) bool {
+	for oid := range owners {
+		if !isTeam(oid) {
+			return false
+		}
+	}
+	return len(owners) > 0
 }
 
 // driftMargin is how far a challenger must be ahead of the owner of record, in
@@ -343,6 +372,11 @@ func OwnedAreas(ix *index.Index) []OwnedArea {
 	for _, tr := range Risk(ix, 0) {
 		owners := declared[model.ID(tr.Topic)]
 		if len(owners) == 0 || len(tr.Experts) == 0 {
+			continue
+		}
+		// An area owned only by a team cannot be scored either way: there is no
+		// person to have held it and none to have lost it.
+		if allTeams(owners) {
 			continue
 		}
 		actual := actualOwner(ix, tr)
