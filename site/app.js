@@ -35,7 +35,17 @@
 		// percent into it. A fast scroller was meeting a blank band where the
 		// content sat at opacity zero waiting to be noticed.
 	}, { threshold: 0, rootMargin: "0px 0px 25% 0px" });
-	els.forEach(function (el) { io.observe(el); });
+	els.forEach(function (el) {
+		// Whatever is already on screen shows NOW. The hero itself was a
+		// reveal, and reveals wait on an asynchronous observer, so the first
+		// paint of the whole site was its own headline at opacity zero.
+		// Entrances are for things that enter; the opening screen has arrived.
+		if (el.getBoundingClientRect().top < window.innerHeight * 0.92) {
+			el.classList.add("in");
+			return;
+		}
+		io.observe(el);
+	});
 })();
 
 // Copy buttons.
