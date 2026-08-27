@@ -1266,10 +1266,12 @@ section h2 {
   font: 500 13.5px var(--sans, inherit);
   cursor: pointer;
   text-align: left;
+  white-space: nowrap;
 }
 .story-launch:hover { border-color: var(--accent); background: var(--accent-soft, rgba(52,211,153,.08)); }
 .story-min {
   margin-left: auto;
+  white-space: nowrap;
   font-size: 11px;
   font-weight: 400;
   color: var(--muted);
