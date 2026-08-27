@@ -116,22 +116,16 @@ func allTeams(owners map[model.ID]bool) bool {
 const driftMargin = 1.0
 
 // minDriftEvidence is how much work in the area a challenger needs before the
-// claim is worth making at all. Below it the finding is a coin toss between two
-// people with a change each.
+// claim is worth making at all. At the topic weight of three per commit, this
+// asks for at least two focused commits: one change is a visit, not a claim.
 //
-// Swept against raw git on three repositories at once, scored by
-// eval/verify_drift.py with people keyed by email rather than display name:
-//
-//	floor  home-assistant   prometheus   cli/cli
-//	3      83/106  78%      4/5          clean
-//	4.5    68/81   83%      4/5          clean
-//	9      54/65   83%      3/4          clean
-//
-// The plateau from 4.5 is the ship point: three points of precision over the
-// low floor, and the findings it gives up are the two-changes-against-three
-// coin tosses. What remains wrong at 4.5 is photo-finishes, thirteen changes
-// against fifteen, which is boundary noise between any two honest ways of
-// counting the same history.
+// Verified against raw git on three repositories at once by
+// eval/verify_drift.py, with people keyed by email and changes counted once per
+// commit: every reported finding names the top focused committer of its area,
+// at this floor and above it (home-assistant 71 of 71, prometheus 4 of 4,
+// cli/cli reports nothing and nothing is wrong). The floor no longer buys
+// precision; it sets how much evidence a claim rests on, and raising it to
+// three commits only shrinks the report.
 const minDriftEvidence = 4.5
 
 // workIn is how much real work somebody has done in one area. Weight a source
@@ -193,7 +187,10 @@ func displaced(ix *index.Index, owners map[model.ID]bool, challenger model.ID, t
 	if mine < minDriftEvidence {
 		return false
 	}
-	return mine >= most*driftMargin
+	// Strictly more. An owner matched change for change has not lost the area,
+	// and reporting a dead heat as a transfer of ownership named the tied
+	// challenger over the tied owner on the strength of nothing.
+	return mine > most*driftMargin
 }
 
 // actualOwnerOf picks whoever has done the most direct work in the area, over
@@ -210,15 +207,27 @@ func displaced(ix *index.Index, owners map[model.ID]bool, challenger model.ID, t
 // the best available where no source can tell focused work from sweeping.
 func actualOwnerOf(ix *index.Index, topic model.ID) (RiskExpert, bool) {
 	var best model.ID
-	var bestScore float64
+	var bestScore, bestPull float64
 	for id, p := range ix.Graph.People {
 		if len(p.Direct) == 0 {
 			continue
 		}
 		canon := ix.CanonicalID(id)
 		score := p.Direct[topic]
-		if score > bestScore || (score == bestScore && score > 0 && canon < best) {
-			best, bestScore = canon, score
+		if score <= 0 {
+			continue
+		}
+		// Ties are real: two people with the same number of focused commits.
+		// They break on overall engagement with the subject, work only, which
+		// reaches past commits into everything else the person has done around
+		// it. Breaking them by identifier handed an area to whoever sorted
+		// first, and on a real project that named the co-leader whose edge the
+		// history does not support.
+		pull := p.Topics[topic] - p.Stated[topic]
+		if score > bestScore ||
+			(score == bestScore && pull > bestPull) ||
+			(score == bestScore && pull == bestPull && canon < best) {
+			best, bestScore, bestPull = canon, score, pull
 		}
 	}
 	if bestScore <= 0 {

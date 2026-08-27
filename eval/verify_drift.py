@@ -97,9 +97,9 @@ def main():
              if "leads less" in (x.get("why") or "")]
     dirs = directories(repo)
 
-    # Who worked where, counting a commit once per area it touched, keyed by
-    # person rather than by the name they happened to sign with.
-    worked = collections.defaultdict(collections.Counter)
+    # Every focused commit and the directories it changed, keyed by person
+    # rather than by the name they happened to sign with.
+    history = []
     label = {}
     for name, email, files in commits(repo, window):
         if "[bot]" in name or "dependabot" in name.lower() or "[bot]" in email:
@@ -107,10 +107,9 @@ def main():
         key = person_key(email)
         label.setdefault(key, name)
         touched = {os.path.dirname(p) for p in files if "/" in p}
-        if len(touched) > MAX_BREADTH:
+        if not touched or len(touched) > MAX_BREADTH:
             continue
-        for path in touched:
-            worked[path][key] += 1
+        history.append((key, touched))
 
     right = wrong = skipped = 0
     misses = []
@@ -120,11 +119,15 @@ def main():
         if not paths:
             skipped += 1
             continue
+        # One commit is one change to the area, however many of the area's
+        # directories it touched. Summing per directory counted a change that
+        # landed code, tests, and a subdirectory as three, which quietly turned
+        # "most changes" into "most directories per change" and scored the
+        # product wrong against a unit nobody would defend out loud.
         tally = collections.Counter()
-        for p in paths:
-            for path, who in worked.items():
-                if path == p or path.startswith(p + "/"):
-                    tally.update(who)
+        for key, touched in history:
+            if any(d == p or d.startswith(p + "/") for d in touched for p in paths):
+                tally[key] += 1
         if not tally:
             skipped += 1
             continue
