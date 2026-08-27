@@ -826,8 +826,13 @@ func renderOwnership(w io.Writer, report resolve.OwnershipReport, s style) {
 	// The share is the finding. A list on its own reads as a handful of
 	// exceptions, and it never is one.
 	fmt.Fprintln(w, s.bold(fmt.Sprintf(
-		"Ownership drift  %d of %d declared areas (%.0f%%) are not led by their owner of record",
-		len(drift), report.Declared, 100*report.Share())))
+		"Ownership drift  %d of %d judged areas (%.0f%%) are not led by their owner of record",
+		len(drift), report.Declared-report.GroupOwned, 100*report.Share())))
+	if report.GroupOwned > 0 {
+		fmt.Fprintf(w, "  %s\n", s.dim(fmt.Sprintf(
+			"%d more area%s owned only by teams or automation, which drift cannot judge",
+			report.GroupOwned, plural(report.GroupOwned))))
+	}
 	// The three are different problems: somebody who has left, somebody who
 	// owns an area on paper only, and somebody merely out-worked in their own
 	// area. Only the last is a judgement call.

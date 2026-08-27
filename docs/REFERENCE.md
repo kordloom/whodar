@@ -392,6 +392,11 @@ that person does everywhere else, so the few people who touch everything do not
 take ownership of every area at once. The comparison can only speak for what was
 indexed, so the share is an upper bound on drift rather than a measurement of it.
 
+Areas owned only by teams or automation (a `@org/team` handle or a bot
+account) are counted and reported separately: drift compares people, and a
+group is nobody to have held or lost an area. The drift share is computed over
+the judged areas only.
+
 ## whodar attest
 
     whodar attest

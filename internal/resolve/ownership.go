@@ -90,10 +90,32 @@ func isTeam(id model.ID) bool {
 	return strings.Contains(s, "/")
 }
 
-// allTeams reports whether every owner of record for an area is a team.
-func allTeams(owners map[model.ID]bool) bool {
+// automationOwner reports whether an owner id names a machine account, such as
+// @grafanabot or @renovate-bot. A separator-delimited "bot" token is decisive;
+// a bare trailing "bot" counts only on a long handle, because Talbot and Abbot
+// are surnames and grafanabot is not.
+func automationOwner(id model.ID) bool {
+	h := strings.ToLower(string(id))
+	if i := strings.IndexByte(h, ':'); i >= 0 {
+		h = h[i+1:]
+	}
+	for _, sep := range []string{"-", "_", ".", " ", "[", "]"} {
+		h = strings.ReplaceAll(h, sep, " ")
+	}
+	for _, w := range strings.Fields(h) {
+		if w == "bot" || (strings.HasSuffix(w, "bot") && len(w) >= 8) {
+			return true
+		}
+	}
+	return false
+}
+
+// allGroups reports whether every owner of record for an area is a team or a
+// machine account: ownership with nobody to have held it and nobody to have
+// lost it.
+func allGroups(owners map[model.ID]bool) bool {
 	for oid := range owners {
-		if !isTeam(oid) {
+		if !isTeam(oid) && !automationOwner(oid) {
 			return false
 		}
 	}
@@ -290,6 +312,9 @@ type OwnershipReport struct {
 	// Unworked counts drifted areas whose owner is active elsewhere but has
 	// never worked in the area they own. Ownership there is paper only.
 	Unworked int `json:"unworked"`
+	// GroupOwned counts areas owned only by teams or automation, which drift
+	// cannot judge and does not list.
+	GroupOwned int `json:"groupOwned"`
 	// Trailing counts drifted areas whose owner does work in them, but less
 	// than whoever now leads.
 	Trailing int `json:"trailing"`
@@ -301,10 +326,11 @@ func (r OwnershipReport) Drifted() int { return len(r.Drift) }
 // Share is the fraction of declared ownership that no longer matches who does
 // the work, zero to one. It is zero when nothing was declared.
 func (r OwnershipReport) Share() float64 {
-	if r.Declared == 0 {
+	judged := r.Declared - r.GroupOwned
+	if judged <= 0 {
 		return 0
 	}
-	return float64(len(r.Drift)) / float64(r.Declared)
+	return float64(len(r.Drift)) / float64(judged)
 }
 
 // Ownership compares declared ownership, from a source of record such as
@@ -323,6 +349,9 @@ func Ownership(ix *index.Index) OwnershipReport {
 		case StandingHeld:
 			report.Held++
 			continue // the declared owner is the one doing the work: no drift
+		case StandingGroup:
+			report.GroupOwned++
+			continue // no person to judge; counted so the summary is honest
 		case standingSilent:
 			report.Silent++
 		case standingUnworked:
@@ -349,6 +378,10 @@ func Ownership(ix *index.Index) OwnershipReport {
 // StandingHeld marks an area whose owner of record is also the person doing the
 // work. The other three standings say why an area is not held.
 const StandingHeld = "owner leads their own area"
+
+// StandingGroup marks an area owned only by teams or automation, which drift
+// can say nothing about: there is no person to have held it or lost it.
+const StandingGroup = "owned by a team or automation"
 
 // OwnedArea is one declared area set against who actually does the work there.
 type OwnedArea struct {
@@ -400,9 +433,11 @@ func OwnedAreas(ix *index.Index) []OwnedArea {
 		if len(owners) == 0 || len(tr.Experts) == 0 {
 			continue
 		}
-		// An area owned only by a team cannot be scored either way: there is no
-		// person to have held it and none to have lost it.
-		if allTeams(owners) {
+		// An area owned only by teams or automation cannot be scored either
+		// way: there is no person to have held it and none to have lost it. It
+		// is still counted, so the drift summary says what it set aside.
+		if allGroups(owners) {
+			out = append(out, OwnedArea{Topic: tr.Topic, Standing: StandingGroup})
 			continue
 		}
 		actual, ok := actualOwnerOf(ix, model.ID(tr.Topic))

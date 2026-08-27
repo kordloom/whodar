@@ -185,3 +185,45 @@ func TestDriftNeedsTheChallengerToOutworkTheOwner(t *testing.T) {
 		t.Errorf("paper-only ownership was not reported as drift: %+v", r.Drift)
 	}
 }
+
+// TestOwnershipSetsGroupOwnedAreasAside covers ownership that names nobody: an
+// area owned only by a squad handle or a bot account has no person to have
+// held it, so it is counted as group-owned, never listed as drift, and left
+// out of the drift share's denominator. A mixed area with one human owner is
+// still judged.
+func TestOwnershipSetsGroupOwnedAreasAside(t *testing.T) {
+	t.Parallel()
+	ix := index.New()
+	ix.Build([]connector.Record{
+		// A squad owns alerting; only a bot owns tooling; Dana co-owns billing
+		// with a squad and somebody else does the billing work.
+		{Kind: connector.KindPerson, Name: "@grafana/alerting-squad",
+			PersonID: "codeowners:grafana/alerting-squad",
+			Topics:   []string{"alerting"}, Source: "codeowners", Weight: 1},
+		{Kind: connector.KindPerson, Name: "@grafanabot",
+			PersonID: "codeowners:grafanabot",
+			Topics:   []string{"tooling"}, Source: "codeowners", Weight: 1},
+		{Kind: connector.KindPerson, Name: "@grafana/payments-squad",
+			PersonID: "codeowners:grafana/payments-squad",
+			Topics:   []string{"billing"}, Source: "codeowners", Weight: 1},
+		{Kind: connector.KindPerson, Name: "Dana", Email: "dana@x.com",
+			Topics: []string{"billing"}, Source: "codeowners"},
+		{Kind: connector.KindPerson, Name: "Eve", Email: "eve@x.com",
+			Topics: []string{"billing", "billing", "billing", "alerting", "tooling"}, Source: "slack"},
+	})
+	ix.Canonicalize()
+
+	report := Ownership(ix)
+	if report.GroupOwned != 2 {
+		t.Errorf("groupOwned = %d, want alerting and tooling set aside", report.GroupOwned)
+	}
+	for _, d := range report.Drift {
+		if d.Topic == "alerting" || d.Topic == "tooling" {
+			t.Errorf("group-owned area %q listed as drift", d.Topic)
+		}
+	}
+	// The share judges only the judgeable: one billing area, drifted to Eve.
+	if got := report.Share(); got != 1 {
+		t.Errorf("share = %.2f, want 1.00 over the one judged area", got)
+	}
+}
