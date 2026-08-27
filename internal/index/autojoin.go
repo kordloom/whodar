@@ -73,6 +73,13 @@ const (
 	// needs a full name on the other side, since a lone given name would claim
 	// every handle that happens to start with it.
 	confHandleTruncation = 0.8
+	// confHandleSurname is the confidence in a handle built from a surname:
+	// the first initial plus the surname (tolzhabayev and Timur Olzhabayev),
+	// the bare surname, or a surname fragment with the organization's own name
+	// stuck on (urbiz-grafana and Anna Urbiztondo). The surname must be long
+	// enough to be distinctive and held by exactly one person, or the handle
+	// stays unexplained.
+	confHandleSurname = 0.75
 	// confSameName is the confidence in two records being one person on the
 	// strength of a full name and the work they both do. It sits lowest of the
 	// inferred joins because nothing identifies the two to each other directly.
@@ -283,9 +290,105 @@ func (ix *Index) AutoJoin() JoinResult {
 			continue
 		}
 		r.Union(target, id)
+		settled[id] = true
 		joins = append(joins, Join{
 			Alias: id, Canonical: target,
 			Confidence: confHandleTruncation, Reason: "handle is a shortened name",
+		})
+	}
+
+	// A handle built from a surname matches nothing above: tolzhabayev is
+	// neither the whole of timurolzhabayev nor a prefix of it, and
+	// urbiz-grafana buries a surname fragment under the organization's own
+	// name. Three surname forms are tried, always requiring the surname to be
+	// distinctive and the match to land on exactly one person.
+	type surnamed struct {
+		id                      model.ID
+		initialSurname, surname string
+	}
+	var surnames []surnamed
+	for id, p := range g.People {
+		if handleOnly(id) {
+			continue
+		}
+		words := strings.Fields(strings.TrimSpace(p.Name))
+		if len(words) < 2 {
+			continue
+		}
+		sur := flatten(words[len(words)-1])
+		first := flatten(words[0])
+		if len(sur) < minSurname || first == "" || commonSurnames[sur] {
+			continue
+		}
+		surnames = append(surnames, surnamed{
+			id: r.Canonical(id), initialSurname: first[:1] + sur, surname: sur,
+		})
+	}
+	// The organization's own name, learned from its team handles, is noise a
+	// personal handle may carry: @urbiz-grafana at grafana/grafana.
+	orgTokens := make(map[string]bool)
+	for id := range g.People {
+		h := handlePart(id)
+		if org, _, ok := strings.Cut(h, "/"); ok {
+			if t := flatten(org); len(t) >= minHandleLen {
+				orgTokens[t] = true
+			}
+		}
+	}
+	for id := range g.People {
+		if !handleOnly(id) || settled[id] {
+			continue
+		}
+		self := r.Canonical(id)
+		key := flatten(handlePart(id))
+		if len(key) < minSurname {
+			continue
+		}
+		forms := []string{key}
+		for org := range orgTokens {
+			if rest := strings.TrimSuffix(key, org); rest != key && len(rest) >= minSurname {
+				forms = append(forms, rest)
+			}
+			if rest := strings.TrimPrefix(key, org); rest != key && len(rest) >= minSurname {
+				forms = append(forms, rest)
+			}
+		}
+		var target model.ID
+		n := 0
+		reason := ""
+		for _, k := range forms {
+			stripped := k != key
+			for _, cand := range surnames {
+				if cand.id == self {
+					continue
+				}
+				var why string
+				switch {
+				case k == cand.initialSurname:
+					why = "handle is an initial and surname"
+				case k == cand.surname:
+					why = "handle is a surname"
+				case stripped && len(k) >= minSurname && strings.HasPrefix(cand.surname, k):
+					// A bare fragment is too loose on its own; carrying the
+					// organization's name is what says it was a chosen handle.
+					why = "handle is a surname fragment and the organization's name"
+				default:
+					continue
+				}
+				if cand.id != target {
+					target = cand.id
+					n++
+				}
+				reason = why
+			}
+		}
+		if n != 1 {
+			continue
+		}
+		r.Union(target, id)
+		settled[id] = true
+		joins = append(joins, Join{
+			Alias: id, Canonical: target, Confidence: confHandleSurname, Reason: reason,
 		})
 	}
 
@@ -457,6 +560,48 @@ func sameNameJoins(g *model.Graph, r *identity.Resolver) []Join {
 // join two records on. Short ones are held by too many unrelated people.
 const minSurname = 5
 
+// commonSurnames are surnames held by so many unrelated people that sharing
+// one proves nothing, whatever their length. Length was the only guard, and it
+// merged a Sanidhya Singh with a Siddhartha Singh on grafana: five letters,
+// most common surname on earth. The list is small and deterministic, and it
+// only ever blocks a join, never makes one.
+var commonSurnames = map[string]bool{
+	"singh": true, "kumar": true, "sharma": true, "patel": true, "gupta": true,
+	"smith": true, "jones": true, "brown": true, "davis": true, "miller": true,
+	"wilson": true, "moore": true, "taylor": true, "thomas": true, "martin": true,
+	"garcia": true, "martinez": true, "rodriguez": true, "lopez": true,
+	"gonzalez": true, "hernandez": true, "perez": true, "sanchez": true,
+	"muller": true, "schmidt": true, "schneider": true, "fischer": true,
+	"weber": true, "meyer": true, "wagner": true, "nguyen": true, "silva": true,
+	"santos": true, "oliveira": true, "souza": true, "ivanov": true,
+	"petrov": true, "murphy": true, "kelly": true, "walsh": true, "novak": true,
+	"kowalski": true, "nowak": true, "andersson": true, "johansson": true,
+	"hansen": true, "jensen": true, "nielsen": true, "yilmaz": true,
+	"johnson": true, "williams": true, "anderson": true, "jackson": true,
+	"white": true, "harris": true, "thompson": true, "robinson": true,
+	"clark": true, "lewis": true, "walker": true, "young": true, "allen": true,
+	"wright": true, "scott": true, "green": true, "adams": true, "baker": true,
+}
+
+// surnameHolders counts the people whose name carries surname, including a
+// one-word name that ends with it: SamareshSingh holds singh as surely as
+// Sanidhya Singh does, and skipping him is how "exactly two Singhs" passed
+// with three in the graph.
+func surnameHolders(g *model.Graph, r *identity.Resolver, surname string) int {
+	seen := make(map[model.ID]bool)
+	for id, p := range g.People {
+		if handleOnly(id) {
+			continue
+		}
+		flat := flatten(p.Name)
+		if !strings.HasSuffix(flat, flatten(surname)) {
+			continue
+		}
+		seen[r.Canonical(id)] = true
+	}
+	return len(seen)
+}
+
 // sameSurnameJoins merges one person whose two records disagree about their
 // given name. A commit signed György Krajcsovits and a CODEOWNERS entry
 // resolving to George Krajcsovits are the same maintainer, and nothing joins
@@ -510,6 +655,9 @@ func sameSurnameJoins(g *model.Graph, r *identity.Resolver) []Join {
 	for _, surname := range surnames {
 		ids := bySurname[surname]
 		if len(ids) != 2 {
+			continue
+		}
+		if commonSurnames[surname] || surnameHolders(g, r, surname) != 2 {
 			continue
 		}
 		slices.Sort(ids)

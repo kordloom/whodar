@@ -555,3 +555,117 @@ func TestSameLocalKeepsTwoAndrewsApart(t *testing.T) {
 		t.Errorf("two Andrews merged into %d; a shared given name joins nobody", got)
 	}
 }
+
+// TestHandleJoinsOnSurnameForms covers the three surname shapes a handle
+// takes, measured on grafana: an initial plus the surname, the bare surname,
+// and a surname fragment carrying the organization's own name. Each must land
+// on exactly one person; a surname two people share joins neither.
+func TestHandleJoinsOnSurnameForms(t *testing.T) {
+	t.Parallel()
+	subjects := []string{"dashboards", "panels"}
+	build := func(recs ...connector.Record) *Index {
+		ix := New()
+		ix.Build(recs)
+		ix.AutoJoin()
+		ix.Canonicalize()
+		return ix
+	}
+	person := func(name, email string) connector.Record {
+		return connector.Record{Kind: connector.KindPerson, Name: name, Email: email,
+			Topics: subjects, Source: "git"}
+	}
+	handle := func(h string) connector.Record {
+		return connector.Record{Kind: connector.KindPerson, Name: "@" + h,
+			PersonID: "codeowners:" + h, Topics: subjects, Source: "codeowners", Weight: 1}
+	}
+
+	// Test 0: Initial plus surname.
+	ix := build(person("Timur Olzhabayev", "timur@x.com"), handle("tolzhabayev"))
+	if got := len(ix.Graph.People); got != 1 {
+		t.Errorf("initial+surname resolves to %d people, want 1", got)
+	}
+
+	// Test 1: A surname fragment with the organization's name, learned from a
+	// team handle in the same file.
+	ix = build(person("Anna Urbiztondo", "anna@x.com"),
+		handle("urbiz-grafana"), handle("grafana/docs-squad"))
+	joined := false
+	for _, j := range ix.Joins() {
+		if string(j.Alias) == "codeowners:urbiz-grafana" {
+			joined = true
+		}
+	}
+	if !joined {
+		t.Errorf("urbiz-grafana did not join Anna Urbiztondo: %+v", ix.Joins())
+	}
+
+	// Test 2: A surname held by two people joins neither.
+	ix = build(person("Ana Silva", "ana@x.com"), person("Bo Silva", "bo@x.com"),
+		handle("silva"))
+	ids := 0
+	for range ix.Graph.People {
+		ids++
+	}
+	if ids != 3 {
+		t.Errorf("shared surname collapsed to %d people, want 3 kept apart", ids)
+	}
+
+	// Test 3: A short surname is not distinctive and joins nobody.
+	ix = build(person("Kim Doe", "kim@x.com"), handle("kdoe"))
+	if got := len(ix.Graph.People); got != 2 {
+		t.Errorf("short surname joined anyway: %d people, want 2", got)
+	}
+}
+
+// TestSameSurnameRefusesCommonAndCrowdedSurnames pins the two ways "exactly
+// two records" lied on grafana: a surname on the common list joins nobody
+// however few hold it, and a one-word name ending in the surname counts as a
+// third holder, so Sanidhya and Siddhartha Singh stay two people even while
+// SamareshSingh hides from the word split.
+func TestSameSurnameRefusesCommonAndCrowdedSurnames(t *testing.T) {
+	t.Parallel()
+	subjects := []string{"dashboards", "alerting", "panels"}
+	person := func(name, email string) connector.Record {
+		return connector.Record{Kind: connector.KindPerson, Name: name, Email: email,
+			Topics: subjects, Source: "git"}
+	}
+
+	// Test 0: The common list blocks even a clean-looking pair.
+	ix := New()
+	ix.Build([]connector.Record{
+		person("Sanidhya Singh", "91531068+sanidhyasin@users.noreply.github.com"),
+		person("Siddhartha Singh", "siddharthagithub0007@gmail.com"),
+	})
+	ix.AutoJoin()
+	ix.Canonicalize()
+	if got := len(ix.Graph.People); got != 2 {
+		t.Errorf("two Singhs merged into %d, want 2 kept apart", got)
+	}
+
+	// Test 1: A crowded rare surname is blocked by the holder count: the
+	// one-word third holder makes it three, not two.
+	ix = New()
+	ix.Build([]connector.Record{
+		person("Ana Krajcsovits", "1+anak@users.noreply.github.com"),
+		person("Bo Krajcsovits", "bo@x.com"),
+		person("CelKrajcsovits", "cel@x.com"),
+	})
+	ix.AutoJoin()
+	ix.Canonicalize()
+	if got := len(ix.Graph.People); got != 3 {
+		t.Errorf("crowded surname merged into %d, want 3 kept apart", got)
+	}
+
+	// Test 2: The motivating merge still works: a rare surname held by exactly
+	// two records, one behind a private address.
+	ix = New()
+	ix.Build([]connector.Record{
+		person("Gyorgy Krajcsovits", "5+gyk@users.noreply.github.com"),
+		person("George Krajcsovits", "george@x.com"),
+	})
+	ix.AutoJoin()
+	ix.Canonicalize()
+	if got := len(ix.Graph.People); got != 1 {
+		t.Errorf("the one maintainer resolves to %d people, want 1", got)
+	}
+}
