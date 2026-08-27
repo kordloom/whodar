@@ -1283,6 +1283,10 @@ async function renderExposure() {
   if (expSpans) {
     const spans = data.spans || [];
     if (spans.length) {
+      // The strongest finding gets drawn, not just listed. Two healthy areas
+      // and a single dot between them says in one glance what the cards say
+      // in three sentences, and it is the picture a reader carries out.
+      expSpans.appendChild(crossingFigure(spans[0]));
       for (const sp of spans) expSpans.appendChild(spanCard(sp));
     } else {
       expSpans.appendChild(el("p", "exp-empty",
@@ -1413,6 +1417,50 @@ function regionCard(r) {
 // many people hold the two subjects between them, because that is what makes
 // the finding surprising: the subjects are not short of experts, the crossing
 // between them is.
+// crossingFigure draws one sole-person connection: each area healthy on its
+// own, the only line between them running through one person. Drawn from the
+// live finding, so the names are whatever the graph actually says.
+function crossingFigure(sp) {
+  const topics = sp.topics || [];
+  const a = topics[0] || "";
+  const b = topics[topics.length - 1] || "";
+  const fig = el("figure", "crossfig");
+  const half = Math.max(1, Math.floor((sp.experts || 2) / 2));
+  const dots = (cx) => {
+    let out = "";
+    const spots = [[-26, -14], [12, -22], [-10, 18], [26, 10]];
+    for (let i = 0; i < Math.min(4, half); i++) {
+      out += '<circle cx="' + (cx + spots[i][0]) + '" cy="' + (72 + spots[i][1]) + '" r="5"/>';
+    }
+    return out;
+  };
+  fig.innerHTML =
+    '<svg viewBox="0 0 560 148" role="img" aria-label="' + escapeAttr(sp.person) +
+    ' is the only person connecting ' + escapeAttr(a) + ' and ' + escapeAttr(b) + '">' +
+    '<g class="cf-area"><ellipse cx="112" cy="72" rx="88" ry="50"/>' + dots(112) +
+    '<text x="112" y="140">' + escapeHTML(shorten(a)) + '</text></g>' +
+    '<g class="cf-area"><ellipse cx="448" cy="72" rx="88" ry="50"/>' + dots(448) +
+    '<text x="448" y="140">' + escapeHTML(shorten(b)) + '</text></g>' +
+    '<path class="cf-link" d="M200 72 L360 72"/>' +
+    '<circle class="cf-one" cx="280" cy="72" r="9"/>' +
+    '<text class="cf-lab" x="280" y="50">' + escapeHTML(sp.person) + '</text>' +
+    "</svg>";
+  const cap = el("figcaption", null,
+    (sp.experts || 0) + " people hold these areas. The crossing is " + sp.person + " alone.");
+  fig.appendChild(cap);
+  return fig;
+}
+
+// shorten keeps an area name readable inside the figure.
+function shorten(t) {
+  return t.length > 22 ? t.slice(0, 21) + "\u2026" : t;
+}
+
+function escapeHTML(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+}
+function escapeAttr(s) { return escapeHTML(s); }
+
 function spanCard(sp) {
   const card = el("div", "exp-card exp-critical");
   const head = el("div", "exp-card-head");
