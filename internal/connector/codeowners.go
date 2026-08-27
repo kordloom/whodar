@@ -227,6 +227,14 @@ func dirPart(p string) string {
 func segmentNames(p string) []string {
 	var out []string
 	for seg := range strings.SplitSeq(p, "/") {
+		// A hidden segment is tool configuration, not an area of the work:
+		// .github fused with directories genuinely named github, and one
+		// grafana "area" collected twenty-two owners across CI config, auth
+		// docs, and provisioning code. The children still name subjects, so
+		// .github/workflows keeps workflows.
+		if strings.HasPrefix(seg, ".") {
+			continue
+		}
 		seg = strings.Trim(seg, "*?.")
 		if seg == "" {
 			continue
@@ -245,6 +253,10 @@ func segmentNames(p string) []string {
 func pathTopics(p string) []string {
 	out := append([]string(nil), patternNames(p)...)
 	for seg := range strings.SplitSeq(p, "/") {
+		// Hidden segments carry no subject; see segmentNames.
+		if strings.HasPrefix(seg, ".") {
+			continue
+		}
 		seg = strings.Trim(seg, "*?.")
 		if seg == "" {
 			continue

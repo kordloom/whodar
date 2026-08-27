@@ -119,3 +119,39 @@ func TestOwningOneFileIsNotHoldingAnArea(t *testing.T) {
 		})
 	}
 }
+
+// TestHiddenSegmentsNameNoSubject pins the dot-directory rule: .github fused
+// with directories genuinely named github on grafana, collecting CI config,
+// auth docs, and provisioning code under one areas with twenty-two owners. A
+// hidden segment is tooling, so it yields nothing, while its children and a
+// real directory of the same name still do.
+func TestHiddenSegmentsNameNoSubject(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		Path     string
+		WantHas  []string
+		WantNot  []string
+	}{{ // Test 0: The hidden container yields nothing; its child names the area.
+		Path: ".github/workflows/release.yml", WantHas: []string{"workflows"}, WantNot: []string{"github"},
+	}, { // Test 1: A real directory named github still names its subject.
+		Path: "pkg/connection/github/client.go", WantHas: []string{"github", "connection"}, WantNot: nil,
+	}, { // Test 2: A hidden file at the root names nothing.
+		Path: ".golangci.yml", WantHas: nil, WantNot: []string{"golangci"},
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			got := segmentNames(test.Path)
+			for _, want := range test.WantHas {
+				if !slices.Contains(got, want) {
+					t.Errorf("segmentNames(%q) = %v, missing %q", test.Path, got, want)
+				}
+			}
+			for _, not := range test.WantNot {
+				if slices.Contains(got, not) {
+					t.Errorf("segmentNames(%q) = %v, must not contain %q", test.Path, got, not)
+				}
+			}
+		})
+	}
+}
