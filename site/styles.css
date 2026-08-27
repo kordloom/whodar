@@ -196,7 +196,8 @@ h1 .sig { color: var(--signal); text-shadow: 0 0 28px rgba(var(--signal-rgb), 0.
    under a wide headline. */
 .hero-copy.wide .lede { max-width: 720px; }
 .lede strong { color: var(--text); font-weight: 600; }
-.hero-cta { display: flex; gap: 14px; flex-wrap: wrap; }
+.hero-cta { display: flex; gap: 12px; flex-wrap: wrap; }
+.hero-cta .btn.big, .hero-cta .ghost.big { padding-left: 20px; padding-right: 20px; white-space: nowrap; }
 .hero-cta.center { justify-content: center; }
 .hero-note { margin-top: 24px; font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
 .hero-note code { color: var(--signal); background: rgba(var(--signal-rgb), 0.08); padding: 2px 8px; border-radius: 5px; }
@@ -457,7 +458,7 @@ h1 .sig { color: var(--signal); text-shadow: 0 0 28px rgba(var(--signal-rgb), 0.
 .foot-note { font-family: var(--mono); color: var(--muted); font-size: 11.5px; margin-top: 2px; }
 
 /* Reveal */
-.reveal { opacity: 0; transform: translateY(22px); transition: opacity 0.7s var(--ease), transform 0.7s var(--ease); }
+.reveal { opacity: 0; transform: translateY(12px); transition: opacity 0.45s var(--ease), transform 0.45s var(--ease); }
 .reveal.in { opacity: 1; transform: none; }
 
 /* Responsive */

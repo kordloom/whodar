@@ -90,7 +90,11 @@ html, body { margin: 0; }
 }
 
 /* --- top bar --- */
-.oc-top { display: flex; align-items: center; gap: 10px; padding: 11px 18px; border-bottom: 1px solid var(--border); background: var(--panel); z-index: 5; }
+.oc-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 10px 18px; border-bottom: 1px solid var(--border); background: var(--panel); z-index: 5; }
+/* The search field yields before the controls clip: fit is worth more than a
+   wide box, and a toolbar that runs off the edge hides the buttons that exist
+   to be found. */
+.oc-search-wrap { flex: 1 1 180px; min-width: 150px; max-width: 320px; }
 .oc-brand { display: flex; align-items: center; gap: 9px; font-weight: 700; color: var(--fg); text-decoration: none; letter-spacing: -0.02em; font-size: 15px; white-space: nowrap; }
 .oc-logo { height: 24px; width: auto; border-radius: 6px; }
 .oc-brand span { color: var(--muted); font-weight: 500; }

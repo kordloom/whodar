@@ -31,7 +31,10 @@
 	if (!("IntersectionObserver" in window)) { els.forEach(function (el) { el.classList.add("in"); }); return; }
 	var io = new IntersectionObserver(function (entries) {
 		entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
-	}, { threshold: 0.12 });
+		// Fire a section's fade before it reaches the viewport, not twelve
+		// percent into it. A fast scroller was meeting a blank band where the
+		// content sat at opacity zero waiting to be noticed.
+	}, { threshold: 0, rootMargin: "0px 0px 25% 0px" });
 	els.forEach(function (el) { io.observe(el); });
 })();
 

@@ -1246,6 +1246,12 @@ section h2 {
    A guided walk over live data: dim everything, ring the one thing the step
    is about, and say one sentence. The ring is a hole cut with a huge
    box-shadow so the page stays visible through it. */
+/* Feedback is offered, not demanded: the vote row stays out of the way until
+   the reader engages the card. Five cards each carrying a form read as a
+   survey, and the answer is the product, not the questionnaire. */
+.card .votes { display: none; }
+.card:hover .votes, .card:focus-within .votes { display: flex; }
+
 .story-launch {
   display: flex;
   align-items: center;
@@ -1253,7 +1259,7 @@ section h2 {
   margin: 2px 0 4px;
   padding: 8px 12px;
   width: 100%;
-  border: 1px dashed var(--border);
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: none;
   color: var(--accent);
@@ -1278,7 +1284,10 @@ section h2 {
   transform: translateX(-50%);
   width: min(520px, calc(100vw - 32px));
   padding: 18px 20px 14px;
-  background: var(--panel);
+  /* Opaque on purpose: the panel token carries alpha in some themes, and the
+     page bleeding through the caption read as a rendering bug. */
+  background: color-mix(in srgb, var(--panel) 100%, var(--bg) 0%);
+  background-color: var(--bg-solid, #0b0f16);
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);

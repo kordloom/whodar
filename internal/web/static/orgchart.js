@@ -125,7 +125,7 @@
 	// screen only at a zoom where nobody can read a name.
 	var FIRST_PAINT = 40;
 	// MIN_FIT is the smallest scale fit may choose, matching the zoom floor.
-	var MIN_FIT = 0.25;
+	var MIN_FIT = 0.45;
 
 	// collapseToBudget folds the chart down until the first paint is readable,
 	// collapsing the deepest branches first so the top of the org survives.
@@ -293,8 +293,13 @@
 		// of unreadable hairlines, and below the zoom floor the buttons cannot undo it.
 		var s = Math.min(1, Math.max(MIN_FIT, Math.min(sw / w, sh / h)));
 		view.scale = (isFinite(s) && s > 0) ? s : 1;
-		view.tx = Math.max(24, (el.stage.clientWidth - w * view.scale) / 2);
-		view.ty = 30;
+		// Centered on both axes, even when the chart is wider than the screen.
+		// Clamping tx at the left edge hugged everything into the top-left
+		// corner and opened the page on a readable sliver beside a void: the
+		// composition should present the middle of the organization, and pan
+		// reaches the wings.
+		view.tx = (el.stage.clientWidth - w * view.scale) / 2;
+		view.ty = Math.max(30, (el.stage.clientHeight - h * view.scale) / 2);
 		applyView();
 	}
 	function zoomAround(cx, cy, factor) {

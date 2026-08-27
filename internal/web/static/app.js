@@ -1176,7 +1176,9 @@ function recallCard(ep) {
   }
   card.appendChild(el("p", "rc-people", recallPeople(ep)));
 
-  if (ep.matched && ep.matched.length) chips(card, ep.matched);
+  // ep.matched carries the scorer's stems, and "bill retri" is tokenizer
+  // underwear no reader should see. The card's title and participants already
+  // say why this conversation surfaced.
 
   if (ep.solution) {
     const sol = el("div", "recall-solution");
@@ -1476,10 +1478,7 @@ function spanCard(sp) {
     sp.person + " is the only person who has worked across " + topics.join(" and ")
       + ", though " + (sp.experts || 0) + " people hold those subjects individually"));
   card.appendChild(head);
-  card.appendChild(el("p", "exp-also",
-    (sp.experts || 0) + " people hold "
-      + (topics.length > 2 ? "these " + topics.length + " subjects" : "the two subjects")
-      + ", and one person has done focused work across them"));
+  only.appendChild(el("span", "exp-dim", " · " + (sp.experts || 0) + " hold them"));
   return card;
 }
 

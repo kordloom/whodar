@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>whodar</title>
   <script src="/static/theme.js?v=10"></script>
-  <link rel="stylesheet" href="/static/style.css?v=23">
+  <link rel="stylesheet" href="/static/style.css?v=24">
   <link rel="icon" type="image/png" href="/static/whodar-logo.png">
 </head>
 <body>
@@ -176,32 +176,6 @@
         </div>
         <p class="exp-lede">Deterministic over the graph, no model required. A topic is
           critical when one person holds most of it, elevated when two do.</p>
-        <div class="exp-proof">
-          <div class="exp-proof-head">
-            <h3 class="exp-head exp-head-flush">Prove it</h3>
-            <button id="exp-proof-go" type="button">Seal this finding</button>
-          </div>
-          <p class="exp-note">Whodar can sign the finding below into a
-            <a href="https://github.com/kordloom/loomseal" target="_blank" rel="noopener">LoomSeal</a>
-            bundle: the claim, a digest of the evidence behind it, and an ed25519 signature.
-            Anyone can verify it offline, with no account and nothing sent to us, so the
-            finding can be trusted without trusting the machine that produced it.</p>
-          <div id="exp-proof-out"></div>
-        </div>
-
-        {{if .Brief}}
-        <div class="exp-proof">
-          <div class="exp-proof-head">
-            <h3 class="exp-head exp-head-flush">Send it up</h3>
-            <a id="exp-brief" href="/report/risk.html" download="whodar-knowledge-risk.html">Download the brief</a>
-          </div>
-          <p class="exp-note">The same finding as one page you can forward: the headline
-            counts, every scored subject in a sortable table with a CSV export, and what
-            would leave with each person. It carries its own styling and needs no network,
-            no server, and no whodar to open, so it still reads for somebody who has none
-            of them.</p>
-        </div>
-        {{end}}
 
         <h3 class="exp-head">Joined work</h3>
         <p class="exp-note">Subjects that get worked on together where the same person leads
@@ -234,6 +208,34 @@
         <h3 class="exp-head">Ownership drift</h3>
         <p class="exp-note">Where the owner on paper is not the one doing the work.</p>
         <div id="exp-drift" class="exp-list"></div>
+
+        <h3 class="exp-head">Take it with you</h3>
+        <div class="exp-proof">
+          <div class="exp-proof-head">
+            <h3 class="exp-head exp-head-flush">Prove it</h3>
+            <button id="exp-proof-go" type="button">Seal this finding</button>
+          </div>
+          <p class="exp-note">Whodar can sign the finding below into a
+            <a href="https://github.com/kordloom/loomseal" target="_blank" rel="noopener">LoomSeal</a>
+            bundle: the claim, a digest of the evidence behind it, and an ed25519 signature.
+            Anyone can verify it offline, with no account and nothing sent to us, so the
+            finding can be trusted without trusting the machine that produced it.</p>
+          <div id="exp-proof-out"></div>
+        </div>
+
+        {{if .Brief}}
+        <div class="exp-proof">
+          <div class="exp-proof-head">
+            <h3 class="exp-head exp-head-flush">Send it up</h3>
+            <a id="exp-brief" href="/report/risk.html" download="whodar-knowledge-risk.html">Download the brief</a>
+          </div>
+          <p class="exp-note">The same finding as one page you can forward: the headline
+            counts, every scored subject in a sortable table with a CSV export, and what
+            would leave with each person. It carries its own styling and needs no network,
+            no server, and no whodar to open, so it still reads for somebody who has none
+            of them.</p>
+        </div>
+        {{end}}
       </section>
       {{end}}
 
@@ -257,7 +259,7 @@
   </div>
 
   <script src="/static/portable.js?v=1"></script>
-  <script src="/static/app.js?v=26"></script>
+  <script src="/static/app.js?v=27"></script>
   <script src="/static/story.js?v=1"></script>
 </body>
 </html>
