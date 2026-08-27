@@ -918,8 +918,37 @@ func commitSubject(msg string) string {
 	return msg
 }
 
-// isBotAuthor reports whether a commit author is an automation account, such
-// as dependabot, whose activity says nothing about human expertise.
+// isBotAuthor reports whether a commit author is an automation account, whose
+// activity says nothing about human expertise.
+//
+// The [bot] suffix is GitHub's convention and not everyone's. PyTorch lands
+// every change re-authored as "PyTorch MergeBot", which made a robot the top
+// committer of most of the repository and the ownership report name it as the
+// person areas had drifted to. A name is automation when "bot" stands alone as
+// a word in it, hyphens included, so facebook-github-bot and MergeBot are
+// caught while Talbot and Abbott stay people.
 func isBotAuthor(name, email string) bool {
-	return strings.HasSuffix(name, "[bot]") || strings.Contains(email, "[bot]")
+	if strings.HasSuffix(name, "[bot]") || strings.Contains(email, "[bot]") {
+		return true
+	}
+	local := email
+	if i := strings.IndexByte(local, '@'); i >= 0 {
+		local = local[:i]
+	}
+	return hasBotWord(name) || hasBotWord(local)
+}
+
+// hasBotWord reports whether "bot" appears as its own word, where camel case,
+// hyphens, dots, underscores and spaces all separate words.
+func hasBotWord(s string) bool {
+	s = strings.ToLower(s)
+	for _, sep := range []string{"-", "_", ".", " ", "+"} {
+		s = strings.ReplaceAll(s, sep, " ")
+	}
+	for _, w := range strings.Fields(s) {
+		if w == "bot" || strings.HasSuffix(w, "bot") && (w == "mergebot" || w == "dependabot" || w == "renovatebot") {
+			return true
+		}
+	}
+	return false
 }

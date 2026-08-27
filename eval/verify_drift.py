@@ -40,6 +40,23 @@ def commits(repo, window):
         yield name, email, files
 
 
+def is_bot(name, email):
+    """Automation is not a person. The [bot] suffix is GitHub's convention and
+    not everyone's: PyTorch re-authors every landed change as "PyTorch
+    MergeBot", which made a robot the top committer of most of the repository.
+    "bot" standing alone as a word, hyphens included, marks automation while
+    Talbot and Abbott stay people."""
+    if "[bot]" in name or "[bot]" in email:
+        return True
+    for field in (name, email.partition("@")[0]):
+        low = field.lower()
+        for sep in "-_.+ ":
+            low = low.replace(sep, " ")
+        for w in low.split():
+            if w == "bot" or w in ("mergebot", "dependabot", "renovatebot"):
+                return True
+    return False
+
 def person_key(email):
     """One key per human, from their commit email.
 
@@ -102,7 +119,7 @@ def main():
     history = []
     label = {}
     for name, email, files in commits(repo, window):
-        if "[bot]" in name or "dependabot" in name.lower() or "[bot]" in email:
+        if is_bot(name, email):
             continue
         key = person_key(email)
         label.setdefault(key, name)
