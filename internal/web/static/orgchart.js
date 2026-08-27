@@ -84,6 +84,11 @@
 		});
 		var edges = 0;
 		people.forEach(function (p) { if (p.managerId && byId.has(p.managerId) && p.managerId !== p.id) edges++; });
+		var anyTeam = people.some(function (p) { return p.team; });
+		var hint = document.querySelector(".oc-hint");
+		if (hint && !edges && !anyTeam && people.length) {
+			hint.textContent = "No reporting lines in this index; add an org-chart source to draw the tree. Drag to pan, click anyone for detail.";
+		}
 		if (edges > 0) {
 			people.forEach(function (p) {
 				if (p.managerId && nodes.has(p.managerId) && p.managerId !== p.id) nodes.get(p.managerId).childIds.push(p.id);
@@ -191,7 +196,24 @@
 			var cx = (xs[0] + xs[xs.length - 1]) / 2;
 			positions.set(id, { x: cx, y: y }); return cx;
 		}
-		roots.forEach(function (r) { walk(r, 0); });
+		// A git-only index knows no managers and no teams, so every person is a
+		// parentless leaf and the walk above would place them as one endless
+		// row. Past a screenful they wrap into a grid instead: a roster reads,
+		// a 361-card strip does not.
+		var leafRoots = roots.filter(function (r) { return !visibleChildren(r).length; });
+		if (leafRoots.length <= 14) {
+			roots.forEach(function (r) { walk(r, 0); });
+			return;
+		}
+		roots.forEach(function (r) { if (visibleChildren(r).length) walk(r, 0); });
+		var cols = Math.max(6, Math.ceil(Math.sqrt(leafRoots.length * 2.2)));
+		var left = cursor;
+		leafRoots.forEach(function (id, i) {
+			positions.set(id, {
+				x: (left + (i % cols)) * X_STEP,
+				y: Math.floor(i / cols) * LEVEL_H,
+			});
+		});
 	}
 
 	function nodeEl(n) {
