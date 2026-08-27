@@ -11,7 +11,7 @@ import (
 // TestSynonymSearch checks that a question in one vocabulary finds the person
 // the index knows in another: "time off" reaches the vacation owner, "k8s"
 // reaches the kubernetes owner, and the synonym neither outranks an exact
-// match nor dilutes anyone's confidence.
+// match nor dilutes anyone's strength.
 func TestSynonymSearch(t *testing.T) {
 	t.Parallel()
 	ix := New()
@@ -57,7 +57,7 @@ func TestSynonymSearch(t *testing.T) {
 
 	// An exact match must outrank a synonym for the same subject: someone who
 	// says "vacation" beats the synonym path when both name the same person,
-	// and confidence through a synonym still counts the asked words as covered.
+	// and strength through a synonym still counts the asked words as covered.
 	viaSynonym := ix.Search("time off", 1)
 	viaExact := ix.Search("vacation", 1)
 	if len(viaSynonym) == 0 || len(viaExact) == 0 {
@@ -67,7 +67,7 @@ func TestSynonymSearch(t *testing.T) {
 		t.Errorf("synonym score %v should stay below the exact score %v",
 			viaSynonym[0].Score, viaExact[0].Score)
 	}
-	if c := viaSynonym[0].Confidence; c <= 0.5 {
-		t.Errorf("confidence through a synonym = %v: the asked words were covered, so it must not dilute", c)
+	if c := viaSynonym[0].Strength; c <= 0.5 {
+		t.Errorf("strength through a synonym = %v: the asked words were covered, so it must not dilute", c)
 	}
 }

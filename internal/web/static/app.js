@@ -276,7 +276,7 @@ function chips(parent, items) {
   parent.appendChild(wrap);
 }
 
-function confidenceBadge(c) {
+function strengthBadge(c) {
   if (!c) return null;
   const label = c >= 0.75 ? "strong" : c >= 0.45 ? "moderate" : "weak";
   return el("span", "conf conf-" + label, label);
@@ -325,7 +325,7 @@ function personCard(p, query, i) {
   name.appendChild(toggle);
   const copyText = ((p.name || "") + (p.email ? " <" + p.email + ">" : "")).trim();
   if (copyText) name.appendChild(copyButton(copyText));
-  const badge = confidenceBadge(p.confidence);
+  const badge = strengthBadge(p.strength);
   if (badge) name.appendChild(badge);
   card.appendChild(name);
 
@@ -583,7 +583,7 @@ function channelCard(c, query, i) {
   card.appendChild(rankBadge(i));
   const name = el("div", "name", "#" + c.name);
   name.appendChild(copyButton("#" + c.name));
-  const badge = confidenceBadge(c.confidence);
+  const badge = strengthBadge(c.strength);
   if (badge) name.appendChild(badge);
   card.appendChild(name);
   if (c.topic) card.appendChild(el("div", "sub", c.topic));

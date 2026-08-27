@@ -135,7 +135,7 @@ func Stem(token string) string {
 
 // StemMatches reports whether the stem want equals the stem of any token of
 // the given texts. It mirrors the scorer, which compares stems, so reasons and
-// confidence agree with what actually scored, including fuzzy hits that
+// strength agree with what actually scored, including fuzzy hits that
 // resolved to a different stem than the raw query term.
 func StemMatches(want string, texts ...string) bool {
 	_, ok := StemMatch(want, texts...)

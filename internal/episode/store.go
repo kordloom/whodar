@@ -279,9 +279,9 @@ type Result struct {
 	Episode *Episode
 	// Score ranks the result.
 	Score float64
-	// Confidence is the share of query terms this episode matched, from zero
+	// Strength is the share of query terms this episode matched, from zero
 	// to one.
-	Confidence float64
+	Strength float64
 	// Matched lists the query terms found in the episode.
 	Matched []string
 }
@@ -380,10 +380,10 @@ func (s *Store) Search(q Query) []Result {
 		coverage := float64(len(a.matched)) / float64(unique)
 		sort.Strings(a.matched)
 		out = append(out, Result{
-			Episode:    ep,
-			Score:      a.score * coverage * s.decay(ep.Occurred),
-			Confidence: coverage,
-			Matched:    a.matched,
+			Episode:  ep,
+			Score:    a.score * coverage * s.decay(ep.Occurred),
+			Strength: coverage,
+			Matched:  a.matched,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -434,10 +434,10 @@ func (s *Store) SearchSemantic(query []float32, q Query) []Result {
 			continue
 		}
 		out = append(out, Result{
-			Episode:    ep,
-			Score:      similarity * s.decay(ep.Occurred),
-			Confidence: similarity,
-			Matched:    []string{"similar meaning"},
+			Episode:  ep,
+			Score:    similarity * s.decay(ep.Occurred),
+			Strength: similarity,
+			Matched:  []string{"similar meaning"},
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {

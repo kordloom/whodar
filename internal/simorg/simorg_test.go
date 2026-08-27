@@ -68,9 +68,9 @@ func TestFullPipeline(t *testing.T) {
 			t.Errorf("Search(%q) top = %v, want %s", ask.Query, first(got), ask.WantPerson)
 			continue
 		}
-		if got[0].Confidence < 0.45 {
-			t.Errorf("Search(%q) confidence = %.2f, want at least moderate",
-				ask.Query, got[0].Confidence)
+		if got[0].Strength < 0.45 {
+			t.Errorf("Search(%q) strength = %.2f, want at least moderate",
+				ask.Query, got[0].Strength)
 		}
 	}
 

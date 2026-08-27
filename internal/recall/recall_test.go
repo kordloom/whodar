@@ -60,8 +60,8 @@ func TestResolveNamesTheHelper(t *testing.T) {
 	if ep.Place != "infra" || ep.Permalink == "" || ep.Messages != 6 {
 		t.Errorf("episode = %+v, want the infra thread with a link", ep)
 	}
-	if ep.Confidence <= 0 || ep.Confidence > 1 {
-		t.Errorf("confidence = %v, want a value in (0,1]", ep.Confidence)
+	if ep.Strength <= 0 || ep.Strength > 1 {
+		t.Errorf("strength = %v, want a value in (0,1]", ep.Strength)
 	}
 	if ep.LinkMayHaveExpired {
 		t.Error("link flagged as expired with no horizon set")

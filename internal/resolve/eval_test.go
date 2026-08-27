@@ -147,8 +147,8 @@ func TestKeywordRankingQuality(t *testing.T) {
 			if rank := personRank(ans, test.WantPerson); rank != 1 {
 				t.Errorf("query %q: want %s ranked 1, got rank %d", test.Query, test.WantPerson, rank)
 			}
-			if got := ans.People[0].Confidence; got < 0.6 {
-				t.Errorf("query %q: top confidence %.2f below 0.6; owners should score confidently",
+			if got := ans.People[0].Strength; got < 0.6 {
+				t.Errorf("query %q: top strength %.2f below 0.6; owners should score confidently",
 					test.Query, got)
 			}
 			if test.WantChannel != "" {

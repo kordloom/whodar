@@ -173,8 +173,9 @@ form through a pipe. Useful flags:
 The answer has two sections. People are who to talk to. Channels are where to
 ask, each with its most active members for that topic.
 
-Each keyword-mode result carries a `confidence` from zero to one: how much of
-the question matched, scaled by how strong the match is. An explicit topic
+Each keyword-mode result carries a `strength` from zero to one: how much of
+the question matched, scaled by how strong the match is. It is deterministic
+scoring, not a probability, which is why it is not called a confidence. An explicit topic
 counts as proof, a job title slightly less, a passing mention in chat half.
 The web UI and the Slack bot show it as strong, moderate, or weak, so a
 least-bad answer never dresses up as a sure one.
@@ -334,7 +335,7 @@ For Claude Desktop, add this under `mcpServers` in
     {"whodar": {"command": "whodar", "args": ["mcp"]}}
 
 The agent gets four tools: `whodar_ask` (ranked people and channels with
-reasons and confidence, keyword or semantic), `whodar_recall` (the past
+reasons and match strength, keyword or semantic), `whodar_recall` (the past
 conversations one person took part in), `whodar_person` (a full profile),
 and `whodar_directory` (browse people, channels, teams, or topics). There is no llm mode over MCP on purpose: the calling agent is
 already a model, so it reads the ranked candidates itself.

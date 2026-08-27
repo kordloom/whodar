@@ -120,7 +120,7 @@ func registerMCPTools(srv *mcp.Server, ix *index.Index, opts *options, embedMode
 	srv.AddTool(mcp.Tool{
 		Name: "whodar_ask",
 		Description: "Find who to talk to and which channel to ask in about a topic, " +
-			"ranked with reasons and confidence from the organization's indexed work tools.",
+			"ranked with reasons and strength from the organization's indexed work tools.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {

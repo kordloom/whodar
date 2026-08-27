@@ -50,8 +50,8 @@ func TestSemanticSearch(t *testing.T) {
 	if len(got) == 0 || got[0].Person.Email != "jane@x.com" {
 		t.Fatalf("top semantic person = %v, want jane@x.com", got)
 	}
-	if got[0].Confidence <= 0 || got[0].Confidence != got[0].Score {
-		t.Errorf("confidence = %v score = %v, want similarity as confidence", got[0].Confidence, got[0].Score)
+	if got[0].Strength <= 0 || got[0].Strength != got[0].Score {
+		t.Errorf("strength = %v score = %v, want similarity as strength", got[0].Strength, got[0].Score)
 	}
 }
 
@@ -81,10 +81,10 @@ func TestEmbedSaveLoad(t *testing.T) {
 	}
 }
 
-// TestStandoutConfidence checks that a similarity is reported as how far a match
+// TestStandoutStrength checks that a similarity is reported as how far a match
 // stands above its field, not as the raw number. A question that suits everyone
 // equally must not come back with a confident name attached.
-func TestStandoutConfidence(t *testing.T) {
+func TestStandoutStrength(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		Name      string
@@ -99,7 +99,7 @@ func TestStandoutConfidence(t *testing.T) {
 			{id: "e", score: 0.634},
 		},
 		WantAny: false,
-	}, { // Test 1: A clear standout keeps a high confidence.
+	}, { // Test 1: A clear standout keeps a high strength.
 		Name: "one clear match",
 		Ranked: []scoredID{
 			{id: "a", score: 0.90}, {id: "b", score: 0.62},
@@ -123,7 +123,7 @@ func TestStandoutConfidence(t *testing.T) {
 			}
 			median, ok := fieldMedian(test.Ranked)
 			if got := standout(test.Ranked[0].score, median, ok); got != test.WantFirst {
-				t.Errorf("confidence = %v, want %v", got, test.WantFirst)
+				t.Errorf("strength = %v, want %v", got, test.WantFirst)
 			}
 		})
 	}

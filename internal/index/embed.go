@@ -235,7 +235,7 @@ func (ix *Index) SemanticTopics(query []float32, limit int) []model.ID {
 
 // TopicSimilarity reports how far a subject stands out from the other subjects
 // for this query, on the same scale people are scored by, so a question that
-// suits every subject equally reports confidence in none of them.
+// suits every subject equally reports strength in none of them.
 func (ix *Index) TopicSimilarity(query []float32, tid model.ID) float64 {
 	vec, ok := ix.topicVecs[tid]
 	if !ok {
@@ -295,14 +295,14 @@ func (ix *Index) TopicExperts(tid model.ID, limit int) []*model.Person {
 func (ix *Index) SetEmbedProgress(p util.Progress) { ix.embedProgress = p }
 
 // standoutScale is the cosine margin over the middle of the field that counts as
-// a match standing fully on its own. Raw cosine is not a confidence: an
+// a match standing fully on its own. Raw cosine is not a strength: an
 // embedding model puts two unrelated pieces of engineering talk around 0.6 as a
 // matter of course, so reporting 0.6 as "fairly sure" states a certainty nothing
 // earned. What carries information is how far a match stands above the rest of
 // the field for the same question, which is what this scales.
 const standoutScale = 0.15
 
-// minStandout is the confidence below which a match is indistinguishable from
+// minStandout is the strength below which a match is indistinguishable from
 // the field and is dropped rather than shown. A name offered with no real
 // evidence behind it is worse than no name, because it will be believed.
 const minStandout = 0.05
@@ -314,7 +314,7 @@ const minStandout = 0.05
 // as no answer.
 //
 // A flat ranking is not a weak answer to show with a low score, it is the
-// absence of one. Presenting it names a person at a confidence the evidence does
+// absence of one. Presenting it names a person at a strength the evidence does
 // not support, which is worse than saying nothing at all. A list too short to
 // have a middle is left alone, since there is nothing there to mislead anyone.
 func discriminating(ranked []scoredID) bool {
@@ -335,7 +335,7 @@ func fieldMedian(ranked []scoredID) (float64, bool) {
 	return ranked[len(ranked)/2].score, true
 }
 
-// standout converts a raw similarity into a confidence by measuring it against
+// standout converts a raw similarity into a strength by measuring it against
 // the middle of its own field, so a match reports how far it rose above the
 // crowd rather than how large a number the model happened to return. With too
 // few results to make a field, there is nothing to stand out from and the
@@ -355,7 +355,7 @@ func standout(score, median float64, haveField bool) float64 {
 const minRankedToJudge = 4
 
 // SemanticPeople ranks people by cosine similarity to the query vector. The
-// similarity doubles as the confidence, clamped at zero.
+// similarity doubles as the strength, clamped at zero.
 func (ix *Index) SemanticPeople(query []float32, limit int) []model.Match {
 	ranked := rankByCosine(ix.personVecs, query, limit)
 	if !discriminating(ranked) {
@@ -368,8 +368,8 @@ func (ix *Index) SemanticPeople(query []float32, limit int) []model.Match {
 		if p == nil {
 			continue
 		}
-		confidence := standout(r.score, median, haveField)
-		if confidence < minStandout {
+		strength := standout(r.score, median, haveField)
+		if strength < minStandout {
 			continue
 		}
 		var team *model.Team
@@ -377,11 +377,11 @@ func (ix *Index) SemanticPeople(query []float32, limit int) []model.Match {
 			team = ix.Graph.Teams[p.TeamID]
 		}
 		out = append(out, model.Match{
-			Person:     p,
-			Team:       team,
-			Score:      r.score,
-			Confidence: confidence,
-			Reasons:    []string{"semantic match"},
+			Person:   p,
+			Team:     team,
+			Score:    r.score,
+			Strength: strength,
+			Reasons:  []string{"semantic match"},
 		})
 	}
 	return out
@@ -404,7 +404,7 @@ func (ix *Index) SemanticChannels(query []float32, limit int) []model.ChannelMat
 		out = append(out, model.ChannelMatch{
 			Channel:    ch,
 			Score:      r.score,
-			Confidence: max(0, r.score),
+			Strength:   max(0, r.score),
 			Reasons:    []string{"semantic match"},
 			TopMembers: ix.topMembers(ch, memberScores, 3),
 		})

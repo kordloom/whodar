@@ -97,10 +97,10 @@ func TestFuzzyMatching(t *testing.T) {
 	}
 }
 
-// TestConfidenceIgnoresScaffold verifies conversational scaffolding such as
-// "who knows" does not dilute confidence: a dead-on topic owner scores full
-// confidence for the tagline phrasing.
-func TestConfidenceIgnoresScaffold(t *testing.T) {
+// TestStrengthIgnoresScaffold verifies conversational scaffolding such as
+// "who knows" does not dilute strength: a dead-on topic owner scores full
+// strength for the tagline phrasing.
+func TestStrengthIgnoresScaffold(t *testing.T) {
 	t.Parallel()
 	ix := New()
 	ix.Build(sampleRecords())
@@ -108,14 +108,14 @@ func TestConfidenceIgnoresScaffold(t *testing.T) {
 	if len(got) == 0 {
 		t.Fatal("no matches")
 	}
-	if got[0].Person.ID != "jane@x.com" || got[0].Confidence != 1.0 {
-		t.Errorf("top = %s confidence = %v, want jane@x.com at 1.0", got[0].Person.ID, got[0].Confidence)
+	if got[0].Person.ID != "jane@x.com" || got[0].Strength != 1.0 {
+		t.Errorf("top = %s strength = %v, want jane@x.com at 1.0", got[0].Person.ID, got[0].Strength)
 	}
 }
 
-// TestDuplicateTermsKeepConfidence verifies a repeated query token neither
+// TestDuplicateTermsKeepStrength verifies a repeated query token neither
 // deflates coverage nor double-counts, so it ranks identically to one token.
-func TestDuplicateTermsKeepConfidence(t *testing.T) {
+func TestDuplicateTermsKeepStrength(t *testing.T) {
 	t.Parallel()
 	ix := New()
 	ix.Build(sampleRecords())
@@ -127,9 +127,9 @@ func TestDuplicateTermsKeepConfidence(t *testing.T) {
 	if once[0].Person.ID != twice[0].Person.ID {
 		t.Fatalf("top differs: %s vs %s", once[0].Person.ID, twice[0].Person.ID)
 	}
-	if once[0].Confidence != twice[0].Confidence || once[0].Score != twice[0].Score {
-		t.Errorf("duplicate token changed ranking: confidence %v vs %v, score %v vs %v",
-			once[0].Confidence, twice[0].Confidence, once[0].Score, twice[0].Score)
+	if once[0].Strength != twice[0].Strength || once[0].Score != twice[0].Score {
+		t.Errorf("duplicate token changed ranking: strength %v vs %v, score %v vs %v",
+			once[0].Strength, twice[0].Strength, once[0].Score, twice[0].Score)
 	}
 }
 

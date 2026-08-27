@@ -67,7 +67,7 @@ func TestSearch(t *testing.T) {
 }
 
 // TestProfileViewJoins checks the profile view carries the inferred identity
-// merges with their confidence.
+// merges with their strength.
 func TestProfileViewJoins(t *testing.T) {
 	t.Parallel()
 	ix := index.New()

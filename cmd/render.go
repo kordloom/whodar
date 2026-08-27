@@ -38,7 +38,7 @@ func nameWidth(people []resolve.JSONPerson) int {
 }
 
 // renderAsk prints an answer as ranked, aligned rows: each match numbered, with
-// a confidence bar and the reasons it surfaced dimmed beneath.
+// a strength bar and the reasons it surfaced dimmed beneath.
 func renderAsk(w io.Writer, query string, view resolve.JSONAnswer, s style) {
 	fmt.Fprintf(w, "\n%s\n", s.bold("Who knows about "+strconv.Quote(query)))
 	if view.Summary != "" {
@@ -56,7 +56,7 @@ func renderAsk(w io.Writer, query string, view resolve.JSONAnswer, s style) {
 			fmt.Fprintf(w, "  %s  %s  %s\n",
 				s.dim(rank(i+1)), pad(s.bold(p.Name), p.Name, width), s.dim(joinRole(p.Title, p.Team)))
 			fmt.Fprintf(w, "      %s %s   %s\n",
-				s.confBar(p.Confidence), s.accent(pct(p.Confidence)), s.dim(strings.Join(p.Reasons, " · ")))
+				s.confBar(p.Strength), s.accent(pct(p.Strength)), s.dim(strings.Join(p.Reasons, " · ")))
 			fmt.Fprintln(w)
 		}
 	}
@@ -65,7 +65,7 @@ func renderAsk(w io.Writer, query string, view resolve.JSONAnswer, s style) {
 		for i, ch := range view.Channels {
 			fmt.Fprintf(w, "  %s  %s\n", s.dim(rank(i+1)), s.bold("#"+ch.Name))
 			fmt.Fprintf(w, "      %s %s   %s\n",
-				s.confBar(ch.Confidence), s.accent(pct(ch.Confidence)), s.dim(strings.Join(ch.Reasons, " · ")))
+				s.confBar(ch.Strength), s.accent(pct(ch.Strength)), s.dim(strings.Join(ch.Reasons, " · ")))
 			if ch.URL != "" {
 				fmt.Fprintf(w, "      %s %s\n", s.accent("\u2192"), s.dim(ch.URL))
 			}

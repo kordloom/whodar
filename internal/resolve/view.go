@@ -8,31 +8,31 @@ import (
 	"github.com/kordloom/whodar/internal/model"
 )
 
-// Confidence labels partition the zero-to-one confidence range for display.
+// Strength labels partition the zero-to-one match range for display.
 const (
-	// strongConfidence is the floor of a strong match.
-	strongConfidence = 0.75
-	// moderateConfidence is the floor of a moderate match.
-	moderateConfidence = 0.45
+	// strongStrength is the floor of a strong match.
+	strongStrength = 0.75
+	// moderateStrength is the floor of a moderate match.
+	moderateStrength = 0.45
 )
 
-// ConfidenceLabel names a confidence value for display: strong, moderate, or
-// weak. It returns the empty string for zero, when confidence is unknown.
-func ConfidenceLabel(c float64) string {
+// StrengthLabel names a match strength for display: strong, moderate, or
+// weak. It returns the empty string for zero, when the strength is unknown.
+func StrengthLabel(c float64) string {
 	switch {
 	case c <= 0:
 		return ""
-	case c >= strongConfidence:
+	case c >= strongStrength:
 		return "strong"
-	case c >= moderateConfidence:
+	case c >= moderateStrength:
 		return "moderate"
 	default:
 		return "weak"
 	}
 }
 
-// roundConfidence trims a confidence to two decimals for stable JSON output.
-func roundConfidence(c float64) float64 {
+// roundStrength trims a strength to two decimals for stable JSON output.
+func roundStrength(c float64) float64 {
 	return math.Round(c*100) / 100
 }
 
@@ -115,9 +115,11 @@ type JSONPerson struct {
 	Topics []string `json:"topics,omitempty"`
 	// Score is the relevance score.
 	Score float64 `json:"score"`
-	// Confidence estimates how trustworthy the match is, from zero to one.
+	// Strength is how strongly this result matches, from zero to one. It is
+	// deterministic scoring, not a probability, which is why it is not called
+	// a confidence.
 	// Zero means unknown and is omitted.
-	Confidence float64 `json:"confidence,omitempty"`
+	Strength float64 `json:"strength,omitempty"`
 	// Reasons explains why the person matched.
 	Reasons []string `json:"reasons,omitempty"`
 }
@@ -132,9 +134,11 @@ type JSONChannel struct {
 	URL string `json:"url,omitempty"`
 	// Score is the relevance score.
 	Score float64 `json:"score"`
-	// Confidence estimates how trustworthy the match is, from zero to one.
+	// Strength is how strongly this result matches, from zero to one. It is
+	// deterministic scoring, not a probability, which is why it is not called
+	// a confidence.
 	// Zero means unknown and is omitted.
-	Confidence float64 `json:"confidence,omitempty"`
+	Strength float64 `json:"strength,omitempty"`
 	// Reasons explains why the channel matched.
 	Reasons []string `json:"reasons,omitempty"`
 	// Members are the most relevant people active in the channel.
@@ -227,14 +231,14 @@ func (a Answer) View(query string) JSONAnswer {
 	}
 	for _, m := range a.People {
 		jp := JSONPerson{
-			ID:         string(m.Person.ID),
-			Name:       m.Person.Name,
-			Email:      m.Person.Email,
-			Title:      m.Person.Title,
-			Topics:     salientTopics(a.ix, m.Person.Topics, 8),
-			Score:      m.Score,
-			Confidence: roundConfidence(m.Confidence),
-			Reasons:    m.Reasons,
+			ID:       string(m.Person.ID),
+			Name:     m.Person.Name,
+			Email:    m.Person.Email,
+			Title:    m.Person.Title,
+			Topics:   salientTopics(a.ix, m.Person.Topics, 8),
+			Score:    m.Score,
+			Strength: roundStrength(m.Strength),
+			Reasons:  m.Reasons,
 		}
 		for _, id := range m.Person.Identities {
 			jp.Identities = append(jp.Identities, string(id))
@@ -246,12 +250,12 @@ func (a Answer) View(query string) JSONAnswer {
 	}
 	for _, c := range a.Channels {
 		jc := JSONChannel{
-			Name:       c.Channel.Name,
-			Topic:      c.Channel.Topic,
-			URL:        c.Channel.URL,
-			Score:      c.Score,
-			Confidence: roundConfidence(c.Confidence),
-			Reasons:    c.Reasons,
+			Name:     c.Channel.Name,
+			Topic:    c.Channel.Topic,
+			URL:      c.Channel.URL,
+			Score:    c.Score,
+			Strength: roundStrength(c.Strength),
+			Reasons:  c.Reasons,
 		}
 		for _, p := range c.TopMembers {
 			jc.Members = append(jc.Members, JSONMember{Name: p.Name, Email: p.Email})

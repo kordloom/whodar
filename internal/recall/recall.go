@@ -145,9 +145,9 @@ type Episode struct {
 	LinkMayHaveExpired bool `json:"link_may_have_expired,omitempty"`
 	// Matched lists the query terms found in the conversation.
 	Matched []string `json:"matched,omitempty"`
-	// Confidence is how much of the question this conversation covered, from
+	// Strength is how much of the question this conversation covered, from
 	// zero to one.
-	Confidence float64 `json:"confidence"`
+	Strength float64 `json:"strength"`
 	// Solution is how the problem was worked out, present only for
 	// conversations whose content whodar keeps.
 	Solution *Solution `json:"solution,omitempty"`
@@ -228,16 +228,16 @@ func (r *Resolver) view(hit episode.Result, asker model.ID) Episode {
 		people = append(people, r.person(id))
 	}
 	out := Episode{
-		People:     people,
-		ID:         ep.ID,
-		Place:      ep.Place,
-		Source:     ep.Source,
-		Kind:       string(ep.Kind),
-		When:       ep.Occurred,
-		Messages:   ep.Messages,
-		Permalink:  ep.Permalink,
-		Matched:    hit.Matched,
-		Confidence: roundTwo(hit.Confidence),
+		People:    people,
+		ID:        ep.ID,
+		Place:     ep.Place,
+		Source:    ep.Source,
+		Kind:      string(ep.Kind),
+		When:      ep.Occurred,
+		Messages:  ep.Messages,
+		Permalink: ep.Permalink,
+		Matched:   hit.Matched,
+		Strength:  roundTwo(hit.Strength),
 	}
 	if r.horizon > 0 && !ep.Occurred.IsZero() && time.Since(ep.Occurred) > r.horizon {
 		out.LinkMayHaveExpired = true
@@ -313,5 +313,5 @@ func joinWords(names []string) string {
 	}
 }
 
-// roundTwo trims a confidence to two decimals for stable output.
+// roundTwo trims a strength to two decimals for stable output.
 func roundTwo(f float64) float64 { return math.Round(f*100) / 100 }

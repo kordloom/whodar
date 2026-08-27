@@ -606,8 +606,8 @@ channels as matched terms only) and writes the summary locally, and
 <code>--policy open</code> sends candidates as-is. The <code>openai</code> provider
 also speaks to any compatible server via <code>--openai-url</code>; a local one, such as
 LM Studio, needs no policy opt-in, while a remote one needs <code>--policy open</code>.
-Each result carries a <code>confidence</code>
-from zero to one: query coverage scaled by evidence strength, where an
+Each result carries a <code>strength</code>
+from zero to one: query coverage scaled by the weight of the evidence, where an
 explicit topic is proof, a title slightly less, a passing mention half.</p>
 <h2 id="whodar-recall">whodar recall</h2>
 <p>Finds the past conversation where something was worked out, and who was in it.

@@ -201,8 +201,8 @@ channels as matched terms only) and writes the summary locally, and
 `--policy open` sends candidates as-is. The `openai` provider
 also speaks to any compatible server via `--openai-url`; a local one, such as
 LM Studio, needs no policy opt-in, while a remote one needs `--policy open`.
-Each result carries a `confidence`
-from zero to one: query coverage scaled by evidence strength, where an
+Each result carries a `strength`
+from zero to one: query coverage scaled by the weight of the evidence, where an
 explicit topic is proof, a title slightly less, a passing mention half.
 
 ## whodar recall

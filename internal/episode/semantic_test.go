@@ -28,8 +28,8 @@ func TestSearchSemantic(t *testing.T) {
 			t.Error("a conversation the asker was not in came back")
 		}
 	}
-	if got[0].Confidence <= 0 {
-		t.Errorf("confidence = %v, want above zero", got[0].Confidence)
+	if got[0].Strength <= 0 {
+		t.Errorf("strength = %v, want above zero", got[0].Strength)
 	}
 }
 

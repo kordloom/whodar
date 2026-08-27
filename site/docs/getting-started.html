@@ -276,8 +276,9 @@ form through a pipe. Useful flags:</p>
 </ul>
 <p>The answer has two sections. People are who to talk to. Channels are where to
 ask, each with its most active members for that topic.</p>
-<p>Each keyword-mode result carries a <code>confidence</code> from zero to one: how much of
-the question matched, scaled by how strong the match is. An explicit topic
+<p>Each keyword-mode result carries a <code>strength</code> from zero to one: how much of
+the question matched, scaled by how strong the match is. It is deterministic
+scoring, not a probability, which is why it is not called a confidence. An explicit topic
 counts as proof, a job title slightly less, a passing mention in chat half.
 The web UI and the Slack bot show it as strong, moderate, or weak, so a
 least-bad answer never dresses up as a sure one.</p>
@@ -420,7 +421,7 @@ registration is one line:</p>
 <pre><code>{&quot;whodar&quot;: {&quot;command&quot;: &quot;whodar&quot;, &quot;args&quot;: [&quot;mcp&quot;]}}
 </code></pre>
 <p>The agent gets four tools: <code>whodar_ask</code> (ranked people and channels with
-reasons and confidence, keyword or semantic), <code>whodar_recall</code> (the past
+reasons and match strength, keyword or semantic), <code>whodar_recall</code> (the past
 conversations one person took part in), <code>whodar_person</code> (a full profile),
 and <code>whodar_directory</code> (browse people, channels, teams, or topics). There is no llm mode over MCP on purpose: the calling agent is
 already a model, so it reads the ranked candidates itself.</p>

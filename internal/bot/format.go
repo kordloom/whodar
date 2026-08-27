@@ -34,7 +34,7 @@ func Format(query string, ans resolve.Answer) string {
 			if m.Team != nil && m.Team.Name != "" {
 				line += " (" + escapeMrkdwn(m.Team.Name) + ")"
 			}
-			if label := resolve.ConfidenceLabel(m.Confidence); label != "" {
+			if label := resolve.StrengthLabel(m.Strength); label != "" {
 				line += " · " + label + " match"
 			}
 			b.WriteString(line)

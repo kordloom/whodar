@@ -51,13 +51,13 @@ func (r *privateReplier) ReplyPrivately(_ context.Context, _, user, text string)
 var testAnswer = recall.Answer{
 	Query: "certificate renewal",
 	Episodes: []recall.Episode{{
-		People:     []recall.Person{{Name: "Billy Ray", Email: "billy@x.com"}},
-		Place:      "infra",
-		Source:     "slack",
-		Kind:       "thread",
-		When:       time.Date(2026, 3, 12, 0, 0, 0, 0, time.UTC),
-		Permalink:  "https://acme.slack.com/archives/C1/p1",
-		Confidence: 0.8,
+		People:    []recall.Person{{Name: "Billy Ray", Email: "billy@x.com"}},
+		Place:     "infra",
+		Source:    "slack",
+		Kind:      "thread",
+		When:      time.Date(2026, 3, 12, 0, 0, 0, 0, time.UTC),
+		Permalink: "https://acme.slack.com/archives/C1/p1",
+		Strength:  0.8,
 	}},
 	Scope: recall.Scope{Sources: []string{"slack"}, Episodes: 1, Note: "Covers indexed channels."},
 }

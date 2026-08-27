@@ -507,10 +507,10 @@ func (s *Semantic) topicPeople(vec []float32, limit int) []model.Match {
 			}
 			seen[p.ID] = true
 			out = append(out, model.Match{
-				Person:     p,
-				Score:      sim,
-				Confidence: sim,
-				Reasons:    []string{"works on " + name},
+				Person:   p,
+				Score:    sim,
+				Strength: sim,
+				Reasons:  []string{"works on " + name},
 			})
 			if limit > 0 && len(out) >= limit {
 				return out
@@ -526,7 +526,7 @@ func (s *Semantic) topicPeople(vec []float32, limit int) []model.Match {
 const rrfK = 60
 
 // fusePeople merges the word ranking and the meaning ranking of people by
-// reciprocal rank fusion, keeping each person's best reasons and confidence
+// reciprocal rank fusion, keeping each person's best reasons and strength
 // from whichever list explained them better.
 func fusePeople(words, meaning, subjects []model.Match, limit int) []model.Match {
 	type fused struct {
@@ -547,12 +547,12 @@ func fusePeople(words, meaning, subjects []model.Match, limit int) []model.Match
 			f.score += 1.0 / float64(rrfK+rank+1)
 			// The word ranking explains itself in matched terms while the
 			// meaning ranking only says "semantic match", so richer reasons
-			// and the higher confidence win the display.
+			// and the higher strength win the display.
 			if len(m.Reasons) > len(f.match.Reasons) {
 				f.match.Reasons = m.Reasons
 			}
-			if m.Confidence > f.match.Confidence {
-				f.match.Confidence = m.Confidence
+			if m.Strength > f.match.Strength {
+				f.match.Strength = m.Strength
 			}
 		}
 	}
@@ -600,8 +600,8 @@ func fuseChannels(words, meaning []model.ChannelMatch, limit int) []model.Channe
 			if len(m.Reasons) > len(f.match.Reasons) {
 				f.match.Reasons = m.Reasons
 			}
-			if m.Confidence > f.match.Confidence {
-				f.match.Confidence = m.Confidence
+			if m.Strength > f.match.Strength {
+				f.match.Strength = m.Strength
 			}
 		}
 	}

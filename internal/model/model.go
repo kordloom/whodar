@@ -199,9 +199,9 @@ type Match struct {
 	Team *Team
 	// Score is the relevance score; higher is more relevant.
 	Score float64
-	// Confidence estimates how trustworthy the match is, from zero to one:
+	// Strength estimates how trustworthy the match is, from zero to one:
 	// query-term coverage scaled by the strength of the matched fields.
-	Confidence float64
+	Strength float64
 	// Reasons explains why the person matched, for transparency.
 	Reasons []string
 }
@@ -213,9 +213,9 @@ type ChannelMatch struct {
 	Channel *Channel
 	// Score is the relevance score; higher is more relevant.
 	Score float64
-	// Confidence estimates how trustworthy the match is, from zero to one:
+	// Strength estimates how trustworthy the match is, from zero to one:
 	// query-term coverage scaled by the strength of the matched fields.
-	Confidence float64
+	Strength float64
 	// Reasons explains why the channel matched.
 	Reasons []string
 	// TopMembers are the most relevant active members, most relevant first.

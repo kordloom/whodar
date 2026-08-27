@@ -65,7 +65,7 @@ const (
 )
 
 // Evidence strengths grade how convincing a matched field is when estimating
-// confidence: an explicit topic is proof, a passing mention is a hint.
+// strength: an explicit topic is proof, a passing mention is a hint.
 const (
 	// evidenceTopic is the strength of an explicit topic or channel-name hit.
 	evidenceTopic = 1.0
@@ -128,7 +128,7 @@ type Index struct {
 	// canonical identifier.
 	resolver *identity.Resolver
 	// joins records the inferred identity merges AutoJoin made, with the
-	// confidence and evidence for each.
+	// strength and evidence for each.
 	joins []Join
 	// halfLife is the age at which a dated record's weight halves; zero or
 	// negative disables recency decay.
@@ -887,10 +887,10 @@ func (ix *Index) Search(query string, limit int) []model.Match {
 	if limit > 0 && len(matches) > limit {
 		matches = matches[:limit]
 	}
-	// Build the reasons and confidence only for the people that survived the
+	// Build the reasons and strength only for the people that survived the
 	// limit. Each reason stems the person's whole topic set against every query
 	// term, so doing it for every candidate before ranking was the query's cost,
-	// and only the returned people need it. Confidence does not affect the
+	// and only the returned people need it. Strength does not affect the
 	// ranking, which is by score, so deferring it changes no result.
 	for i := range matches {
 		pid := matches[i].Person.ID
@@ -899,7 +899,7 @@ func (ix *Index) Search(query string, limit int) []model.Match {
 			reasons = append(reasons, feedbackReason(net))
 		}
 		matches[i].Reasons = reasons
-		matches[i].Confidence = evidence * coveredShare(matched[pid], covers, originals)
+		matches[i].Strength = evidence * coveredShare(matched[pid], covers, originals)
 	}
 	return matches
 }
@@ -936,10 +936,10 @@ func (ix *Index) SearchChannels(query string, limit int) []model.ChannelMatch {
 		}
 		coverage := coveredShare(matched[cid], covers, originals)
 		matches = append(matches, model.ChannelMatch{
-			Channel:    ch,
-			Score:      sc,
-			Confidence: evidence * coverage,
-			Reasons:    reasons,
+			Channel:  ch,
+			Score:    sc,
+			Strength: evidence * coverage,
+			Reasons:  reasons,
 		})
 	}
 	sort.Slice(matches, func(i, j int) bool {
@@ -1306,7 +1306,7 @@ func (ix *Index) reasons(
 		// A correction has to name what it corrected to. Told only that
 		// "zigby" was fuzzy, a reader cannot tell whether whodar read it as
 		// zigbee or as zigzag, which is the difference between a lucky save
-		// and a wrong guess presented with confidence.
+		// and a wrong guess presented with strength.
 		if hit.fuzzy() && found != "" && found != term {
 			out = append(out, fmt.Sprintf("%s (%s, read for %q)", found, field, term))
 			continue
@@ -1368,7 +1368,7 @@ func (ix *Index) channelReasons(
 		// A correction has to name what it corrected to. Told only that
 		// "zigby" was fuzzy, a reader cannot tell whether whodar read it as
 		// zigbee or as zigzag, which is the difference between a lucky save
-		// and a wrong guess presented with confidence.
+		// and a wrong guess presented with strength.
 		if hit.fuzzy() && found != "" && found != term {
 			out = append(out, fmt.Sprintf("%s (%s, read for %q)", found, field, term))
 			continue
@@ -1406,7 +1406,7 @@ type snapshot struct {
 	TopicVecs map[model.ID][]int8 `json:"topic_vecs,omitempty"`
 	// Aliases maps each known alias identifier to its canonical form.
 	Aliases map[model.ID]model.ID `json:"aliases,omitempty"`
-	// Joins records the inferred identity merges with their confidence and
+	// Joins records the inferred identity merges with their strength and
 	// evidence, so a re-index keeps them and a reader can audit why two
 	// identities became one.
 	Joins []Join `json:"joins,omitempty"`
