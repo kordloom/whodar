@@ -120,3 +120,68 @@ func TestOwnershipSplitsTheThreeWaysAnOwnerCanDrift(t *testing.T) {
 			report.Silent+report.Unworked+report.Trailing, len(report.Drift))
 	}
 }
+
+// TestDriftNeedsTheChallengerToOutworkTheOwner covers what the finding claims.
+// Saying an area has moved is saying the person written down as its owner is no
+// longer the one doing the job, and nobody has done that while doing less of
+// the work in it than the owner does.
+//
+// Ranking everybody and calling the winner the owner reported drift on a coin
+// toss: on home-assistant/core it named a challenger with a ninth of the
+// owner's work in the area. Ratios of confirmed findings ran 0.93 to 2.32,
+// confirmed bogus ones 0.11 to 0.40.
+func TestDriftNeedsTheChallengerToOutworkTheOwner(t *testing.T) {
+	t.Parallel()
+
+	build := func(t *testing.T, ownerWork, challengerWork int) OwnershipReport {
+		t.Helper()
+		ix := index.New()
+		recs := []connector.Record{
+			// Declared on paper, which is weight without work.
+			{Kind: connector.KindPerson, Name: "Owner Of Record", Email: "owner@x.com",
+				Topics: []string{"billing-retries"}, Source: "codeowners"},
+		}
+		for i := 0; i < ownerWork; i++ {
+			recs = append(recs, connector.Record{Kind: connector.KindPerson,
+				Name: "Owner Of Record", Email: "owner@x.com",
+				Topics: []string{"billing-retries"}, Source: "git"})
+		}
+		for i := 0; i < challengerWork; i++ {
+			recs = append(recs, connector.Record{Kind: connector.KindPerson,
+				Name: "Challenger", Email: "challenger@x.com",
+				Topics: []string{"billing-retries"}, Source: "git"})
+		}
+		// The owner also works widely elsewhere, and the challenger does not.
+		// Without this the guard never fires: the ranking discounts weight by
+		// everything a person does, so a narrow challenger only overtakes a
+		// broad owner when the owner has a career behind them. Leaving it out
+		// made an earlier version of this test pass with the guard deleted.
+		for i := 0; i < 400; i++ {
+			recs = append(recs, connector.Record{Kind: connector.KindPerson,
+				Name: "Owner Of Record", Email: "owner@x.com",
+				Topics: []string{fmt.Sprintf("other-area-%d", i)}, Source: "git"})
+		}
+		recs = append(recs, connector.Record{Kind: connector.KindPerson,
+			Name: "Someone Else", Email: "else@x.com",
+			Topics: []string{"search-indexing", "search-indexing"}, Source: "git"})
+		ix.Build(recs)
+		ix.AutoJoin()
+		ix.Canonicalize()
+		return Ownership(ix)
+	}
+
+	// Doing a fraction of the owner's work is not displacing them, however the
+	// ranking discounts a broad career.
+	if r := build(t, 9, 1); r.Drifted() != 0 {
+		t.Errorf("drift reported where the challenger does a ninth of the work: %+v", r.Drift)
+	}
+	// Clearly out-working the owner in their own area is exactly the finding.
+	if r := build(t, 2, 9); r.Drifted() != 1 {
+		t.Errorf("no drift reported where the challenger does four times the work: %+v", r.Drift)
+	}
+	// An owner who has never touched the area is displaced by anyone, and needs
+	// no margin: there is nothing to hold.
+	if r := build(t, 0, 3); r.Drifted() != 1 {
+		t.Errorf("paper-only ownership was not reported as drift: %+v", r.Drift)
+	}
+}

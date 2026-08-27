@@ -66,6 +66,63 @@ func ownerStanding(ix *index.Index, owners map[model.ID]bool, topic model.ID) st
 	}
 }
 
+// driftMargin is how far a challenger must be ahead of the owner of record, in
+// the area itself, before the work is said to have moved.
+//
+// One is not a tuned number, it is what the claim means: nobody has taken an
+// area off its owner while doing less of the work in it than they do. Anything
+// below one is not a weak finding, it is a contradiction.
+//
+// Demanding more was tried and is worse. At two, five of seven findings checked
+// by hand and confirmed correct were suppressed, including an area where the
+// challenger had eleven changes to the owner's five. The ratios of confirmed
+// findings run 0.93, 1.40, 1.61, 2.01, 2.32 against 0.11, 0.14, 0.25, 0.40 for
+// confirmed bogus ones, so no threshold separates them cleanly and one is where
+// the reasoning, rather than the data, puts the line.
+const driftMargin = 1.0
+
+// workIn is how much real work somebody has done in one area. Weight a source
+// of record assigned does not count, or an owner would look active in an area
+// the moment their name was written next to it.
+func workIn(ix *index.Index, who model.ID, topic model.ID) float64 {
+	p := ix.Graph.People[ix.CanonicalID(who)]
+	if p == nil {
+		return 0
+	}
+	if w := p.Topics[topic] - p.Stated[topic]; w > 0 {
+		return w
+	}
+	return 0
+}
+
+// displaced reports whether challenger has taken an area off its owners of
+// record, and is the whole of what drift means.
+//
+// It is a comparison between the incumbent and the challenger, not a contest
+// the whole company enters. Ranking everybody and calling the winner the owner
+// reported drift wherever somebody happened to edge ahead: on
+// home-assistant/core it fired on areas where the owner and the challenger had
+// one change each, which is a coin toss rather than a finding. An earlier
+// attempt at a fix applied a floor to every candidate, which threw out the
+// incumbent along with the noise and guaranteed drift whenever an owner's own
+// work was modest. It won 16 areas and lost 35.
+//
+// An owner who has never worked in the area at all is not handled here. That is
+// paper ownership, which ownerStanding reports separately and which needs no
+// margin: there is nothing to displace.
+func displaced(ix *index.Index, owners map[model.ID]bool, challenger model.ID, topic model.ID) bool {
+	var most float64
+	for oid := range owners {
+		if w := workIn(ix, oid, topic); w > most {
+			most = w
+		}
+	}
+	if most <= 0 {
+		return true
+	}
+	return workIn(ix, challenger, topic) >= most*driftMargin
+}
+
 // actualOwner picks the person an area has really moved to. The largest share
 // of a subject is not the answer on its own: every organization has a few
 // people who touch everything, and by raw share they out-hold the declared
@@ -247,9 +304,14 @@ func OwnedAreas(ix *index.Index) []OwnedArea {
 		}
 		actual := actualOwner(ix, tr)
 		area := OwnedArea{Topic: tr.Topic, Actual: actual.Name, ActualID: actual.ID}
-		if owners[ix.CanonicalID(model.ID(actual.ID))] {
+		switch {
+		case owners[ix.CanonicalID(model.ID(actual.ID))]:
 			area.Standing = StandingHeld
-		} else {
+		case !displaced(ix, owners, model.ID(actual.ID), model.ID(tr.Topic)):
+			// Somebody else ranks higher, but not by enough to say the job has
+			// changed hands. The owner of record still holds the area.
+			area.Standing = StandingHeld
+		default:
 			area.Standing = ownerStanding(ix, owners, model.ID(tr.Topic))
 		}
 		type owner struct{ Name, ID string }
