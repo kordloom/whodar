@@ -489,3 +489,49 @@ func TestSameSurnameNeedsSharedSubjects(t *testing.T) {
 		t.Errorf("two people sharing only a surname merged into %d", got)
 	}
 }
+
+// TestSameLocalJoinsOnePersonAcrossTwoMailboxes covers the split the handle
+// join is right to refuse: one maintainer writing from bwplotka@gmail.com and
+// bwplotka@google.com matches the handle from BOTH, so the ambiguity guard
+// blocks it, and the work stays halved. The mailboxes themselves are the
+// evidence: a distinctive local shared across domains, by two records whose
+// names could not have joined them.
+func TestSameLocalJoinsOnePersonAcrossTwoMailboxes(t *testing.T) {
+	t.Parallel()
+	subjects := []string{"remote-write", "block-storage", "head-compaction"}
+	ix := New()
+	var recs []connector.Record
+	for _, email := range []string{"bwplotka@gmail.com", "bwplotka@google.com"} {
+		name := "bwplotka"
+		if email == "bwplotka@google.com" {
+			name = "Bartek Plotka"
+		}
+		recs = append(recs, connector.Record{Kind: connector.KindPerson,
+			Name: name, Email: email, Topics: subjects, Source: "git"})
+	}
+	ix.Build(recs)
+	ix.AutoJoin()
+	ix.Canonicalize()
+	if got := len(ix.Graph.People); got != 1 {
+		t.Errorf("one maintainer resolves to %d people, want 1", got)
+	}
+}
+
+// TestSameLocalKeepsTwoMichaelsApart is the collision the rule must refuse:
+// a bare given name as a local is what half the Michaels at any company use,
+// and both records displaying the same single word means the local carries
+// nothing the (rightly distrusted) bare name did not.
+func TestSameLocalKeepsTwoMichaelsApart(t *testing.T) {
+	t.Parallel()
+	subjects := []string{"billing", "ledger", "invoices"}
+	ix := New()
+	ix.Build([]connector.Record{
+		{Kind: connector.KindPerson, Name: "Michael", Email: "michael@a.com", Topics: subjects, Source: "git"},
+		{Kind: connector.KindPerson, Name: "Michael", Email: "michael@b.com", Topics: subjects, Source: "git"},
+	})
+	ix.AutoJoin()
+	ix.Canonicalize()
+	if got := len(ix.Graph.People); got != 2 {
+		t.Errorf("two Michaels merged into %d; a bare given name joins nobody", got)
+	}
+}

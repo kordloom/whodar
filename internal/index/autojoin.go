@@ -344,6 +344,7 @@ func (ix *Index) AutoJoin() JoinResult {
 	}
 	joins = append(joins, sameNameJoins(g, r)...)
 	joins = append(joins, sameSurnameJoins(g, r)...)
+	joins = append(joins, sameLocalJoins(g, r)...)
 	sort.Strings(blocked)
 	ix.joins = pruneJoins(mergeJoins(ix.joins, joins), ix)
 	return JoinResult{Joined: len(joins), Joins: joins, Ambiguous: blocked}
@@ -527,6 +528,82 @@ func sameSurnameJoins(g *model.Graph, r *identity.Resolver) []Join {
 		out = append(out, Join{
 			Alias: other, Canonical: target,
 			Confidence: confSameName, Reason: "same surname, one private address, and shared subjects",
+		})
+	}
+	return out
+}
+
+// minLocal is how long an email local-part must be before it is distinctive
+// enough to join two records on.
+const minLocal = 5
+
+// sameLocalJoins merges one person who writes from two mailboxes that share a
+// distinctive local part: bwplotka@gmail.com and bwplotka@google.com are one
+// maintainer, and nothing else connects them — the names may differ, the
+// handle join refuses precisely because BOTH candidates match it, and the
+// work splits across the two so each looks smaller than the person is. On a
+// real project that split handed an area to a colleague whose records had
+// merged, over the maintainer whose records had not.
+//
+// The guards mirror sameSurnameJoins: the local must be long enough to be a
+// chosen name rather than a common word, held by exactly two email records,
+// not a role mailbox, and the two must share several real subjects. Unlike the
+// surname rule both sides here are real mailboxes on purpose: sharing a
+// distinctive local ACROSS domains is the signature of one person's personal
+// and work addresses, where sharing a surname is the signature of a family.
+func sameLocalJoins(g *model.Graph, r *identity.Resolver) []Join {
+	byLocal := make(map[string][]model.ID)
+	for id, p := range g.People {
+		if handleOnly(id) {
+			continue
+		}
+		local := dotStrip(emailLocal(strings.ToLower(p.Email)))
+		if len(local) < minLocal || util.IsRoleEmail(p.Email) {
+			continue
+		}
+		c := r.Canonical(id)
+		if !slices.Contains(byLocal[local], c) {
+			byLocal[local] = append(byLocal[local], c)
+		}
+	}
+	locals := make([]string, 0, len(byLocal))
+	for local := range byLocal {
+		locals = append(locals, local)
+	}
+	sort.Strings(locals)
+
+	var out []Join
+	for _, local := range locals {
+		ids := byLocal[local]
+		if len(ids) != 2 {
+			continue
+		}
+		slices.Sort(ids)
+		a, b := g.People[ids[0]], g.People[ids[1]]
+		// When both records display the same bare single-word name, the local
+		// is that name over again and adds nothing: michael@a.com and
+		// michael@b.com are two Michaels until something better says
+		// otherwise, and single-word names are exactly what the name rules
+		// refuse. The join earns its confidence when the mailboxes agree while
+		// the names could not have: bwplotka@gmail.com signs as bwplotka and
+		// bwplotka@google.com signs as Bartek Plotka, and only the local
+		// connects them.
+		an, bn := strings.TrimSpace(a.Name), strings.TrimSpace(b.Name)
+		if strings.EqualFold(an, bn) && !strings.Contains(an, " ") {
+			continue
+		}
+		if sharedSubjects(g, a, b) < minSameNameSubjects {
+			continue
+		}
+		r.Union(ids[0], ids[1])
+		target := r.Canonical(ids[0])
+		other := ids[1]
+		if target == ids[1] {
+			other = ids[0]
+		}
+		out = append(out, Join{
+			Alias: other, Canonical: target,
+			Confidence: confSameName, Reason: "same distinctive mailbox name at two domains, and shared subjects",
 		})
 	}
 	return out
