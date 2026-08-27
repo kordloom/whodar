@@ -78,6 +78,19 @@ func ownerStanding(ix *index.Index, owners map[model.ID]bool, topic model.ID) st
 // lead, without handing them every area in the company.
 func actualOwner(ix *index.Index, tr TopicRisk) RiskExpert {
 	topic := model.ID(tr.Topic)
+	// KNOWN WEAK, and the fix that looked obvious is worse. Checked by hand
+	// against home-assistant/core, ten of sixteen drift findings were
+	// questionable: ecovacs named a contributor with one commit over the
+	// maintainer with twenty-seven. Two causes compound. Weight counts
+	// file-touches, so one commit over twelve files reads like sustained work.
+	// And dividing by everything a person does cannot tell a prolific person
+	// who genuinely owns this area from one who swept through it.
+	//
+	// Requiring a candidate to hold at least half the area's work against
+	// whoever holds most was measured on the same 405 areas: it won 16 and lost
+	// 35. Do not reapply it. A real fix means counting units of work per
+	// subject rather than file-touches, so a single wide change stops looking
+	// like a history of them.
 	best, bestScore := tr.Experts[0], -1.0
 	for _, e := range tr.Experts {
 		p := ix.Graph.People[ix.CanonicalID(model.ID(e.ID))]
