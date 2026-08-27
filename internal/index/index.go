@@ -806,12 +806,70 @@ func expandedQuery(query string) (terms []string, covers map[string][]string, as
 // applyExpansionPenalty discounts the resolved expansions, so a synonym never
 // outranks the words the person actually used.
 func applyExpansionPenalty(resolved map[string]termHit, asked map[string]string) {
-	for term := range asked {
-		if hit, ok := resolved[term]; ok {
+	for term, from := range asked {
+		hit, ok := resolved[term]
+		if !ok {
+			continue
+		}
+		if strings.HasPrefix(from, tieAskedPrefix) {
+			// A tie-derived term is a different subject that travels with the
+			// one asked about, not another name for it, so it is discounted
+			// below every synonym and far below every typed word.
+			hit.penalty *= tieExpansionPenalty
+		} else {
 			hit.penalty *= expansionPenalty
-			resolved[term] = hit
+		}
+		resolved[term] = hit
+	}
+}
+
+// splitTieTerms separates tie-derived expansions from the words asked and
+// their synonyms, so the two can score in separate passes.
+func splitTieTerms(terms []string, asked map[string]string) (base, ties []string) {
+	for _, t := range terms {
+		if strings.HasPrefix(asked[t], tieAskedPrefix) {
+			ties = append(ties, t)
+			continue
+		}
+		base = append(base, t)
+	}
+	return base, ties
+}
+
+// mergeReach adds tie-pass results for entities the base pass never found.
+//
+// Expansion is reach, not re-ranking: a candidate the question already found
+// keeps exactly the score the question gave them, and the tie pass may only
+// introduce people who would otherwise be invisible. Letting ties top up
+// existing candidates was measured handing four question shapes to a weakly
+// matching neighbor of the right answer; making expansion purely additive
+// cannot move anyone the question found, by construction.
+func mergeReach(
+	scores map[model.ID]float64, matched map[model.ID]map[string]bool,
+	tieScores map[model.ID]float64, tieMatched map[model.ID]map[string]bool,
+) {
+	for id, sc := range tieScores {
+		if _, found := scores[id]; found {
+			continue
+		}
+		scores[id] = sc
+		matched[id] = tieMatched[id]
+	}
+}
+
+// matchedOriginal reports whether the candidate matched any term the person
+// actually typed, as opposed to only terms the query grew by expansion. The
+// promise that reach never outranks what was asked is structural, not tuned:
+// an expansion-only candidate ranks after every candidate the question itself
+// found, whatever the scores say. Penalty tuning alone was measured losing
+// four question shapes to neighbors of the right answer.
+func matchedOriginal(matched map[string]bool, asked map[string]string) bool {
+	for term := range matched {
+		if _, isExp := asked[term]; !isExp {
+			return true
 		}
 	}
+	return false
 }
 
 // coveredShare is how much of the asked question a match answered: the share of
@@ -836,6 +894,7 @@ func (ix *Index) Search(query string, limit int) []model.Match {
 	if len(terms) == 0 {
 		return nil
 	}
+	terms = append(terms, ix.tieExpand(tokenize(query), covers, asked)...)
 	originals := 0
 	for _, t := range terms {
 		if _, isExp := asked[t]; !isExp {
@@ -844,7 +903,12 @@ func (ix *Index) Search(query string, limit int) []model.Match {
 	}
 	resolved := resolveTerms(ix.postings, ix.personVocab, terms)
 	applyExpansionPenalty(resolved, asked)
-	scores, matched := scoreByTerms(ix.postings, terms, resolved, len(ix.Graph.People), ix.personLens)
+	baseTerms, tieTerms := splitTieTerms(terms, asked)
+	scores, matched := scoreByTerms(ix.postings, baseTerms, resolved, len(ix.Graph.People), ix.personLens)
+	if len(tieTerms) > 0 {
+		tieScores, tieMatched := scoreByTerms(ix.postings, tieTerms, resolved, len(ix.Graph.People), ix.personLens)
+		mergeReach(scores, matched, tieScores, tieMatched)
+	}
 	nets := ix.feedbackNets(terms, false)
 
 	matches := make([]model.Match, 0, len(scores))
@@ -863,6 +927,11 @@ func (ix *Index) Search(query string, limit int) []model.Match {
 		matches = append(matches, model.Match{Person: p, Team: team, Score: sc})
 	}
 	sort.Slice(matches, func(i, j int) bool {
+		oi := matchedOriginal(matched[matches[i].Person.ID], asked)
+		oj := matchedOriginal(matched[matches[j].Person.ID], asked)
+		if oi != oj {
+			return oi
+		}
 		if matches[i].Score != matches[j].Score {
 			return matches[i].Score > matches[j].Score
 		}
@@ -911,6 +980,7 @@ func (ix *Index) SearchChannels(query string, limit int) []model.ChannelMatch {
 	if len(terms) == 0 {
 		return nil
 	}
+	terms = append(terms, ix.tieExpand(tokenize(query), covers, asked)...)
 	originals := 0
 	for _, t := range terms {
 		if _, isExp := asked[t]; !isExp {
@@ -919,8 +989,14 @@ func (ix *Index) SearchChannels(query string, limit int) []model.ChannelMatch {
 	}
 	resolved := resolveTerms(ix.channelPostings, ix.channelVocab, terms)
 	applyExpansionPenalty(resolved, asked)
+	baseTerms, tieTerms := splitTieTerms(terms, asked)
 	scores, matched := scoreByTerms(
-		ix.channelPostings, terms, resolved, len(ix.Graph.Channels), ix.channelLens)
+		ix.channelPostings, baseTerms, resolved, len(ix.Graph.Channels), ix.channelLens)
+	if len(tieTerms) > 0 {
+		tieScores, tieMatched := scoreByTerms(
+			ix.channelPostings, tieTerms, resolved, len(ix.Graph.Channels), ix.channelLens)
+		mergeReach(scores, matched, tieScores, tieMatched)
+	}
 	nets := ix.feedbackNets(terms, true)
 
 	matches := make([]model.ChannelMatch, 0, len(scores))
@@ -943,6 +1019,11 @@ func (ix *Index) SearchChannels(query string, limit int) []model.ChannelMatch {
 		})
 	}
 	sort.Slice(matches, func(i, j int) bool {
+		oi := matchedOriginal(matched[matches[i].Channel.ID], asked)
+		oj := matchedOriginal(matched[matches[j].Channel.ID], asked)
+		if oi != oj {
+			return oi
+		}
 		if matches[i].Score != matches[j].Score {
 			return matches[i].Score > matches[j].Score
 		}
@@ -1292,6 +1373,12 @@ func (ix *Index) reasons(
 		// typo correction: the "for" clause already says why the word differs
 		// from the question.
 		if from := asked[term]; from != "" && from != term {
+			if origin, tied := strings.CutPrefix(from, tieAskedPrefix); tied {
+				// The one reason a synonym table could never produce: these
+				// two subjects move together in this organization's work.
+				out = append(out, fmt.Sprintf("%s (%s), travels with %s here", term, field, origin))
+				continue
+			}
 			out = append(out, fmt.Sprintf("%s (%s) for %q", term, field, from))
 			continue
 		}
