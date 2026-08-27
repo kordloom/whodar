@@ -270,7 +270,8 @@ Start with the org chart, then merge everything else onto it:
 		},
 	}
 	f := cmd.Flags()
-	f.StringVar(&source, "source", "org-csv", "Source type: org-csv, slack, codeowners, github, jira, confluence, pagerduty, git, json, or graph.")
+	f.Var(newOnceValue(&source, "org-csv"), "source",
+		"Source type: org-csv, slack, codeowners, github, jira, confluence, pagerduty, git, json, or graph.")
 	f.StringVar(&file, "file", "", "Path to the source file: the CSV for org-csv, the CODEOWNERS file or repo root for codeowners, the JSON array for json (- for stdin).")
 	f.BoolVar(&includePrivate, "include-private", false, "Ingest private Slack channels if policy allows.")
 	f.BoolVar(&slackJoin, "slack-join", false,
