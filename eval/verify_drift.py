@@ -156,10 +156,17 @@ def main():
         # so the same findings file scored 31/40 or 30/40 depending on the run.
         mx = max(tally.values())
         keys = finding_keys(x)
-        mine = max((tally.get(k, 0) for k in keys), default=0)
+        # The finding names one person across every identity they are known by,
+        # so their work is the SUM over those keys. Taking the max re-split the
+        # person the product had just correctly joined, and scored the join as
+        # a mistake.
+        mine = sum(tally.get(k, 0) for k in keys)
         if mine == 0 and not keys:
             mine = tally.get(x["actual"], 0)
-        if mine == mx:
+        # At or above the best single identity in the field: a person summed
+        # across their mailboxes can exceed mx, and equality scored them wrong
+        # for being too far ahead.
+        if mine >= mx:
             right += 1
         else:
             top = min(a for a, n in tally.items() if n == mx)
