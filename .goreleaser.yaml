@@ -19,6 +19,11 @@ builds:
       - arm64
     ldflags:
       - -s -w -X github.com/kordloom/whodar/cmd.version={{.Version}}
+    # Darwin binaries are signed and notarized when the Apple material is
+    # configured; see deploy/sign-darwin.sh. Without it the hook is a no-op.
+    hooks:
+      post:
+        - deploy/sign-darwin.sh "{{ .Path }}" "{{ .Os }}"
 
 archives:
   - formats: [tar.gz]
