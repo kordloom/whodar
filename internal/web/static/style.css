@@ -1284,10 +1284,11 @@ section h2 {
   transform: translateX(-50%);
   width: min(520px, calc(100vw - 32px));
   padding: 18px 20px 14px;
-  /* Opaque on purpose: the panel token carries alpha in some themes, and the
-     page bleeding through the caption read as a rendering bug. */
-  background: color-mix(in srgb, var(--panel) 100%, var(--bg) 0%);
-  background-color: var(--bg-solid, #0b0f16);
+  /* Opaque on purpose: the panel token carries alpha in some themes and the
+     page bled through the caption. --bg is a solid hex in every theme, so it
+     is the one safe ground; a hard-coded dark fallback here was a dark slab
+     the moment the loom theme went light. */
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
