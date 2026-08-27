@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/kordloom/whodar/internal/attest"
+	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/resolve"
 )
 
@@ -42,7 +44,7 @@ The signing key is created once under the data directory and reused.`,
 			payload, evidence := attestPayload(report)
 			pub, _ := priv.Public().(ed25519.PublicKey)
 			bundle, err := attest.Seal(priv, "whodar", version, attest.InstallID(pub),
-				"whodar.knowledge-risk/1", map[string]any{"id": "organization", "type": "fleet"},
+				"whodar.knowledge-risk/1", riskSubject(ix),
 				payload, evidence, time.Now())
 			if err != nil {
 				return err
@@ -52,6 +54,19 @@ The signing key is created once under the data directory and reused.`,
 		},
 	}
 	return cmd
+}
+
+// riskSubject names what a knowledge-risk bundle is about: the organization
+// the index describes, identified by the sources it was read from, so bundles
+// from two different indexes do not claim the same subject. The type is
+// "fleet" because that is the nearest subject type the LoomSeal schema allows
+// today; an "org" type is a format change and belongs to that repo.
+func riskSubject(ix *index.Index) map[string]any {
+	id := strings.Join(ix.SourceNames(), "+")
+	if id == "" {
+		id = "unnamed"
+	}
+	return map[string]any{"type": "fleet", "id": "org:" + id}
 }
 
 // attestPayload summarizes the risk report as the claim payload and returns the

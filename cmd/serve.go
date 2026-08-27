@@ -371,7 +371,7 @@ func attestFn(ix *index.Index, opts *options, logw io.Writer) web.AttestFunc {
 	return func() ([]byte, error) {
 		payload, evidence := attestPayload(resolve.Risk(ix, 0))
 		return attest.Seal(priv, "whodar", version, attest.InstallID(pub),
-			"whodar.knowledge-risk/1", map[string]any{"id": "organization", "type": "fleet"},
+			"whodar.knowledge-risk/1", riskSubject(ix),
 			payload, evidence, time.Now())
 	}
 }
