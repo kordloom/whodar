@@ -640,6 +640,19 @@ func (ix *Index) buildPerson(rec connector.Record) {
 		}
 		p.Recent[tid] += weightTopic * w
 	}
+	// Work done inside the area itself, as against a file elsewhere carrying
+	// its name. Ownership reads this; search reads the whole of Topics, because
+	// somebody who touched voip/assist_satellite.py really has met the subject.
+	for _, top := range rec.DirectTopics {
+		tid := topicID(top)
+		if tid == "" {
+			continue
+		}
+		if p.Direct == nil {
+			p.Direct = make(map[model.ID]float64)
+		}
+		p.Direct[tid] += weightTopic * w
+	}
 	// Fresh ingest carries readable Text, kept in memory for embedding and
 	// merge and tokenized into postings. A record rebuilt from a saved index
 	// carries only the stemmed Terms, which reproduce the same postings without

@@ -46,6 +46,11 @@ type Record struct {
 	// Naming them without saying so sends somebody to ask a person who has
 	// moved on.
 	RecentTopics []string
+	// DirectTopics are the subjects this person's own changed paths named, a
+	// subset of Topics. It is the difference between working inside an area and
+	// touching a file elsewhere that carries its name, which decides who owns
+	// the area rather than who has merely met it.
+	DirectTopics []string
 	// WeakTopics are topics inferred from prose rather than declared, such as the
 	// words of an issue title. They contribute the same affinity but do not, on
 	// their own, establish a subject: a topic seen only this way has to recur

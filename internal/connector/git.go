@@ -133,6 +133,7 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 	curated := make(map[string]bool)
 	// How often each author has worked on each subject lately.
 	recent := make(map[string]map[string]int)
+	direct := make(map[string]map[string]int)
 	// Which subjects appeared, which appeared together, and who worked across
 	// each pairing.
 	ties := newTogether()
@@ -140,7 +141,7 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		read, skipped, err := g.readRepo(ctx, path, counts, nameCounts, latest, curated, recent, ties)
+		read, skipped, err := g.readRepo(ctx, path, counts, nameCounts, latest, curated, recent, direct, ties)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return nil, err
@@ -209,6 +210,7 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 		// subject; a commit subject is prose and only corroborates one.
 		rec.Topics, rec.WeakTopics = splitCurated(expandTopics(c), curated)
 		rec.RecentTopics = expandTopics(recent[email])
+		rec.DirectTopics = expandTopics(direct[email])
 		// A GitHub noreply commit email encodes the author's login, so key the
 		// person by that login to join their commits to their GitHub reviews
 		// and pull requests. Without this the same engineer appears once from
@@ -477,6 +479,7 @@ func (g *GitHistory) readRepo(
 	latest map[string]time.Time,
 	curated map[string]bool,
 	recent map[string]map[string]int,
+	direct map[string]map[string]int,
 	ties *togetherIndex,
 ) (read, skipped int, err error) {
 	jobs, mark, err := g.scanCommits(ctx, path)
@@ -486,7 +489,7 @@ func (g *GitHistory) readRepo(
 	if mark != "" {
 		g.marks[path] = mark
 	}
-	return g.diffCommits(ctx, path, jobs, counts, names, latest, curated, recent, ties)
+	return g.diffCommits(ctx, path, jobs, counts, names, latest, curated, recent, direct, ties)
 }
 
 // commitJob is one commit worth walking: everything cheap about it, read once
@@ -612,6 +615,9 @@ type tally struct {
 	// recent counts, per author, the subjects they have worked on lately. See
 	// recentWindowDays.
 	recent map[string]map[string]int
+	// direct counts, per author, the subjects their own changed directories
+	// named, as against a file elsewhere carrying the name.
+	direct map[string]map[string]int
 	// ties is this worker's share of what was worked on together.
 	ties *togetherIndex
 	// read is how many commits this worker took in.
@@ -634,6 +640,7 @@ func (g *GitHistory) diffCommits(
 	latest map[string]time.Time,
 	curated map[string]bool,
 	recent map[string]map[string]int,
+	direct map[string]map[string]int,
 	ties *togetherIndex,
 ) (read, skipped int, err error) {
 	if len(jobs) == 0 {
@@ -686,6 +693,16 @@ func (g *GitHistory) diffCommits(
 				into[sub] += n
 			}
 		}
+		for email, subs := range t.direct {
+			into := direct[email]
+			if into == nil {
+				into = make(map[string]int)
+				direct[email] = into
+			}
+			for sub, n := range subs {
+				into[sub] += n
+			}
+		}
 		ties.absorb(t.ties)
 		for email, topics := range t.counts {
 			m := counts[email]
@@ -732,6 +749,7 @@ func (g *GitHistory) diffShare(
 		latest:  make(map[string]time.Time),
 		curated: make(map[string]bool),
 		recent:  make(map[string]map[string]int),
+		direct:  make(map[string]map[string]int),
 		ties:    newTogether(),
 	}
 	repo, closeRepo, err := openRepo(path)
@@ -783,7 +801,15 @@ func (g *GitHistory) diffShare(
 		// Which subjects this one commit touched at all, so each is counted
 		// once for it no matter how many of its files moved.
 		inCommit := make(map[string]bool, len(paths)*2)
+		// Which of those subjects this commit's own directories named, rather
+		// than a file inside somebody else's area happening to carry the name.
+		directHere := make(map[string]bool, len(paths))
 		lately := time.Since(job.When) <= recentWindow
+		direct := t.direct[job.Email]
+		if direct == nil {
+			direct = make(map[string]int)
+			t.direct[job.Email] = direct
+		}
 		var fresh map[string]int
 		if lately {
 			fresh = t.recent[job.Email]
@@ -820,6 +846,7 @@ func (g *GitHistory) diffShare(
 				inCommit[tok] = true
 				if stated[tok] {
 					t.curated[tok] = true
+					directHere[tok] = true
 				}
 			}
 			// The file's own name still counts towards the work, but it does
@@ -843,6 +870,9 @@ func (g *GitHistory) diffShare(
 			if fresh != nil {
 				fresh[tok]++
 			}
+		}
+		for tok := range directHere {
+			direct[tok]++
 		}
 		// Which of this commit's subjects name something of their own, so the
 		// words of one compound name are not read as subjects meeting.

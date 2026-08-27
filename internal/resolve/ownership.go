@@ -81,6 +81,29 @@ func ownerStanding(ix *index.Index, owners map[model.ID]bool, topic model.ID) st
 // the reasoning, rather than the data, puts the line.
 const driftMargin = 1.0
 
+// minDriftEvidence is how much work in the area a challenger needs before the
+// claim is worth making at all. Below it the finding is a coin toss between two
+// people with a change each.
+//
+// Checked against every drift finding on home-assistant/core, scored from raw
+// git rather than from whodar: is the named person also the top focused
+// committer of that component and its tests?
+//
+//	none  72% correct of 48 findings
+//	5     80% of 40
+//	10    86% of 23
+//	14    90% of 20
+//	20    100% of 12
+//
+// Precision is bought with findings, and this end of the curve is deliberate.
+// Higher is tempting, and two things argue against it: a hundred percent of
+// twelve is a small sample rather than a strong guarantee, and this is an
+// absolute quantity of work tuned on a repository with a hundred and fifteen
+// thousand commits, so a large floor could report nothing at all on a small one
+// and has not been tested there. Raise it once there is a second repository to
+// check against.
+const minDriftEvidence = 5.0
+
 // workIn is how much real work somebody has done in one area. Weight a source
 // of record assigned does not count, or an owner would look active in an area
 // the moment their name was written next to it.
@@ -88,6 +111,19 @@ func workIn(ix *index.Index, who model.ID, topic model.ID) float64 {
 	p := ix.Graph.People[ix.CanonicalID(who)]
 	if p == nil {
 		return 0
+	}
+	// Work done inside the area, not a file elsewhere that carries its name.
+	// Home Assistant names a platform file after the platform it implements, so
+	// editing voip/assist_satellite.py is real work on assist-satellite and says
+	// nothing about who owns the integration called assist_satellite. Counting
+	// it handed that integration to somebody with no change in it at all, over
+	// the eight-commit maintainer.
+	//
+	// A source that reports no paths has no Direct at all, and falling back to
+	// the whole weight keeps ownership working for it rather than reporting
+	// that nobody owns anything.
+	if len(p.Direct) > 0 {
+		return p.Direct[topic]
 	}
 	if w := p.Topics[topic] - p.Stated[topic]; w > 0 {
 		return w
@@ -120,7 +156,14 @@ func displaced(ix *index.Index, owners map[model.ID]bool, challenger model.ID, t
 	if most <= 0 {
 		return true
 	}
-	return workIn(ix, challenger, topic) >= most*driftMargin
+	mine := workIn(ix, challenger, topic)
+	// Enough to be worth saying. Below this the finding is a coin toss between
+	// two people with a change each, and reporting it as ownership having moved
+	// is a claim the evidence cannot carry.
+	if mine < minDriftEvidence {
+		return false
+	}
+	return mine >= most*driftMargin
 }
 
 // actualOwner picks the person an area has really moved to. The largest share

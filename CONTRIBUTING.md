@@ -69,3 +69,29 @@ nearly every number for reasons that have nothing to do with quality.
 
 Any public repository with a CODEOWNERS file works as a test set, so a change
 can be measured against real data without pointing whodar at anything private.
+
+## Checking a finding against the source, not against whodar
+
+`whodar eval` scores ranking against declared ownership. It cannot tell you
+whether a knowledge-risk finding is *true*, because it reads the same index the
+finding came from. For that, check against the history directly.
+
+`eval/verify_drift.py <repo> <ownership.json>` does it for ownership drift: for
+every reported area it asks whether the person whodar names is also the top
+focused committer of that area in the same window, reading raw git and nothing
+else. Bots are excluded, and so is any commit touching more than eighteen
+components, because a codemod is not ownership.
+
+```sh
+whodar index --source git --repo-path ~/src/some-repo
+whodar index --source codeowners --file ~/src/some-repo/CODEOWNERS --merge
+whodar ownership > drift.json
+python3 eval/verify_drift.py ~/src/some-repo drift.json
+```
+
+Two things this caught that no amount of reading the code would have. A finding
+named somebody with no change in the area at all, because a platform file inside
+another integration carried its name. And the naive check is wrong in the other
+direction too: counting anyone who touched two areas makes every one-person
+connection look false, when the extra names are all thousand-file refactors.
+Test the claim the product actually makes.

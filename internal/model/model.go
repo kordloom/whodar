@@ -40,6 +40,13 @@ type Person struct {
 	// are still in. Absent from this map while present in Topics means their
 	// work on it has stopped.
 	Recent map[ID]float64
+	// Direct is the part of each topic weight earned by changing something
+	// inside the area itself, rather than by a file elsewhere that happens to
+	// carry its name. A platform file inside another integration, such as
+	// voip/assist_satellite.py, is real work on the platform and no evidence at
+	// all about who owns the integration of that name, so ownership reads this
+	// and search does not.
+	Direct map[ID]float64
 	// Stated is the part of each topic weight that a source of record assigned
 	// rather than the person earning it: being listed in CODEOWNERS or given a
 	// topics column in an org chart. Subtracting it from Topics leaves the work
