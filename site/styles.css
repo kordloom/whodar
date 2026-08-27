@@ -198,6 +198,11 @@ h1 .sig { color: var(--signal); text-shadow: 0 0 28px rgba(var(--signal-rgb), 0.
 .lede strong { color: var(--text); font-weight: 600; }
 .hero-cta { display: flex; gap: 12px; flex-wrap: wrap; }
 .hero-cta .btn.big, .hero-cta .ghost.big { padding-left: 20px; padding-right: 20px; white-space: nowrap; }
+/* Three calls to action stack as a deliberate hierarchy: the primary stands
+   alone, the two ways to look before committing sit together beneath it. At
+   the widths where all three fit one line they were fitting by luck, and one
+   ragged wrap under a headline reads as a bug. */
+.hero .hero-cta .btn.big { flex-basis: 100%; max-width: max-content; }
 .hero-cta.center { justify-content: center; }
 .hero-note { margin-top: 24px; font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
 .hero-note code { color: var(--signal); background: rgba(var(--signal-rgb), 0.08); padding: 2px 8px; border-radius: 5px; }
