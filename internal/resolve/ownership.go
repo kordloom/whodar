@@ -195,55 +195,49 @@ func displaced(ix *index.Index, owners map[model.ID]bool, challenger model.ID, t
 	return mine >= most*driftMargin
 }
 
-// actualOwner picks the person an area has really moved to. The largest share
-// of a subject is not the answer on its own: every organization has a few
-// people who touch everything, and by raw share they out-hold the declared
-// owner of almost every area at once. Saying ownership drifted to them in a
-// thousand places is not a finding about ownership, it is a finding about them.
+// actualOwner picks the person an area has really moved to.
 //
-// Weight is discounted by the square root of everything that person does, so
-// somebody has to have done a lot of the work AND have it be a real part of
-// what they do. That keeps the prolific in contention where they genuinely
-// lead, without handing them every area in the company.
+// Where the source can tell focused work from a sweep, the answer is whoever
+// has done the most focused work inside the area, taken raw. Git can tell: a
+// commit touching more than a tie's worth of subjects earns no Direct credit,
+// so Direct is already clean of the people who touch everything. Discounting
+// it further by career breadth was measured and named one-commit passers-by
+// over nine-commit maintainers in eight of nine wrong findings, because among
+// genuine challengers the discount rewards having done least elsewhere.
+//
+// Where the source cannot tell, which is any record without direct work, raw
+// weight would hand every area to the busiest person in the organization, so
+// their weight is discounted by the square root of their whole career. It is a
+// proxy for the distinction the data cannot draw, kept only where it is the
+// best available.
 func actualOwner(ix *index.Index, tr TopicRisk) RiskExpert {
 	topic := model.ID(tr.Topic)
-	// KNOWN WEAK, and the fix that looked obvious is worse. Checked by hand
-	// against home-assistant/core, ten of sixteen drift findings were
-	// questionable: ecovacs named a contributor with one commit over the
-	// maintainer with twenty-seven. Two causes compound. Weight counts
-	// file-touches, so one commit over twelve files reads like sustained work.
-	// And dividing by everything a person does cannot tell a prolific person
-	// who genuinely owns this area from one who swept through it.
-	//
-	// Requiring a candidate to hold at least half the area's work against
-	// whoever holds most was measured on the same 405 areas: it won 16 and lost
-	// 35. Do not reapply it. A real fix means counting units of work per
-	// subject rather than file-touches, so a single wide change stops looking
-	// like a history of them.
 	best, bestScore := tr.Experts[0], -1.0
 	for _, e := range tr.Experts {
 		p := ix.Graph.People[ix.CanonicalID(model.ID(e.ID))]
 		if p == nil {
 			continue
 		}
-		// Only work counts. A person a source of record assigned to an area has
-		// weight in it without having touched it, and their profile is narrow
-		// precisely because declaring is all they have done, so scoring them on
-		// it would hand them the area over whoever actually does it.
-		here := p.Topics[topic] - p.Stated[topic]
-		if here <= 0 {
-			continue
-		}
-		var total float64
-		for tid, w := range p.Topics {
-			if work := w - p.Stated[tid]; work > 0 {
-				total += work
+		var score float64
+		if len(p.Direct) > 0 {
+			score = p.Direct[topic]
+		} else {
+			here := p.Topics[topic] - p.Stated[topic]
+			if here <= 0 {
+				continue
 			}
+			var total float64
+			for tid, w := range p.Topics {
+				if work := w - p.Stated[tid]; work > 0 {
+					total += work
+				}
+			}
+			if total <= 0 {
+				continue
+			}
+			score = here / math.Sqrt(total)
 		}
-		if total <= 0 {
-			continue
-		}
-		if score := here / math.Sqrt(total); score > bestScore {
+		if score > bestScore {
 			best, bestScore = e, score
 		}
 	}

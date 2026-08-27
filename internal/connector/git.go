@@ -871,8 +871,16 @@ func (g *GitHistory) diffShare(
 				fresh[tok]++
 			}
 		}
-		for tok := range directHere {
-			direct[tok]++
+		// A sweep is not direct work anywhere. The tie graph already refuses
+		// commits this broad, and the ownership report leans on Direct being
+		// clean of them: with sweeps inside it, the ranking needed a discount
+		// by career breadth to keep sweepers from out-holding every owner, and
+		// that discount then handed areas to whoever had done least elsewhere.
+		// Gate the sweep out here and neither correction is needed.
+		if len(directHere) <= maxTogether {
+			for tok := range directHere {
+				direct[tok]++
+			}
 		}
 		// Which of this commit's subjects name something of their own, so the
 		// words of one compound name are not read as subjects meeting.
