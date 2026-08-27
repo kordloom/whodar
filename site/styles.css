@@ -574,3 +574,4 @@ h1 .sig { color: var(--signal); text-shadow: 0 0 28px rgba(var(--signal-rgb), 0.
 .cf-one { fill: var(--signal); stroke: var(--bg); stroke-width: 2; }
 .cf-lab { fill: var(--signal); font-weight: 600; }
 .crossfig figcaption { margin-top: 10px; color: var(--muted); font-size: 13.5px; }
+.sysbar .sig b { color: var(--signal); }
