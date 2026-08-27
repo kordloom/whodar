@@ -714,7 +714,7 @@ func renderSpans(w io.Writer, spans []resolve.Span, s style) {
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, s.bold(fmt.Sprintf(
-		"One-person connections  %d %s only one person has ever worked across",
+		"One-person connections  %d %s only one person has done focused work across",
 		len(spans), plural2(len(spans), "crossing", "crossings"))))
 	fmt.Fprintf(w, "  %s\n\n", s.dim(
 		"The subjects have their own experts. The links between them do not."))

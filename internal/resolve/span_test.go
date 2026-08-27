@@ -188,3 +188,57 @@ func TestSoleSpansJoinCrossingsThatShareAPerson(t *testing.T) {
 		t.Errorf("together = %v, want the weakest crossing 0.3 holding the group", got[0].Together)
 	}
 }
+
+// TestASweepingRefactorIsNotEvidenceOfConnection is the property the whole
+// finding rests on, and the one that decides whether it survives being checked.
+//
+// Somebody who touches nine hundred areas in one commit has run a codemod, not
+// learned how those areas relate. If that counted, every sole connection would
+// dissolve the moment a repository had a formatting pass, and anyone verifying a
+// finding against the history would find the refactor author and conclude whodar
+// was wrong. Measured on home-assistant/core: of four findings checked by hand,
+// every rival author was a 900-to-1271-component refactor and the named person
+// was the only one who had done focused work across the areas.
+func TestASweepingRefactorIsNotEvidenceOfConnection(t *testing.T) {
+	t.Parallel()
+
+	ix := index.New()
+	var recs []connector.Record
+	// One person does real, narrow work across two areas, several times.
+	for i := 0; i < 6; i++ {
+		recs = append(recs, connector.Record{
+			Kind: connector.KindPerson, Name: "Focused Dev", Email: "focused@corp.com",
+			Topics: []string{"billing-retries", "payment-gateway"}, Source: "git",
+		})
+	}
+	// Somebody else touches both, and hundreds of other things, in one sweep.
+	wide := []string{"billing-retries", "payment-gateway"}
+	for i := 0; i < 200; i++ {
+		wide = append(wide, fmt.Sprintf("area-%d", i))
+	}
+	recs = append(recs, connector.Record{
+		Kind: connector.KindPerson, Name: "Codemod Runner", Email: "sweep@corp.com",
+		Topics: wide, Source: "git",
+	})
+	ix.Build(recs)
+	ix.AutoJoin()
+	ix.Canonicalize()
+
+	// The refactor must not make the connection look shared. Whether a span is
+	// reported at all depends on tie strength, but if one IS reported for these
+	// two areas it has to name the person who did the focused work.
+	for _, s := range SoleSpans(ix, 0) {
+		joins := 0
+		for _, topic := range s.Topics {
+			if topic == "billing-retries" || topic == "payment-gateway" {
+				joins++
+			}
+		}
+		if joins < 2 {
+			continue
+		}
+		if s.Person == "Codemod Runner" {
+			t.Errorf("a sweep over 202 areas was read as knowing how two of them connect: %+v", s)
+		}
+	}
+}

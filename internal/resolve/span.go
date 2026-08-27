@@ -42,7 +42,9 @@ func (s Span) Size() int { return len(s.Topics) }
 type soleEdge struct {
 	// A and B are the two subjects, alphabetically.
 	A, B string
-	// Who is the only person who has ever worked across them.
+	// Who is the only person who has done focused work across them. A sweeping
+	// refactor touching hundreds of areas at once is not evidence that anyone
+	// understands how they connect, so it is not counted.
 	Who model.ID
 	// Weight is how much of the time the two move as one thing.
 	Weight float64

@@ -1419,6 +1419,8 @@ function spanCard(sp) {
   const topics = sp.topics || [];
   head.appendChild(el("span", "exp-topic", topics.join(" + ")));
   const only = el("span", "exp-bus");
+  only.title = "Counted from focused changes. A sweeping refactor touching "
+    + "hundreds of areas at once is not evidence anyone understands how they connect.";
   only.appendChild(document.createTextNode("only "));
   only.appendChild(personLink(sp.person, sp.personId));
   head.appendChild(only);
@@ -1429,7 +1431,7 @@ function spanCard(sp) {
   card.appendChild(el("p", "exp-also",
     (sp.experts || 0) + " people hold "
       + (topics.length > 2 ? "these " + topics.length + " subjects" : "the two subjects")
-      + ", and one has ever worked across them"));
+      + ", and one person has done focused work across them"));
   return card;
 }
 
