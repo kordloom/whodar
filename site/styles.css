@@ -560,3 +560,17 @@ h1 .sig { color: var(--signal); text-shadow: 0 0 28px rgba(var(--signal-rgb), 0.
 .am-rc-place { font-size: 13px; font-weight: 600; color: #e7e9ee; }
 .am-rc-people { font-size: 11.5px; color: #98a0ad; margin: 2px 0 9px; }
 .am-rc-open { display: inline-block; font-size: 10.5px; font-weight: 600; color: var(--rcc); background: color-mix(in srgb, var(--rcc) 14%, transparent); border: 1px solid color-mix(in srgb, var(--rcc) 32%, transparent); border-radius: 7px; padding: 4px 10px; }
+
+/* --- The crossing, drawn ----------------------------------------------------
+   Two healthy areas; the only line between them runs through one person. The
+   picture is the section's whole claim, so it uses the theme's own tokens and
+   stays legible in every one of them. */
+.crossfig { margin: 26px auto 6px; max-width: 620px; text-align: center; }
+.crossfig svg { width: 100%; height: auto; display: block; }
+.cf-area ellipse { fill: color-mix(in srgb, var(--signal) 7%, transparent); stroke: var(--line); stroke-width: 1.5; }
+.cf-area circle { fill: var(--muted); opacity: .85; }
+.cf-area text, .cf-lab { fill: var(--muted); font: 500 12px/1 var(--mono, ui-monospace, monospace); text-anchor: middle; letter-spacing: .04em; }
+.cf-link { stroke: var(--signal); stroke-width: 2; stroke-dasharray: 6 6; }
+.cf-one { fill: var(--signal); stroke: var(--bg); stroke-width: 2; }
+.cf-lab { fill: var(--signal); font-weight: 600; }
+.crossfig figcaption { margin-top: 10px; color: var(--muted); font-size: 13.5px; }
