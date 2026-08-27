@@ -535,3 +535,23 @@ func TestSameLocalKeepsTwoMichaelsApart(t *testing.T) {
 		t.Errorf("two Michaels merged into %d; a bare given name joins nobody", got)
 	}
 }
+
+// TestSameLocalKeepsTwoAndrewsApart is the collision measured on esphome: two
+// full names sharing a first name, that first name as the local at two
+// domains, and enough shared subjects to pass the corroboration bar. The
+// disagreeing surnames are affirmative evidence of two people, so the local
+// must count for nothing here.
+func TestSameLocalKeepsTwoAndrewsApart(t *testing.T) {
+	t.Parallel()
+	subjects := []string{"uart-driver", "modbus", "sensor-core"}
+	ix := New()
+	ix.Build([]connector.Record{
+		{Kind: connector.KindPerson, Name: "Andrew Rankin", Email: "andrew@eiknet.com", Topics: subjects, Source: "git"},
+		{Kind: connector.KindPerson, Name: "Andrew Gillis", Email: "andrew@zipcorp.com", Topics: subjects, Source: "git"},
+	})
+	ix.AutoJoin()
+	ix.Canonicalize()
+	if got := len(ix.Graph.People); got != 2 {
+		t.Errorf("two Andrews merged into %d; a shared given name joins nobody", got)
+	}
+}

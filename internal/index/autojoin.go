@@ -592,6 +592,16 @@ func sameLocalJoins(g *model.Graph, r *identity.Resolver) []Join {
 		if strings.EqualFold(an, bn) && !strings.Contains(an, " ") {
 			continue
 		}
+		// A full name whose given name IS the local makes the local a first
+		// name, not a chosen handle: andrew@eiknet.com signing Andrew Rankin
+		// and andrew@zipcorp.com signing Andrew Gillis are two Andrews, and
+		// their disagreeing surnames say so. Measured on esphome, this exact
+		// pair merged before the guard. A single-word name equal to the local
+		// stays exempt on purpose, because that is the true positive's
+		// signature: bwplotka@gmail.com signs as bwplotka.
+		if givenNameLocal(an, local) || givenNameLocal(bn, local) {
+			continue
+		}
 		if sharedSubjects(g, a, b) < minSameNameSubjects {
 			continue
 		}
@@ -709,6 +719,14 @@ func handlePart(id model.ID) string {
 		return s[i+1:]
 	}
 	return s
+}
+
+// givenNameLocal reports whether a multi-word display name's given name is the
+// local itself, which reduces the local to a common first name and disqualifies
+// it as evidence.
+func givenNameLocal(name, local string) bool {
+	words := strings.Fields(strings.ToLower(name))
+	return len(words) >= 2 && dotStrip(words[0]) == local
 }
 
 // dotStrip removes dots from an email local-part so first.last and firstlast
