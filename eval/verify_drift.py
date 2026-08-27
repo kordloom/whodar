@@ -91,12 +91,20 @@ def main():
         if not tally:
             skipped += 1
             continue
-        top, n = tally.most_common(1)[0]
-        if x["actual"] == top:
+        # A tie for the top is not a contradiction. If git says two people have
+        # done the most work and whodar named one of them, the history has not
+        # disagreed with the finding. Comparing against most_common(1) was also
+        # non-deterministic: Counter breaks ties by insertion order, insertion
+        # order flows from set iteration, and set order is salted per process,
+        # so the same findings file scored 31/40 or 30/40 depending on the run.
+        mx = max(tally.values())
+        mine = tally.get(x["actual"], 0)
+        if mine == mx:
             right += 1
         else:
+            top = min(a for a, n in tally.items() if n == mx)
             wrong += 1
-            misses.append((x["topic"], x["actual"], tally.get(x["actual"], 0), top, n))
+            misses.append((x["topic"], x["actual"], mine, top, mx))
 
     total = right + wrong
     pct = (100 * right // total) if total else 0

@@ -178,11 +178,23 @@ func topicsFromPatterns(patterns []string) (stated, words []string) {
 	var all []string
 	for _, p := range patterns {
 		all = append(all, pathTopics(p)...)
-		for _, seg := range segmentNames(p) {
+		// Directory segments state subjects. The last segment states one only
+		// when it is a directory too, because owning one file is not holding an
+		// area of knowledge: /Makefile put "make" down as an ownable area, and
+		// on a real project the ownership report then said the build had
+		// drifted away from people who owned a single file at the root. The
+		// same line is drawn in the git connector, where a file's own name
+		// counts toward the work but establishes nothing by itself.
+		for _, seg := range segmentNames(dirPart(p)) {
 			named[seg] = true
 		}
-		for _, seg := range patternNames(p) {
-			named[seg] = true
+		if !singleFilePattern(p) {
+			for _, seg := range segmentNames(p) {
+				named[seg] = true
+			}
+			for _, seg := range patternNames(p) {
+				named[seg] = true
+			}
 		}
 	}
 	for _, t := range util.Distinct(all, func(t string) string { return t }) {
@@ -331,6 +343,31 @@ func isSubject(token string) bool {
 		}
 	}
 	return letters > digits
+}
+
+// singleFilePattern reports whether a CODEOWNERS pattern names one file rather
+// than a directory of work: its leaf carries an extension, or is a well-known
+// filename such as Makefile. A bare segment like /model/histogram stays a
+// directory, which it almost always is, and a trailing slash is one always.
+func singleFilePattern(p string) bool {
+	if strings.HasSuffix(p, "/") {
+		return false
+	}
+	// A glob names a class of files across the tree, and owning a class is a
+	// statement about a subject: *.tf really does say who holds terraform.
+	// Only a literal single file holds no area of its own.
+	if strings.ContainsAny(p, "*?") {
+		return false
+	}
+	base := p
+	if i := strings.LastIndex(base, "/"); i >= 0 {
+		base = base[i+1:]
+	}
+	base = strings.ToLower(base)
+	if base == "" {
+		return false
+	}
+	return strings.Contains(base, ".") || fileTopics[base] != ""
 }
 
 // patternNames maps a pattern's file extension or special filename to the topic

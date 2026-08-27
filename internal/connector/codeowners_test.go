@@ -3,9 +3,14 @@ package connector
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
+	"sort"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 // TestParseCodeOwners covers owner parsing, topic derivation, and identity.
@@ -71,5 +76,46 @@ func TestParseCodeOwnersSkipsSections(t *testing.T) {
 	}
 	if len(recs) != 1 || recs[0].Name != "@jane" {
 		t.Errorf("records = %+v, want only @jane", recs)
+	}
+}
+
+// TestOwningOneFileIsNotHoldingAnArea draws the same line CODEOWNERS parsing
+// that the git connector draws for commits: a file's own name counts as a word
+// people can search, never as an area somebody holds. On prometheus/prometheus
+// the entry /Makefile minted "make" and "makefile" as ownable areas, and the
+// ownership report then said the build had drifted away from its owners, who
+// owned one file at the repository root. A glob stays a statement, because
+// owning *.tf across a tree really does say who holds terraform.
+func TestOwningOneFileIsNotHoldingAnArea(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		Pattern    string
+		WantStated []string
+		WantWords  []string
+	}{{ // Test 0: A literal file at the root states nothing.
+		Pattern: "/Makefile", WantStated: nil, WantWords: []string{"make", "makefile"},
+	}, { // Test 1: A directory keeps stating its subject.
+		Pattern: "/model/histogram", WantStated: []string{"histogram", "model"}, WantWords: nil,
+	}, { // Test 2: A glob class still states its mapped subject.
+		Pattern: "*.tf", WantStated: []string{"terraform"}, WantWords: nil,
+	}, { // Test 3: A literal file inside a directory leaves its own name as
+		// words. The directory here is "docs", which the stop list already
+		// treats as scaffolding rather than a subject, so nothing is stated.
+		Pattern: "/docs/architecture.md", WantStated: nil,
+		WantWords: []string{"architecture", "markdown"},
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			stated, words := topicsFromPatterns([]string{test.Pattern})
+			sort.Strings(stated)
+			sort.Strings(words)
+			if diff := cmp.Diff(test.WantStated, stated, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("stated mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(test.WantWords, words, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("words mismatch (-want +got):\n%s", diff)
+			}
+		})
 	}
 }
