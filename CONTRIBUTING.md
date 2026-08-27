@@ -24,7 +24,7 @@ paths, and edge cases. Run the full suite with make test before opening a change
 
 internal/simorg simulates a whole company and serves each tool's wire format
 from in-process HTTP servers, so the full pipeline runs end to end with no
-credentials: every source, identity joins, recency, confidence, and feedback.
+credentials: every source, identity joins, recency, match strength, and feedback.
 When you add a source, add it to the simulation and its assertions.
 
 ## Measuring a change
