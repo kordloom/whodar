@@ -151,3 +151,21 @@ func TestDualIdentityRecordAutoJoins(t *testing.T) {
 		t.Errorf("Search(deploys): %+v", got)
 	}
 }
+
+// TestAMergeKeepsBothSidesDirectWork covers what ownership is decided on. The
+// merge carried Topics and Stated and silently dropped Direct, so joining a
+// person's github handle to their commits DESTROYED the ownership evidence the
+// join existed to connect: a maintainer with thirty-eight changes in an area
+// lost it to a colleague with thirteen.
+func TestAMergeKeepsBothSidesDirectWork(t *testing.T) {
+	t.Parallel()
+	dst := &model.Person{ID: "a@x.com", Direct: map[model.ID]float64{"storage": 20}}
+	src := &model.Person{ID: "github:a", Direct: map[model.ID]float64{"storage": 18, "tsdb": 4}}
+	mergePerson(dst, src)
+	if got := dst.Direct["storage"]; got != 38 {
+		t.Errorf("storage direct = %v after merge, want 38: the absorbed side's work vanished", got)
+	}
+	if got := dst.Direct["tsdb"]; got != 4 {
+		t.Errorf("tsdb direct = %v, want 4", got)
+	}
+}

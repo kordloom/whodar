@@ -113,6 +113,17 @@ func mergePerson(dst, src *model.Person) {
 	for t, w := range src.Topics {
 		dst.Topics[t] += w
 	}
+	// Direct is what ownership is decided on, and a merge that dropped the
+	// absorbed record's share handed areas to whoever avoided being merged: on
+	// a real project the maintainer with thirty-eight changes in an area lost
+	// it to a colleague with thirteen, because his own were on the record his
+	// github handle absorbed.
+	for t, w := range src.Direct {
+		if dst.Direct == nil {
+			dst.Direct = make(map[model.ID]float64)
+		}
+		dst.Direct[t] += w
+	}
 	for t, w := range src.Recent {
 		if dst.Recent == nil {
 			dst.Recent = make(map[model.ID]float64)
