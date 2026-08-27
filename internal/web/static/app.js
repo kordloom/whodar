@@ -1665,6 +1665,14 @@ if (linked.get("q")) {
 if (linked.get("person")) {
   openProfile(linked.get("person"));
 }
+// A fresh landing runs the example question by itself. The placeholder used to
+// sit in an empty box waiting for a click, and a visitor reads that as a
+// mock-up rather than a working instance: the first thing the page should do
+// is what the page is for.
+if (!linked.get("q") && !linked.get("person") && viewFromHash() === "ask") {
+  qInput.value = qInput.placeholder;
+  ask();
+}
 showView(viewFromHash());
 // Examples come from the index, so they run once the directory helpers below
 // exist: called any earlier they hit the uninitialized cache and fall back.
