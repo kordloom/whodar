@@ -2,8 +2,9 @@ package index
 
 import (
 	"fmt"
-	"github.com/kordloom/whodar/internal/connector"
 	"testing"
+
+	"github.com/kordloom/whodar/internal/connector"
 
 	"github.com/kordloom/whodar/internal/model"
 )
