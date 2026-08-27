@@ -22,21 +22,54 @@ MAX_BREADTH = 18
 
 
 def commits(repo, window):
-    """Yield (author, [paths]) for each non-merge commit in the window."""
+    """Yield (name, email, [paths]) for each non-merge commit in the window."""
     out = subprocess.run(
         ["git", "-C", repo, "log", f"--since={window} days ago", "--no-merges",
-         "--format=%H%x00%an", "--name-only"],
+         "--format=%H%x00%an%x00%ae", "--name-only"],
         capture_output=True, text=True).stdout
-    author, files = None, []
+    name, email, files = None, None, []
     for line in out.split("\n"):
         if "\x00" in line:
-            if author is not None:
-                yield author, files
-            author, files = line.split("\x00", 1)[1], []
+            if name is not None:
+                yield name, email, files
+            _, name, email = line.split("\x00")
+            files = []
         elif line.strip():
             files.append(line)
-    if author is not None:
-        yield author, files
+    if name is not None:
+        yield name, email, files
+
+
+def person_key(email):
+    """One key per human, from their commit email.
+
+    Keying by display name split one person into "Paulus Schoutsen" and
+    "Balloob Bot" and then scored whodar wrong for joining them. GitHub's
+    private address keeps its login and drops the account number, matching how
+    whodar normalizes the same address.
+    """
+    e = email.strip().lower()
+    local, _, domain = e.partition("@")
+    if domain == "users.noreply.github.com" and "+" in local:
+        local = local.split("+", 1)[1]
+    return f"{local}@{domain}"
+
+
+def finding_keys(x):
+    """Every identity a finding names its actual owner by."""
+    keys = set()
+    for raw in x.get("actualIds") or [x.get("actualId") or ""]:
+        raw = raw.strip().lower()
+        if not raw:
+            continue
+        if "@" in raw:
+            keys.add(person_key(raw))
+        elif ":" in raw:
+            handle = raw.split(":", 1)[1]
+            keys.add(f"{handle}@users.noreply.github.com")
+        else:
+            keys.add(raw)
+    return keys
 
 
 def directories(repo):
@@ -64,16 +97,20 @@ def main():
              if "leads less" in (x.get("why") or "")]
     dirs = directories(repo)
 
-    # Who worked where, counting a commit once per area it touched.
+    # Who worked where, counting a commit once per area it touched, keyed by
+    # person rather than by the name they happened to sign with.
     worked = collections.defaultdict(collections.Counter)
-    for author, files in commits(repo, window):
-        if "[bot]" in author or "dependabot" in author:
+    label = {}
+    for name, email, files in commits(repo, window):
+        if "[bot]" in name or "dependabot" in name.lower() or "[bot]" in email:
             continue
+        key = person_key(email)
+        label.setdefault(key, name)
         touched = {os.path.dirname(p) for p in files if "/" in p}
         if len(touched) > MAX_BREADTH:
             continue
         for path in touched:
-            worked[path][author] += 1
+            worked[path][key] += 1
 
     right = wrong = skipped = 0
     misses = []
@@ -98,13 +135,16 @@ def main():
         # order flows from set iteration, and set order is salted per process,
         # so the same findings file scored 31/40 or 30/40 depending on the run.
         mx = max(tally.values())
-        mine = tally.get(x["actual"], 0)
+        keys = finding_keys(x)
+        mine = max((tally.get(k, 0) for k in keys), default=0)
+        if mine == 0 and not keys:
+            mine = tally.get(x["actual"], 0)
         if mine == mx:
             right += 1
         else:
             top = min(a for a, n in tally.items() if n == mx)
             wrong += 1
-            misses.append((x["topic"], x["actual"], mine, top, mx))
+            misses.append((x["topic"], x["actual"], mine, label.get(top, top), mx))
 
     total = right + wrong
     pct = (100 * right // total) if total else 0

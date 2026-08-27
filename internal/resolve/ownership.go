@@ -28,6 +28,11 @@ type OwnerDrift struct {
 	// as Declared, so a reader can be taken to the person rather than shown a
 	// name they then have to go and look up.
 	DeclaredIDs []string `json:"declaredIds,omitempty"`
+	// ActualIDs is every identity the actual owner is known by, canonical
+	// first. A person commits under more than one address and more than one
+	// name, and anything checking a finding against the history needs the whole
+	// set or it splits the person the way the raw log does.
+	ActualIDs []string `json:"actualIds,omitempty"`
 }
 
 // How an owner of record stands in relation to the area they own.
@@ -114,19 +119,20 @@ const driftMargin = 1.0
 // claim is worth making at all. Below it the finding is a coin toss between two
 // people with a change each.
 //
-// Swept against raw git on three repositories at once, with the whole-graph
-// owner in place, scored by eval/verify_drift.py:
+// Swept against raw git on three repositories at once, scored by
+// eval/verify_drift.py with people keyed by email rather than display name:
 //
 //	floor  home-assistant   prometheus   cli/cli
-//	3      60/81  74%       3/3          clean
-//	5      58/79  73%       3/3          clean
-//	7      46/59  77%       2/2          clean
+//	3      83/106  78%      4/5          clean
+//	4.5    68/81   83%      4/5          clean
+//	9      54/65   83%      3/4          clean
 //
-// Three sits on the frontier: the most correct findings at effectively the
-// same precision. Seven buys three points of precision with a quarter of the
-// findings, which is the wrong trade for a report whose reader can check any
-// line against the history themselves.
-const minDriftEvidence = 3.0
+// The plateau from 4.5 is the ship point: three points of precision over the
+// low floor, and the findings it gives up are the two-changes-against-three
+// coin tosses. What remains wrong at 4.5 is photo-finishes, thirteen changes
+// against fifteen, which is boundary noise between any two honest ways of
+// counting the same history.
+const minDriftEvidence = 4.5
 
 // workIn is how much real work somebody has done in one area. Weight a source
 // of record assigned does not count, or an owner would look active in an area
@@ -315,10 +321,17 @@ func Ownership(ix *index.Index) OwnershipReport {
 		default:
 			report.Trailing++
 		}
-		report.Drift = append(report.Drift, OwnerDrift{
+		drift := OwnerDrift{
 			Topic: a.Topic, Declared: a.Declared, DeclaredIDs: a.DeclaredIDs,
 			Actual: a.Actual, ActualID: a.ActualID, Why: a.Standing,
-		})
+		}
+		if p := ix.Graph.People[model.ID(a.ActualID)]; p != nil {
+			drift.ActualIDs = append(drift.ActualIDs, a.ActualID)
+			for _, alt := range p.Identities {
+				drift.ActualIDs = append(drift.ActualIDs, string(alt))
+			}
+		}
+		report.Drift = append(report.Drift, drift)
 	}
 	sort.Slice(report.Drift, func(i, j int) bool { return report.Drift[i].Topic < report.Drift[j].Topic })
 	return report

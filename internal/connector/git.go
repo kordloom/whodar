@@ -877,7 +877,16 @@ func (g *GitHistory) diffShare(
 		// by career breadth to keep sweepers from out-holding every owner, and
 		// that discount then handed areas to whoever had done least elsewhere.
 		// Gate the sweep out here and neither correction is needed.
-		if len(directHere) <= maxTogether {
+		// Gated on the directories the commit changed, not on how many survived
+		// into stated tokens: the token count runs lower than the directory
+		// count whenever names are filtered as scaffolding, and a cleanup pass
+		// over twenty-five directories was slipping under a token gate of
+		// eighteen and collecting ownership credit across all of them.
+		changedDirs := make(map[string]bool, len(paths))
+		for _, name := range paths {
+			changedDirs[dirPart(name)] = true
+		}
+		if len(changedDirs) <= maxTogether {
 			for tok := range directHere {
 				direct[tok]++
 			}

@@ -563,6 +563,13 @@ func (ix *Index) buildPerson(rec connector.Record) {
 	if w == 0 {
 		w = 1
 	}
+	// base survives without the recency discount. The discount dates a person's
+	// whole record by their newest commit anywhere, which is right for "who do
+	// I ask" and wrong for "whose area is this": an author quiet for nine
+	// months everywhere had six changes inside an area counted as three, and
+	// lost it to a passer-by with two fresh ones. Ownership is judged flat over
+	// the indexed window; the window itself is the recency bound.
+	base := w
 	w *= ix.decay(rec.Time)
 	p := g.People[pid]
 	if p == nil {
@@ -651,7 +658,7 @@ func (ix *Index) buildPerson(rec connector.Record) {
 		if p.Direct == nil {
 			p.Direct = make(map[model.ID]float64)
 		}
-		p.Direct[tid] += weightTopic * w
+		p.Direct[tid] += weightTopic * base
 	}
 	// Fresh ingest carries readable Text, kept in memory for embedding and
 	// merge and tokenized into postings. A record rebuilt from a saved index
