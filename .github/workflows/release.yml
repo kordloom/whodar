@@ -23,6 +23,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # goreleaser shells out to cosign to sign the checksums; without the
+      # binary on the runner the release died at the signing step, after the
+      # build and before the upload, every time.
+      - uses: sigstore/cosign-installer@v3
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Log in to the container registry
