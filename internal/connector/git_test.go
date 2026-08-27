@@ -522,3 +522,75 @@ func TestGitSaysWhenTheCommitCapTruncates(t *testing.T) {
 		t.Errorf("an untruncated read warned about the cap anyway; log was:\n%s", out)
 	}
 }
+
+// TestOneWideCommitIsNotAHistoryOfNarrowOnes covers what makes somebody the
+// person to ask: having come back to an area, not having touched a lot of it
+// once. Counting a subject per file made the two indistinguishable, and on
+// home-assistant/core that reported ownership of an integration as having moved
+// to somebody with a single twelve-file commit, over the maintainer with
+// twenty-seven separate ones.
+func TestOneWideCommitIsNotAHistoryOfNarrowOnes(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	repo, err := git.PlainInit(dir, false)
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+	commit := func(name, email string, when time.Time, rels ...string) {
+		t.Helper()
+		for _, rel := range rels {
+			full := filepath.Join(dir, rel)
+			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+				t.Fatalf("mkdir: %v", err)
+			}
+			if err := os.WriteFile(full, []byte(when.String()), 0o600); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+			if _, err := wt.Add(rel); err != nil {
+				t.Fatalf("add: %v", err)
+			}
+		}
+		sig := &object.Signature{Name: name, Email: email, When: when}
+		if _, err := wt.Commit("touch", &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+	}
+
+	now := time.Now()
+	// One person sweeps eight files of the area in a single change.
+	var wide []string
+	for i := 0; i < 8; i++ {
+		wide = append(wide, filepath.Join("components", "ecovacs", fmt.Sprintf("f%d.py", i)))
+	}
+	commit("Wide Once", "wide@corp.com", now.AddDate(0, 0, -20), wide...)
+	// Another keeps coming back to it, a file at a time.
+	for i := 0; i < 4; i++ {
+		commit("Steady Hand", "steady@corp.com", now.AddDate(0, 0, -i-1),
+			filepath.Join("components", "ecovacs", fmt.Sprintf("g%d.py", i)))
+	}
+
+	recs, err := NewGitHistory(GitOptions{Paths: []string{dir}}).Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	weight := map[string]int{}
+	for _, r := range recs {
+		if r.Kind != KindPerson {
+			continue
+		}
+		for _, top := range r.Topics {
+			if top == "ecovacs" {
+				weight[r.Email]++
+			}
+		}
+	}
+	if weight["steady@corp.com"] <= weight["wide@corp.com"] {
+		t.Errorf("one eight-file change (%d) outweighs four separate ones (%d); "+
+			"counting is back to per file",
+			weight["wide@corp.com"], weight["steady@corp.com"])
+	}
+}

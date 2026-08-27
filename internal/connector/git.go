@@ -780,6 +780,9 @@ func (g *GitHistory) diffShare(
 		}
 		byPath := make([][]string, 0, len(paths))
 		deepest := make([][]string, 0, len(paths))
+		// Which subjects this one commit touched at all, so each is counted
+		// once for it no matter how many of its files moved.
+		inCommit := make(map[string]bool, len(paths)*2)
 		lately := time.Since(job.When) <= recentWindow
 		var fresh map[string]int
 		if lately {
@@ -814,18 +817,31 @@ func (g *GitHistory) diffShare(
 				stated[seg] = true
 			}
 			for _, tok := range dirs {
-				m[tok]++
+				inCommit[tok] = true
 				if stated[tok] {
 					t.curated[tok] = true
-				}
-				if fresh != nil {
-					fresh[tok]++
 				}
 			}
 			// The file's own name still counts towards the work, but it does
 			// not establish a subject on its own.
 			for _, tok := range leaf {
-				m[tok]++
+				inCommit[tok] = true
+			}
+		}
+		// A commit counts once towards each subject it touched, however many
+		// files it moved inside that subject.
+		//
+		// Counting per file made one wide change indistinguishable from a
+		// history of narrow ones, and that is not a detail: on
+		// home-assistant/core it reported ownership of ecovacs as having moved
+		// to somebody with a single twelve-file commit, over the maintainer
+		// with twenty-seven separate ones. What makes somebody the person to
+		// ask is having come back to an area, not having touched a lot of it
+		// once.
+		for tok := range inCommit {
+			m[tok]++
+			if fresh != nil {
+				fresh[tok]++
 			}
 		}
 		// Which of this commit's subjects name something of their own, so the
