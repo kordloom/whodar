@@ -1116,3 +1116,39 @@ func TestModalsAreRealDialogs(t *testing.T) {
 		t.Errorf("%d places append a backdrop directly; only openModal may", n)
 	}
 }
+
+// TestTheStoryWalksAllThreeQuestions covers the guided walk: the product's
+// whole thesis as five steps over live data. Reviews of the demo kept landing
+// on the same gap: the capabilities are all there and the visitor has to
+// assemble the narrative alone. The story is that assembly, so it has to reach
+// each of the three questions, run on live data rather than a script, and be
+// reachable from the page.
+func TestTheStoryWalksAllThreeQuestions(t *testing.T) {
+	t.Parallel()
+	js := readStatic(t, "story.js")
+	tpl := readTemplate(t, "index.html")
+
+	if !strings.Contains(tpl, `id="story-btn"`) || !strings.Contains(tpl, "story.js") {
+		t.Error("the story is not reachable from the page")
+	}
+	// One step per question, plus the why and the close.
+	for _, want := range []string{
+		"#people .card",         // ask: a ranked person
+		".chips",                // why: the reasons are the ranking
+		"#recall-list .card",    // how it was solved last time
+		"#exp-dep-result",       // what leaves if they leave
+		"brew install",          // the close points at installing
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("the story never reaches %q", want)
+		}
+	}
+	// Live data, not a script: the walk reads the ask API for its cast.
+	if !strings.Contains(js, "/api/ask?q=") {
+		t.Error("the story hardcodes its cast instead of reading the live answer")
+	}
+	// It must be leavable: Escape and a skip control.
+	if !strings.Contains(js, `"Escape"`) || !strings.Contains(js, `"skip"`) {
+		t.Error("the story cannot be escaped")
+	}
+}
