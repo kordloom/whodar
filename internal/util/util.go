@@ -180,6 +180,17 @@ func GitHubNoreplyLogin(email string) (string, bool) {
 	return local, true
 }
 
+// NamesATeam reports whether an identifier names a group rather than a person,
+// which a CODEOWNERS owner like @org/team does with its slash. A group cannot
+// be tied to a mailbox, so identity joining, unlinked-owner accounting, and the
+// people directory all treat it as a different kind of thing.
+func NamesATeam(id string) bool {
+	if _, handle, ok := strings.Cut(id, ":"); ok {
+		id = handle
+	}
+	return strings.Contains(id, "/")
+}
+
 // Distinct returns the items whose key has not been seen before, keeping the
 // order they arrived in and dropping any whose key is the zero value. Callers
 // were hand-rolling this loop everywhere a source returns the same person or

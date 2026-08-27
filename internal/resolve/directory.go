@@ -6,6 +6,7 @@ import (
 
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // Directory is the browsable inventory of everything indexed, for the web
@@ -97,7 +98,21 @@ func BuildDirectory(ix *index.Index) Directory {
 	// What each team's people work on, summed, so a team row can say what the
 	// team is about instead of only how many are in it.
 	teamWeight := make(map[model.ID]map[model.ID]float64)
+	var squads []DirectoryTeam
 	for _, p := range g.People {
+		// A group named as a CODEOWNERS owner is a team, not a person: it
+		// belongs on the teams list with the areas it was declared over, and
+		// its membership is unknown here rather than zero-sized.
+		if util.NamesATeam(string(p.ID)) {
+			name := p.Name
+			if name == "" {
+				name = string(p.ID)
+			}
+			squads = append(squads, DirectoryTeam{
+				Name: name, Topics: salientTopics(ix, p.Topics, 4),
+			})
+			continue
+		}
 		row := DirectoryPerson{
 			ID:        string(p.ID),
 			Name:      p.Name,
@@ -184,6 +199,7 @@ func BuildDirectory(ix *index.Index) Directory {
 		}
 		d.Teams = append(d.Teams, row)
 	}
+	d.Teams = append(d.Teams, squads...)
 	sort.Slice(d.Teams, func(i, j int) bool {
 		if li, lj := strings.ToLower(d.Teams[i].Name), strings.ToLower(d.Teams[j].Name); li != lj {
 			return li < lj

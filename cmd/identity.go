@@ -9,6 +9,7 @@ import (
 
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/util"
 )
 
 // identityView is the audit of inferred identity merges, grouped by person.
@@ -64,18 +65,8 @@ type unlinkedOwner struct {
 	Owns []string `json:"owns"`
 }
 
-// namesATeam reports whether an owner of record is a group rather than a
-// person, which a source of record writes with a slash in it, as in
-// "@acme/platform". No alias can tie a group to an address, so counting them
-// among the people whose work is missing only inflates the number and buries
-// the owners somebody could actually reconnect.
-func namesATeam(id string) bool {
-	_, handle, ok := strings.Cut(id, ":")
-	if !ok {
-		handle = id
-	}
-	return strings.Contains(handle, "/")
-}
+// namesATeam reports whether an owner id names a group rather than a person.
+func namesATeam(id string) bool { return util.NamesATeam(id) }
 
 // buildUnlinkedView collects the declared owners with no work recorded against
 // them. Weight a source of record assigned is not work: without that

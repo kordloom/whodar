@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -102,5 +103,44 @@ func TestDirectoryMarksWhoHoldsSomethingAlone(t *testing.T) {
 	}
 	if len(bo.Quiet) != 0 {
 		t.Errorf("Bo quiet = %v, want nothing: Bo is still working on billing", bo.Quiet)
+	}
+}
+
+// TestDirectoryRoutesSquadsToTeams covers the CODEOWNERS group owner: a
+// @org/team handle is a team on the teams list, carrying the areas it was
+// declared over, and never a person on the people list.
+func TestDirectoryRoutesSquadsToTeams(t *testing.T) {
+	t.Parallel()
+	ix := index.New()
+	ix.Build([]connector.Record{{
+		Kind: connector.KindPerson, Email: "zoe@x.com", Name: "Zoe Lang",
+		Topics: []string{"billing"}, Source: "git",
+	}, {
+		Kind: connector.KindPerson, Name: "@grafana/alerting-squad",
+		PersonID: "codeowners:grafana/alerting-squad",
+		Topics:   []string{"alerting", "silences"}, Source: "codeowners", Weight: 1,
+	}})
+
+	d := BuildDirectory(ix)
+
+	for _, p := range d.People {
+		if strings.Contains(p.Name, "/") {
+			t.Errorf("squad %q listed as a person", p.Name)
+		}
+	}
+	var squad *DirectoryTeam
+	for i := range d.Teams {
+		if d.Teams[i].Name == "@grafana/alerting-squad" {
+			squad = &d.Teams[i]
+		}
+	}
+	if squad == nil {
+		t.Fatalf("squad missing from teams: %+v", d.Teams)
+	}
+	if squad.People != 0 {
+		t.Errorf("squad membership = %d, want 0 for unknown", squad.People)
+	}
+	if len(squad.Topics) == 0 {
+		t.Errorf("squad row carries no areas: %+v", squad)
 	}
 }

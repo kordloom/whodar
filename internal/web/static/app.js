@@ -848,7 +848,7 @@ const DIR_COLUMNS = {
   teams: [
     ["Team", (r) => r.name],
     ["Org", (r) => r.org],
-    ["People", (r) => r.people],
+    ["People", (r) => r.people || "\u2014"],
     ["Works on", (r) => (r.topics || []).join("; ")],
   ],
   channels: [
