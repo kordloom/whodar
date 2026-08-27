@@ -227,3 +227,68 @@ func TestOwnershipSetsGroupOwnedAreasAside(t *testing.T) {
 		t.Errorf("share = %.2f, want 1.00 over the one judged area", got)
 	}
 }
+
+// TestSquadAreasJudgedThroughTheOrgChart covers the bridge between the two
+// team notions: a CODEOWNERS squad the org chart also knows as a team is
+// judged through its members. A member leading the area holds it, an outsider
+// leading it is drift, and a squad matching no team stays set aside.
+func TestSquadAreasJudgedThroughTheOrgChart(t *testing.T) {
+	t.Parallel()
+	base := []connector.Record{
+		// The org chart names the Alerting team and its two members.
+		{Kind: connector.KindPerson, Name: "Mia Torres", Email: "mia@x.com",
+			Team: "Alerting", Source: "org-csv"},
+		{Kind: connector.KindPerson, Name: "Raj Patel", Email: "raj@x.com",
+			Team: "Alerting", Source: "org-csv"},
+		// An outsider on another team.
+		{Kind: connector.KindPerson, Name: "Zoe Lang", Email: "zoe@x.com",
+			Team: "Payments", Source: "org-csv"},
+		// CODEOWNERS declares the squad over silences, and an unmatched squad
+		// over paging.
+		{Kind: connector.KindPerson, Name: "@grafana/alerting-squad",
+			PersonID: "codeowners:grafana/alerting-squad",
+			Topics:   []string{"silences"}, Source: "codeowners", Weight: 1},
+		{Kind: connector.KindPerson, Name: "@grafana/mystery-squad",
+			PersonID: "codeowners:grafana/mystery-squad",
+			Topics:   []string{"paging"}, Source: "codeowners", Weight: 1},
+	}
+	work := func(email string, n int, topic string) connector.Record {
+		topics := make([]string, n)
+		for i := range topics {
+			topics[i] = topic
+		}
+		return connector.Record{Kind: connector.KindPerson, Email: email,
+			Topics: topics, Source: "git"}
+	}
+
+	// Test 0: A member leads the squad's area: held, not drift, not group.
+	ixa := index.New()
+	ixa.Build(append(append([]connector.Record{}, base...), work("mia@x.com", 4, "silences"), work("zoe@x.com", 8, "paging")))
+	ixa.AutoJoin()
+	ixa.Canonicalize()
+	rep := Ownership(ixa)
+	for _, d := range rep.Drift {
+		if d.Topic == "silences" {
+			t.Errorf("member-led squad area reported as drift: %+v", d)
+		}
+	}
+	if rep.GroupOwned != 1 {
+		t.Errorf("groupOwned = %d, want only the unmatched mystery squad", rep.GroupOwned)
+	}
+
+	// Test 1: An outsider leads the squad's area: drift, judged.
+	ixb := index.New()
+	ixb.Build(append(append([]connector.Record{}, base...), work("zoe@x.com", 6, "silences"), work("mia@x.com", 1, "silences")))
+	ixb.AutoJoin()
+	ixb.Canonicalize()
+	rep = Ownership(ixb)
+	found := false
+	for _, d := range rep.Drift {
+		if d.Topic == "silences" && d.Actual == "Zoe Lang" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("outsider-led squad area not reported as drift: %+v", rep.Drift)
+	}
+}

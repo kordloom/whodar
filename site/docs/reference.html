@@ -821,7 +821,10 @@ indexed, so the share is an upper bound on drift rather than a measurement of it
 <p>Areas owned only by teams or automation (a <code>@org/team</code> handle or a bot
 account) are counted and reported separately: drift compares people, and a
 group is nobody to have held or lost an area. The drift share is computed over
-the judged areas only.</p>
+the judged areas only. The exception is a squad the org chart also knows as a
+team (<code>alerting-squad</code> and a team named Alerting): its members become the
+owners of record, and the area is judged by whether one of them leads it. Index
+an org-chart source alongside CODEOWNERS to get this.</p>
 <h2 id="whodar-attest">whodar attest</h2>
 <pre><code>whodar attest
 </code></pre>

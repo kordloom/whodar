@@ -110,6 +110,81 @@ func automationOwner(id model.ID) bool {
 	return false
 }
 
+// teamSuffixes are the decorations a CODEOWNERS squad slug carries that an org
+// chart's team name does not: alerting-squad is the team Alerting.
+var teamSuffixes = []string{"squad", "team", "group", "crew", "eng", "engineering", "dev", "developers"}
+
+// squadTeam matches a squad owner id against the org chart's teams by name:
+// codeowners:grafana/alerting-squad is the team named Alerting when flattening
+// and stripping a trailing decoration makes the two equal. It returns the team
+// id, or empty when no team matches exactly one way.
+func squadTeam(g *model.Graph, id model.ID) model.ID {
+	s := string(id)
+	if i := strings.IndexByte(s, ':'); i >= 0 {
+		s = s[i+1:]
+	}
+	if i := strings.IndexByte(s, '/'); i >= 0 {
+		s = s[i+1:]
+	}
+	slug := flattenName(s)
+	if slug == "" {
+		return ""
+	}
+	forms := map[string]bool{slug: true}
+	for _, suf := range teamSuffixes {
+		if rest := strings.TrimSuffix(slug, suf); rest != slug && len(rest) >= 3 {
+			forms[rest] = true
+		}
+	}
+	var target model.ID
+	n := 0
+	for tid, t := range g.Teams {
+		tf := flattenName(t.Name)
+		if tf == "" {
+			continue
+		}
+		hit := forms[tf]
+		if !hit {
+			for _, suf := range teamSuffixes {
+				if rest := strings.TrimSuffix(tf, suf); rest != tf && forms[rest] {
+					hit = true
+					break
+				}
+			}
+		}
+		if hit {
+			target = tid
+			n++
+		}
+	}
+	if n != 1 {
+		return ""
+	}
+	return target
+}
+
+// flattenName lowercases a name to its letters and digits.
+func flattenName(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// teamMembers returns the canonical ids of everyone on a team.
+func teamMembers(ix *index.Index, tid model.ID) map[model.ID]bool {
+	out := make(map[model.ID]bool)
+	for id, p := range ix.Graph.People {
+		if p.TeamID == tid {
+			out[ix.CanonicalID(id)] = true
+		}
+	}
+	return out
+}
+
 // allGroups reports whether every owner of record for an area is a team or a
 // machine account: ownership with nobody to have held it and nobody to have
 // lost it.
@@ -433,12 +508,27 @@ func OwnedAreas(ix *index.Index) []OwnedArea {
 		if len(owners) == 0 || len(tr.Experts) == 0 {
 			continue
 		}
-		// An area owned only by teams or automation cannot be scored either
-		// way: there is no person to have held it and none to have lost it. It
-		// is still counted, so the drift summary says what it set aside.
+		// An area owned only by teams or automation cannot usually be scored:
+		// there is no person to have held it and none to have lost it. The
+		// exception is a squad the org chart also knows as a team: then the
+		// members are the owners of record, and the area is judged by whether
+		// one of them leads it.
 		if allGroups(owners) {
-			out = append(out, OwnedArea{Topic: tr.Topic, Standing: StandingGroup})
-			continue
+			members := make(map[model.ID]bool)
+			for oid := range owners {
+				if isTeam(oid) {
+					if tid := squadTeam(ix.Graph, oid); tid != "" {
+						for m := range teamMembers(ix, tid) {
+							members[m] = true
+						}
+					}
+				}
+			}
+			if len(members) == 0 {
+				out = append(out, OwnedArea{Topic: tr.Topic, Standing: StandingGroup})
+				continue
+			}
+			owners = members
 		}
 		actual, ok := actualOwnerOf(ix, model.ID(tr.Topic))
 		if !ok {
