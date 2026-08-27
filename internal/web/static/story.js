@@ -1,4 +1,4 @@
-// The two-minute story: the whole product thesis as one guided walk.
+// The guided tour: the whole product thesis as one two-minute walk.
 //
 // A visitor who lands on the demo sees capabilities and has to assemble the
 // narrative alone: that this is one map answering three questions. The story
@@ -133,7 +133,7 @@
     const dots = STEPS.map((_, i) =>
       '<span class="story-dot' + (i === step ? " on" : "") + '"></span>').join("");
     card.innerHTML =
-      '<div class="story-kicker">The two-minute story</div>' +
+      '<div class="story-kicker">Guided tour &middot; 2 min</div>' +
       "<h2>" + s.title + "</h2>" +
       "<p>" + s.why + "</p>" +
       (s.closing
@@ -163,7 +163,7 @@
     step = Math.max(0, Math.min(n, STEPS.length - 1));
     const s = STEPS[step];
     ring.style.display = "none";
-    card.innerHTML = '<div class="story-kicker">The two-minute story</div><p>…</p>';
+    card.innerHTML = '<div class="story-kicker">Guided tour &middot; 2 min</div><p>…</p>';
     const node = await s.prep();
     spotlight(node);
     caption(s, node);

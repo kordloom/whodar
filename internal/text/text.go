@@ -133,15 +133,6 @@ func Stem(token string) string {
 	return s
 }
 
-// StemMatches reports whether the stem want equals the stem of any token of
-// the given texts. It mirrors the scorer, which compares stems, so reasons and
-// strength agree with what actually scored, including fuzzy hits that
-// resolved to a different stem than the raw query term.
-func StemMatches(want string, texts ...string) bool {
-	_, ok := StemMatch(want, texts...)
-	return ok
-}
-
 // StemMatch is StemMatches with the word it found. Reporting a correction is
 // only useful if it names what was matched: told that "zigby" was corrected,
 // somebody still does not know whether whodar read it as zigbee or as zigzag.

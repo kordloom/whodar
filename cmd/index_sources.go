@@ -240,7 +240,6 @@ func fetchConfluence(cmd *cobra.Command, a confluenceArgs) ([]connector.Record, 
 	return recs, nil
 }
 
-// fetchPagerDuty builds PagerDuty records from services and on-call data.
 // fetchGraph reads the org chart from Microsoft Graph. The token is required;
 // the base URL is optional and points at a sovereign cloud when set.
 func fetchGraph(cmd *cobra.Command) ([]connector.Record, error) {
@@ -256,6 +255,7 @@ func fetchGraph(cmd *cobra.Command) ([]connector.Record, error) {
 	return recs, nil
 }
 
+// fetchPagerDuty builds PagerDuty records from services and on-call data.
 func fetchPagerDuty(cmd *cobra.Command, episodes bool) ([]connector.Record, []episode.Episode, error) {
 	token := secret.Resolve(pagerdutyTokenEnv)
 	if token == "" {

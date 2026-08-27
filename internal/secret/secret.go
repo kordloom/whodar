@@ -115,3 +115,7 @@ func Save(name, value string) error { return defaultStore.Save(name, value) }
 // Source reports where Resolve reads name from via the default store: "env",
 // "keychain", or the empty string.
 func Source(name string) string { return defaultStore.Source(name) }
+
+// Delete removes name from the default keychain-backed store. It cannot unset
+// an environment variable; the caller says so when one is still set.
+func Delete(name string) error { return defaultStore.Delete(name) }

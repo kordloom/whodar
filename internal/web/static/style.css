@@ -1242,7 +1242,7 @@ section h2 {
 }
 .keys-list dd { margin: 0; color: var(--fg-2, var(--fg)); font-size: 14px; }
 
-/* --- The two-minute story ------------------------------------------------
+/* --- The guided tour ------------------------------------------------
    A guided walk over live data: dim everything, ring the one thing the step
    is about, and say one sentence. The ring is a hole cut with a huge
    box-shadow so the page stays visible through it. */
@@ -1268,6 +1268,15 @@ section h2 {
   text-align: left;
 }
 .story-launch:hover { border-color: var(--accent); background: var(--accent-soft, rgba(52,211,153,.08)); }
+.story-min {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
 .story-backdrop { position: fixed; inset: 0; z-index: 60; }
 .story-ring {
   position: fixed;

@@ -22,6 +22,7 @@ func TestConnectSpecs(t *testing.T) {
 	valid := map[string]bool{
 		"org-csv": true, "codeowners": true, "git": true, "slack": true,
 		"github": true, "jira": true, "confluence": true, "pagerduty": true,
+		"graph": true,
 	}
 	seen := make(map[string]bool)
 	for _, s := range connectSpecs() {

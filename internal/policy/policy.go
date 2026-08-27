@@ -75,7 +75,7 @@ func ParseMode(s string) (Mode, error) {
 	case "open":
 		return Open, nil
 	default:
-		return Strict, fmt.Errorf("%w: %q", ErrUnknownMode, s)
+		return Strict, fmt.Errorf("%w: %q: use strict, redacted, or open", ErrUnknownMode, s)
 	}
 }
 

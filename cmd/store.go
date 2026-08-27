@@ -187,7 +187,7 @@ func noIndexError(err error) error {
 		// because it is the step that needs credentials to already exist.
 		return fmt.Errorf(
 			"%w. Nothing is indexed yet.\n"+
-				"  Try it on sample data with no setup:  whodar demo\n"+
+				"  Try it on sample data with no setup:   whodar demo\n"+
 				"  Point it at your own tools:            whodar connect\n"+
 				"  Then build the index:                  whodar index",
 			ErrNoIndex)

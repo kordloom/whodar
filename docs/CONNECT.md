@@ -270,6 +270,10 @@ re-exporting a CSV.
 
 **2. Connect:**
 
+    whodar connect graph
+
+Or by hand:
+
     export WHODAR_GRAPH_TOKEN=your-graph-token
     whodar index --source graph --merge
 

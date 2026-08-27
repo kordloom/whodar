@@ -12,6 +12,7 @@ import (
 
 	"github.com/kordloom/whodar/internal/connector"
 	"github.com/kordloom/whodar/internal/episode"
+	"github.com/kordloom/whodar/internal/graph"
 	"github.com/kordloom/whodar/internal/httputil"
 	"github.com/kordloom/whodar/internal/prompt"
 	"github.com/kordloom/whodar/internal/secret"
@@ -167,12 +168,31 @@ func connectSpecs() []sourceSpec {
 				return connector.NewPagerDuty(c[pagerdutyTokenEnv], connector.PagerDutyOptions{}).Ping(ctx)
 			},
 		},
+		{
+			id:      "graph",
+			title:   "Microsoft Graph",
+			summary: "The org chart from Entra ID: names, titles, and reporting lines, joined onto everything else by email.",
+			steps: []string{
+				"1. In Entra admin center, register an application and grant it User.Read.All (application).",
+				"2. Have an admin consent to the permission.",
+				"3. Acquire a bearer token for https://graph.microsoft.com and export it.",
+				"Tokens expire quickly, so mint one right before indexing, or wire your own refresh.",
+			},
+			creds: []credField{
+				{env: graphTokenEnv, label: "Microsoft Graph bearer token", secret: true},
+				{env: graphURLEnv, label: "Graph base URL (blank for public cloud)", hint: "only for sovereign clouds"},
+			},
+			authFix: "The token is expired or missing User.Read.All. Mint a fresh one and re-enter.",
+			validate: func(ctx context.Context, c map[string]string) error {
+				return graph.New(c[graphTokenEnv], graph.WithBaseURL(c[graphURLEnv])).Ping(ctx)
+			},
+		},
 	}
 }
 
 // newConnectCmd builds the connect command, the interactive setup wizard.
 func newConnectCmd(opts *options) *cobra.Command {
-	var status bool
+	var status, forget bool
 	cmd := &cobra.Command{
 		Use:   "connect [source]",
 		Short: "Set up a source interactively",
@@ -185,11 +205,21 @@ Run with a source to set up just that one. Use --status for a non-interactive
 report. Credentials are read from the environment, validated in memory, and never
 written to disk; connect prints the export line for you to save yourself.
 
-Sources: org-csv, codeowners, git, slack, github, jira, confluence, pagerduty.`,
+Sources: org-csv, codeowners, git, slack, github, jira, confluence, pagerduty, graph.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if status {
 				return runStatus(cmd, opts)
+			}
+			if forget {
+				if len(args) != 1 {
+					return fmt.Errorf("%w: name the source to forget, e.g. whodar connect slack --forget", ErrBadArgs)
+				}
+				spec, ok := specByID(args[0])
+				if !ok {
+					return fmt.Errorf("%w: %q (want %s)", ErrUnknownSource, args[0], strings.Join(specIDs(), ", "))
+				}
+				return runForget(cmd, spec)
 			}
 			var chosen *sourceSpec
 			if len(args) == 1 {
@@ -212,6 +242,7 @@ Sources: org-csv, codeowners, git, slack, github, jira, confluence, pagerduty.`,
 		},
 	}
 	cmd.Flags().BoolVar(&status, "status", false, "Report which sources are configured, without prompting.")
+	cmd.Flags().BoolVar(&forget, "forget", false, "Remove a source's saved credentials from the OS keychain.")
 	return cmd
 }
 
@@ -564,6 +595,32 @@ func promptList(ui *prompt.IO, label string) ([]string, error) {
 	return strings.Fields(line), nil
 }
 
+// runForget removes a source's stored credentials from the OS keychain, so a
+// rotated or revoked token does not outlive its welcome. Environment variables
+// are out of reach here, so any still set are named for the user to unset.
+func runForget(cmd *cobra.Command, spec sourceSpec) error {
+	ui := prompt.New(cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr())
+	if len(spec.creds) == 0 {
+		ui.Detail("%s uses no credentials; nothing to forget.", spec.title)
+		return nil
+	}
+	removed := 0
+	for _, cf := range spec.creds {
+		if err := secret.Delete(cf.env); err == nil {
+			removed++
+		}
+		if os.Getenv(cf.env) != "" {
+			ui.Warn("%s is still set in your environment; unset it yourself.", cf.env)
+		}
+	}
+	if removed == 0 {
+		ui.Detail("No stored credentials for %s in the keychain.", spec.title)
+		return nil
+	}
+	ui.Success("Removed %d stored credential(s) for %s from the keychain.", removed, spec.title)
+	return nil
+}
+
 // runStatus prints which sources are configured, without prompting, so it works
 // over a pipe or in a script. The report goes to stdout; nothing is collected.
 func runStatus(cmd *cobra.Command, opts *options) error {
@@ -582,15 +639,31 @@ func runStatus(cmd *cobra.Command, opts *options) error {
 }
 
 // statusNote describes a source's readiness: sources with no credentials are
-// always ready, credentialed ones report whether their credentials resolve.
+// always ready, credentialed ones report whether their credentials resolve and
+// where from, since an environment variable silently outranks the keychain and
+// that is the first thing to know when a fresh credential seems ignored.
 func statusNote(spec sourceSpec) string {
 	if len(spec.creds) == 0 {
 		return "ready, no credentials needed"
 	}
-	if credsSet(spec) {
-		return "configured"
+	if !credsSet(spec) {
+		return "not configured"
 	}
-	return "not configured"
+	sources := make(map[string]bool)
+	for _, c := range spec.creds {
+		if src := secret.Source(c.env); src != "" {
+			sources[src] = true
+		}
+	}
+	switch {
+	case sources["env"] && sources["keychain"]:
+		return "configured (env and keychain; env wins)"
+	case sources["env"]:
+		return "configured (from env)"
+	case sources["keychain"]:
+		return "configured (from keychain)"
+	}
+	return "configured"
 }
 
 // credsSet reports whether a source's credentials resolve, from either the

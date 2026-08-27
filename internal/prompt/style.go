@@ -52,11 +52,6 @@ func (p *IO) accentBold(s string) string {
 // Blank writes an empty line to separate steps.
 func (p *IO) Blank() { fmt.Fprintln(p.out) }
 
-// Title writes the wizard banner in bold, at the left margin.
-func (p *IO) Title(format string, a ...any) {
-	fmt.Fprintln(p.out, p.bold(fmt.Sprintf(format, a...)))
-}
-
 // Step writes a brew-style step header: a bold accent arrow and a bold message.
 func (p *IO) Step(format string, a ...any) {
 	fmt.Fprintf(p.out, "%s %s\n", p.accentBold("==>"), p.bold(fmt.Sprintf(format, a...)))
