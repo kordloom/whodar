@@ -1,8 +1,8 @@
 # Release on publish: goreleaser builds, signs, uploads, pushes the image and
-# the cask. The old version of this file ran goreleaser WITHOUT the cosign
-# environment, so signing failed and every release emailed a failure — part of
-# the noise that got the account flagged. The two cosign secrets now live in
-# the repository, so a red run here means a real break.
+# the cask. An earlier version of this file ran goreleaser WITHOUT the cosign
+# environment, so signing failed and every release emailed a failure. The two
+# cosign secrets now live in the repository, so a red run here means a real
+# break.
 name: release
 
 on:

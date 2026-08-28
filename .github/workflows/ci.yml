@@ -1,7 +1,7 @@
 # CI that stays green or says something real. Every job here is run locally
-# before any push, so a failure email means a genuine break, not noise: the
-# old lint gate failed on every push for weeks and the failure spam was part
-# of what got the account flagged.
+# before any push, so a failure email means a genuine break, not noise. An
+# earlier lint gate failed on every push for weeks, and the failure spam
+# trained everyone to ignore the emails. Keep this honest.
 name: ci
 
 on:
