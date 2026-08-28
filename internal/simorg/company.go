@@ -329,11 +329,22 @@ func (c *company) codeOwners() string {
 		declared := c.owners[s].who.email
 		if s%5 == 0 {
 			declared = c.people[(s*13+3)%len(c.people)].email
+		} else if s%7 == 3 {
+			// A slice of areas is declared by squad handle, the way a
+			// monorepo's CODEOWNERS reads. The org chart names the same team,
+			// so ownership judges these areas through the team's members
+			// rather than setting them aside.
+			declared = "@simcorp/" + teamSlug(c.owners[s].who.team) + "-squad"
 		}
 		path := strings.ReplaceAll(subjects[s].Topic, " ", "-") + "/"
 		fmt.Fprintf(&b, "%s %s\n", path, declared)
 	}
 	return b.String()
+}
+
+// teamSlug renders a team name the way a CODEOWNERS handle spells it.
+func teamSlug(team string) string {
+	return strings.ReplaceAll(strings.ToLower(team), " ", "-")
 }
 
 // BuildBigIndex assembles the large demo company into a merged, canonicalized

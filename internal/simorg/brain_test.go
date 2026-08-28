@@ -7,6 +7,7 @@ import (
 
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/model"
+	"github.com/kordloom/whodar/internal/resolve"
 )
 
 // Brain floors for the big company. The gauntlet asks about every subject in
@@ -242,5 +243,42 @@ func TestEverydayLanguageBrain(t *testing.T) {
 	}
 	if p1 < minEverydayTop1 {
 		t.Errorf("everyday p@1 = %.2f, want at least %.2f", p1, minEverydayTop1)
+	}
+}
+
+// TestSquadOwnedAreasJudgedInTheGauntlet holds the squad-to-team bridge inside
+// the generated company: the areas CODEOWNERS declares by squad handle match
+// org-chart teams, so none of them is set aside as group-owned, and each one
+// whose planted owner still leads it stands held rather than lost to the
+// bridge.
+func TestSquadOwnedAreasJudgedInTheGauntlet(t *testing.T) {
+	t.Parallel()
+	ix, err := BuildBigIndex(t.TempDir())
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	report := resolve.Ownership(ix)
+	if report.GroupOwned != 0 {
+		t.Errorf("groupOwned = %d, want every squad matched to its team", report.GroupOwned)
+	}
+	squadTopics := make(map[string]bool)
+	for s := range subjects {
+		if s%5 != 0 && s%7 == 3 {
+			squadTopics[strings.ReplaceAll(subjects[s].Topic, " ", "-")] = true
+		}
+	}
+	if len(squadTopics) == 0 {
+		t.Fatal("the generator planted no squad-owned areas")
+	}
+	held := make(map[string]bool)
+	for _, a := range resolve.OwnedAreas(ix) {
+		if a.Standing == resolve.StandingHeld {
+			held[a.Topic] = true
+		}
+	}
+	for topic := range squadTopics {
+		if !held[topic] {
+			t.Errorf("squad-owned area %q is not held through its team's members", topic)
+		}
 	}
 }
