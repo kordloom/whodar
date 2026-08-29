@@ -786,6 +786,10 @@ section h2 {
 
 @media (max-width: 720px) {
   .layout { flex-direction: column; }
+  /* The sidebar becomes a two-row header: brand on the left of the first row
+     with the theme dots and doc links on its right, then one horizontally
+     scrolling row of pill links. A wrapping wall of every link at once read
+     as a mess; a scrolling rail is how a phone expects a nav to behave. */
   .sidebar {
     width: auto;
     height: auto;
@@ -794,21 +798,75 @@ section h2 {
     align-items: center;
     flex-wrap: wrap;
     gap: 10px;
-    padding: 10px 14px;
+    padding: 10px 12px;
     border-right: 0;
     border-bottom: 1px solid var(--border);
+    /* The pill rail's content width must not become the header's width: a
+       scroll container still reports its content as intrinsic size, and the
+       sidebar stretched to it, carrying the whole page sideways. */
+    min-width: 0;
+    max-width: 100%;
+    flex-basis: auto;
   }
-  .side-logo { width: 88px; padding: 4px 6px; }
-  #side-nav { flex-direction: row; flex-wrap: wrap; }
-  #side-nav a { padding: 6px 10px; }
-  .nav-count { display: none; }
-  /* The sidebar is a single wrapping row here, so a group heading would sit
-     inline between two links and spend a phone's width saying nothing the
-     links do not. The grouping is orientation, and there is no room for it. */
-  .nav-group { display: none; }
-  .nav-tool { margin-top: 0; }
-  .side-foot { margin-top: 0; margin-left: auto; flex-direction: row; align-items: center; gap: 12px; }
+  .side-brand { order: 1; }
+  .side-logo { width: 72px; padding: 3px 5px; }
+  .side-tag { display: none; }
+  .side-foot {
+    order: 2;
+    margin-top: 0;
+    margin-left: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+  }
   .side-version { display: none; }
+  #side-nav {
+    order: 3;
+    flex-basis: 100%;
+    /* A flex item will not shrink below its nowrap content without this, and
+       the pill rail's content is wider than any phone: the whole header blew
+       out sideways and pushed the theme dots off screen. */
+    min-width: 0;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  #side-nav::-webkit-scrollbar { display: none; }
+  #side-nav a,
+  #side-nav .nav-tool-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+  }
+  #side-nav .story-launch {
+    width: auto;
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 7px 12px;
+    border-radius: 999px;
+  }
+  .story-min { display: none; }
+  .nav-count { display: none; }
+  /* Group headings ride inside the rail as quiet inline markers, so the
+     three-question structure survives on a phone instead of flattening into
+     one undifferentiated row of pills. */
+  .nav-group {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    margin: 0 2px 0 10px;
+    padding: 0;
+    white-space: nowrap;
+    font-size: 10px;
+  }
+  #side-nav .nav-group:first-of-type { margin-left: 4px; }
+  .nav-tool { margin-top: 0; }
   main { padding: 24px 16px 60px; }
 }
 

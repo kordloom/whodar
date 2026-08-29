@@ -1067,9 +1067,12 @@ func TestKeyboardShortcutsAreDiscoverable(t *testing.T) {
 }
 
 // TestTheMobileTopBarDropsTheNavGroups checks the sidebar's group headings are
-// hidden once it becomes a single wrapping row. Inline between two links they
-// spend a phone's width saying nothing the links do not.
-func TestTheMobileTopBarDropsTheNavGroups(t *testing.T) {
+// scrolling rail with the group headings riding inline as quiet markers, and
+// the two rules that stop the rail's content from becoming the page's width.
+// Both regressions happened: the headings were dropped wholesale and read as
+// an undifferentiated wall, and without min-width the header stretched to the
+// rail's content and pushed the theme dots off screen.
+func TestTheMobileTopBarKeepsItsShape(t *testing.T) {
 	t.Parallel()
 	css := readStatic(t, "style.css")
 	i := strings.Index(css, "@media (max-width: 720px)")
@@ -1080,8 +1083,13 @@ func TestTheMobileTopBarDropsTheNavGroups(t *testing.T) {
 	if end := strings.Index(block, "\n}\n"); end > 0 {
 		block = block[:end]
 	}
-	if !strings.Contains(block, ".nav-group { display: none; }") {
-		t.Error("the nav group headings survive into the mobile top bar, where they crowd out the links")
+	if strings.Contains(block, ".nav-group { display: none; }") {
+		t.Error("the nav groups are hidden on mobile; they should ride inline in the rail")
+	}
+	for _, want := range []string{"overflow-x: auto", "min-width: 0", "max-width: 100%"} {
+		if !strings.Contains(block, want) {
+			t.Errorf("mobile header block lost %q, which held the rail inside the viewport", want)
+		}
 	}
 }
 
