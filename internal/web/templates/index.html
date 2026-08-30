@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>whodar</title>
   <script src="/static/theme.js?v=10"></script>
-  <link rel="stylesheet" href="/static/style.css?v=28">
+  <link rel="stylesheet" href="/static/style.css?v=29">
   <link rel="icon" type="image/png" href="/static/whodar-logo.png">
 </head>
 <body>
@@ -15,6 +15,12 @@
         <img class="side-logo" src="/static/whodar-logo.png" alt="whodar - know who knows">
       </a>
       <p class="side-tag">know who knows</p>
+      <button id="side-menu-btn" class="side-menu-btn" type="button"
+        aria-expanded="false" aria-controls="side-nav" aria-label="Menu">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Menu
+      </button>
       <nav id="side-nav">
         <a href="#/" data-view="ask">Ask</a>
         <button id="story-btn" class="story-launch" type="button" title="A guided walk through the whole idea, on live data">&#9658; Take the tour <span class="story-min">2 min</span></button>
@@ -260,7 +266,7 @@
   </div>
 
   <script src="/static/portable.js?v=1"></script>
-  <script src="/static/app.js?v=29"></script>
+  <script src="/static/app.js?v=30"></script>
   <script src="/static/story.js?v=2"></script>
 </body>
 </html>

@@ -1067,11 +1067,12 @@ func TestKeyboardShortcutsAreDiscoverable(t *testing.T) {
 }
 
 // TestTheMobileTopBarDropsTheNavGroups checks the sidebar's group headings are
-// scrolling rail with the group headings riding inline as quiet markers, and
-// the two rules that stop the rail's content from becoming the page's width.
-// Both regressions happened: the headings were dropped wholesale and read as
-// an undifferentiated wall, and without min-width the header stretched to the
-// rail's content and pushed the theme dots off screen.
+// solid bar with a real menu button, and the nav as a solid sheet the button
+// opens. The two earlier shapes both failed by eye: a wrapping wall of links,
+// then a rail of outlined pills the user called noisy. The contract now: the
+// nav is hidden until the menu opens, the sheet is solid (an explicit
+// background, never translucent over content), the group headings return
+// inside the sheet, and the header cannot stretch past the viewport.
 func TestTheMobileTopBarKeepsItsShape(t *testing.T) {
 	t.Parallel()
 	css := readStatic(t, "style.css")
@@ -1083,13 +1084,25 @@ func TestTheMobileTopBarKeepsItsShape(t *testing.T) {
 	if end := strings.Index(block, "\n}\n"); end > 0 {
 		block = block[:end]
 	}
-	if strings.Contains(block, ".nav-group { display: none; }") {
-		t.Error("the nav groups are hidden on mobile; they should ride inline in the rail")
-	}
-	for _, want := range []string{"overflow-x: auto", "min-width: 0", "max-width: 100%"} {
+	for _, want := range []string{
+		"#side-nav { display: none; }",
+		"body.menu-open #side-nav",
+		"body.menu-open .nav-group",
+		"background: var(--bg)",
+		"min-width: 0",
+		"max-width: 100%",
+	} {
 		if !strings.Contains(block, want) {
-			t.Errorf("mobile header block lost %q, which held the rail inside the viewport", want)
+			t.Errorf("mobile header block lost %q, part of the bar-and-sheet contract", want)
 		}
+	}
+	html := readTemplate(t, "index.html")
+	if !strings.Contains(html, `id="side-menu-btn"`) {
+		t.Error("the menu button is gone from the template")
+	}
+	js := readStatic(t, "app.js")
+	if !strings.Contains(js, "menu-open") {
+		t.Error("nothing toggles the menu sheet")
 	}
 }
 

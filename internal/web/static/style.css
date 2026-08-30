@@ -786,87 +786,103 @@ section h2 {
 
 @media (max-width: 720px) {
   .layout { flex-direction: column; }
-  /* The sidebar becomes a two-row header: brand on the left of the first row
-     with the theme dots and doc links on its right, then one horizontally
-     scrolling row of pill links. A wrapping wall of every link at once read
-     as a mess; a scrolling rail is how a phone expects a nav to behave. */
+  /* One solid bar: brand left, a real menu button right. Everything else
+     lives in a solid sheet the button opens. A rail of outlined pills read as
+     noise; a bar and a menu read as a product. */
   .sidebar {
     width: auto;
     height: auto;
-    position: static;
+    position: sticky;
+    top: 0;
+    z-index: 40;
     flex-direction: row;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-    padding: 10px 12px;
+    gap: 12px;
+    padding: 10px 14px;
     border-right: 0;
     border-bottom: 1px solid var(--border);
-    /* The pill rail's content width must not become the header's width: a
-       scroll container still reports its content as intrinsic size, and the
-       sidebar stretched to it, carrying the whole page sideways. */
+    background: var(--bg);
+    align-self: stretch;
     min-width: 0;
     max-width: 100%;
     flex-basis: auto;
   }
-  .side-brand { order: 1; }
-  .side-logo { width: 72px; padding: 3px 5px; }
+  .side-brand { flex: 0 0 auto; }
+  .side-logo { width: 64px; padding: 3px 5px; }
   .side-tag { display: none; }
-  .side-foot {
-    order: 2;
-    margin-top: 0;
+  .side-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     margin-left: auto;
-    flex-direction: row;
-    align-items: center;
-    gap: 12px;
+    padding: 10px 16px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--card);
+    color: var(--fg);
+    font: 600 14px var(--sans, inherit);
+    cursor: pointer;
   }
-  .side-version { display: none; }
-  #side-nav {
-    order: 3;
-    flex-basis: 100%;
-    /* A flex item will not shrink below its nowrap content without this, and
-       the pill rail's content is wider than any phone: the whole header blew
-       out sideways and pushed the theme dots off screen. */
-    min-width: 0;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    gap: 6px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    padding-bottom: 2px;
-  }
-  #side-nav::-webkit-scrollbar { display: none; }
-  #side-nav a,
-  #side-nav .nav-tool-btn {
-    flex: 0 0 auto;
-    white-space: nowrap;
-    padding: 7px 12px;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-  }
-  #side-nav .story-launch {
-    width: auto;
-    flex: 0 0 auto;
-    margin: 0;
-    padding: 7px 12px;
-    border-radius: 999px;
-  }
-  .story-min { display: none; }
-  .nav-count { display: none; }
-  /* Group headings ride inside the rail as quiet inline markers, so the
-     three-question structure survives on a phone instead of flattening into
-     one undifferentiated row of pills. */
-  .nav-group {
+  .side-menu-btn svg { width: 18px; height: 18px; }
+  /* The sheet: the existing nav, shown solid and full-width under the bar. */
+  #side-nav { display: none; }
+  body.menu-open #side-nav {
     display: flex;
-    align-items: center;
-    flex: 0 0 auto;
-    margin: 0 2px 0 10px;
-    padding: 0;
-    white-space: nowrap;
-    font-size: 10px;
+    position: fixed;
+    top: 85px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 39;
+    overflow-y: auto;
+    flex-direction: column;
+    gap: 2px;
+    padding: 18px 18px 40px;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
   }
-  #side-nav .nav-group:first-of-type { margin-left: 4px; }
+  body.menu-open #side-nav a,
+  body.menu-open #side-nav .nav-tool-btn {
+    padding: 13px 14px;
+    border-radius: 10px;
+    font-size: 16px;
+  }
+  body.menu-open #side-nav .story-launch {
+    width: auto;
+    margin: 2px 0 8px;
+    padding: 13px 14px;
+    font-size: 15px;
+    border: 0;
+    background: var(--accent-soft, rgba(52, 211, 153, 0.12));
+  }
+  body.menu-open .nav-group {
+    display: block;
+    margin: 16px 2px 4px;
+    font-size: 11px;
+  }
+  .nav-count { display: none; }
+  .nav-group { display: none; }
   .nav-tool { margin-top: 0; }
+  /* The theme dots and doc links live at the end of the sheet, not in the bar. */
+  .side-foot { display: none; }
+  body.menu-open .side-foot {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 39;
+    margin: 0;
+    padding: 14px 18px calc(14px + env(safe-area-inset-bottom));
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+  }
+  body.menu-open .side-foot .side-link { margin-left: auto; }
+  body.menu-open .side-foot .side-link + .side-link { margin-left: 0; }
+  .side-version { display: none; }
   main { padding: 24px 16px 60px; }
 }
 
@@ -923,6 +939,10 @@ section h2 {
   margin-top: 0.7rem;
 }
 
+
+@media (min-width: 721px) {
+  .side-menu-btn { display: none; }
+}
 
 /* Theme switcher (sidebar footer) */
 .side-themes { display: flex; align-items: center; gap: 8px; padding: 12px 2px 6px; }

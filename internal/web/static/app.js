@@ -1756,3 +1756,24 @@ showView(viewFromHash());
 showExamples();
 fillNavCounts();
 loadModes();
+
+// The mobile menu: one solid button, one solid sheet. The sidebar's nav is the
+// sheet; the button toggles it, and choosing anything closes it.
+(function () {
+  var btn = document.getElementById("side-menu-btn");
+  var nav = document.getElementById("side-nav");
+  if (!btn || !nav) return;
+  function setOpen(open) {
+    document.body.classList.toggle("menu-open", open);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  btn.addEventListener("click", function () {
+    setOpen(!document.body.classList.contains("menu-open"));
+  });
+  nav.addEventListener("click", function (ev) {
+    if (ev.target.closest("a, button")) setOpen(false);
+  });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape" && document.body.classList.contains("menu-open")) setOpen(false);
+  });
+})();
