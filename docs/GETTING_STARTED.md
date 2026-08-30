@@ -551,6 +551,27 @@ Tune it at index time:
 A shorter half-life favors the people active right now; `--half-life-days 0`
 turns decay off entirely.
 
+## Sealing a finding for someone outside the team
+
+When a knowledge-risk finding has to hold up in front of a board, an auditor,
+or an acquirer, seal it:
+
+    whodar attest > finding.loomseal.json
+
+The bundle carries the claim, a digest of the evidence behind it, and an
+ed25519 signature over a tamper-evident chain. Anyone can verify it offline,
+with no account and nothing sent anywhere:
+
+    loomseal verify finding.loomseal.json
+    whodar attest verify finding.loomseal.json
+
+The first proves the bundle is intact; the second judges the licensing chain
+inside it. A licensed install whose license names its sealing key (send the
+`sealing key` line from `whodar license status` when requesting a license)
+produces seals that are provably issued to the organization. Unlicensed runs
+seal too, marked as evaluations inside the signature. Keys are published at
+whodar.dev/verify.
+
 ## Troubleshooting
 
 | Message                                             | Cause                              | Fix                                          |

@@ -588,6 +588,23 @@ decay.</p>
 </code></pre>
 <p>A shorter half-life favors the people active right now; <code>--half-life-days 0</code>
 turns decay off entirely.</p>
+<h2 id="sealing-a-finding-for-someone-outside-the-team">Sealing a finding for someone outside the team</h2>
+<p>When a knowledge-risk finding has to hold up in front of a board, an auditor,
+or an acquirer, seal it:</p>
+<pre><code>whodar attest &gt; finding.loomseal.json
+</code></pre>
+<p>The bundle carries the claim, a digest of the evidence behind it, and an
+ed25519 signature over a tamper-evident chain. Anyone can verify it offline,
+with no account and nothing sent anywhere:</p>
+<pre><code>loomseal verify finding.loomseal.json
+whodar attest verify finding.loomseal.json
+</code></pre>
+<p>The first proves the bundle is intact; the second judges the licensing chain
+inside it. A licensed install whose license names its sealing key (send the
+<code>sealing key</code> line from <code>whodar license status</code> when requesting a license)
+produces seals that are provably issued to the organization. Unlicensed runs
+seal too, marked as evaluations inside the signature. Keys are published at
+whodar.dev/verify.</p>
 <h2 id="troubleshooting">Troubleshooting</h2>
 <table>
 <thead>

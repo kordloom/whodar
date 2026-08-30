@@ -60,6 +60,26 @@ archive, then:
 The first command proves the checksum file is the one we signed; the second
 proves your archive matches it.
 
+## Sealing a finding
+
+A knowledge-risk finding can leave the team: a reorganization, a due diligence,
+a case for hiring. whodar seals one into a signed, offline-verifiable bundle so
+a board, auditor, or acquirer can check it without trusting the machine that
+produced it, or us:
+
+    whodar attest > finding.loomseal.json
+    whodar attest verify finding.loomseal.json
+    loomseal verify finding.loomseal.json
+
+The first command signs the current finding. The second checks the licensing
+chain inside it: a licensed install's license rides inside the sealed payload,
+bound to the install's sealing key, so a licensed report is provably issued to
+the organization; unlicensed runs are complete but carry an evaluation mark
+that cannot be removed without breaking the signature. The third is the
+independent [LoomSeal](https://github.com/kordloom/loomseal) verifier proving
+the bundle itself is intact. The canonical keys live at
+[whodar.dev/verify](https://whodar.dev/verify).
+
 ## Quickstart
 
 No data yet? Explore a simulated company, no credentials needed, and take the
