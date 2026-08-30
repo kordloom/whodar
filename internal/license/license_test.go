@@ -36,9 +36,9 @@ func signWith(t *testing.T, l License) []byte {
 // swapKey points verification at a test key for the duration of one test.
 func swapKey(t *testing.T, key string) {
 	t.Helper()
-	original := verificationKey
-	verificationKey = key
-	t.Cleanup(func() { verificationKey = original })
+	original := verificationKeys
+	verificationKeys = map[string]string{keyID2026: key}
+	t.Cleanup(func() { verificationKeys = original })
 }
 
 // TestVerifyRoundTrip verifies a freshly signed license verifies and reports
@@ -235,5 +235,50 @@ func TestTierLadder(t *testing.T) {
 			t.Errorf("test %d: Has(%s) with tier %s = %v, want %v",
 				testNum, test.Tier, test.State.Tier, got, test.Want)
 		}
+	}
+}
+
+// TestKidSelectsAndRevokes pins the key-list contract: a license naming a
+// listed kid verifies against exactly that key, a license naming an unlisted
+// kid fails even with a valid signature (that is what revocation looks like),
+// and a kid-less license still verifies against any listed key.
+func TestKidSelectsAndRevokes(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := verificationKeys
+	verificationKeys = map[string]string{"kordloom-test": base64.StdEncoding.EncodeToString(pub)}
+	t.Cleanup(func() { verificationKeys = original })
+
+	sign := func(l License) []byte {
+		payload, err := canonical(l)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := json.Marshal(Signed{License: l,
+			Signature: base64.StdEncoding.EncodeToString(ed25519.Sign(priv, payload))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	base := License{ID: "t1", Org: "Acme", Tier: Risk}
+
+	// Test 0: The named, listed key verifies.
+	named := base
+	named.Kid = "kordloom-test"
+	if _, err := Verify(sign(named), time.Now()); err != nil {
+		t.Errorf("named listed kid failed: %v", err)
+	}
+	// Test 1: A kid naming no listed key is revoked, valid signature or not.
+	revoked := base
+	revoked.Kid = "kordloom-stolen"
+	if _, err := Verify(sign(revoked), time.Now()); err == nil {
+		t.Error("unlisted kid verified; revocation must fail it")
+	}
+	// Test 2: A kid-less license verifies against the list.
+	if _, err := Verify(sign(base), time.Now()); err != nil {
+		t.Errorf("kid-less license failed: %v", err)
 	}
 }

@@ -20,10 +20,21 @@ import (
 // the licensor and never ships.
 const publicKey = "5cdDIgH/DWQHWpGF8yjfM9EbKE/7jwfGM+O/hmkigJM="
 
-// verificationKey is the key Verify checks against. It is the compiled-in
-// public key; tests swap it so the round trip can be exercised without the
-// licensor's private key.
-var verificationKey = publicKey
+// keyID2026 names the launch signing key, so a license can say which key
+// signed it and a compromised or retired key can be dropped from the list
+// without invalidating licenses signed by the others.
+const keyID2026 = "kordloom-2026"
+
+// CurrentKeyID is the key new licenses are issued under.
+const CurrentKeyID = keyID2026
+
+// verificationKeys are the keys Verify checks against, by key id. Plural from
+// day one on purpose: this key anchors more than the paid tier, so rotation
+// and revocation must be a list edit, never a format migration. The same list
+// is published out of band at whodar.dev/verify, and a relying party should
+// prefer that copy over any binary's compiled-in one. Tests swap the map so
+// the round trip can be exercised without the licensor's private key.
+var verificationKeys = map[string]string{keyID2026: publicKey}
 
 // Tier names a set of features.
 type Tier string
@@ -65,6 +76,9 @@ func (t Tier) rank() int {
 type License struct {
 	// ID identifies this license in support conversations.
 	ID string `json:"id"`
+	// Kid names the signing key that issued this license. Empty on licenses
+	// issued before keys had names; those verify against every listed key.
+	Kid string `json:"kid,omitempty"`
 	// Org is the organization the license was issued to.
 	Org string `json:"org"`
 	// Tier is the feature set granted.
@@ -95,6 +109,29 @@ var (
 	ErrExpired = errors.New("expired license")
 )
 
+// verifyAgainstKeys checks a signature against the named key, or against every
+// listed key for a license issued before keys had names. A kid naming no
+// listed key fails outright: that is what revocation looks like.
+func verifyAgainstKeys(kid string, payload, sig []byte) bool {
+	try := func(encoded string) bool {
+		key, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil || len(key) != ed25519.PublicKeySize {
+			return false
+		}
+		return ed25519.Verify(ed25519.PublicKey(key), payload, sig)
+	}
+	if kid != "" {
+		encoded, ok := verificationKeys[kid]
+		return ok && try(encoded)
+	}
+	for _, encoded := range verificationKeys {
+		if try(encoded) {
+			return true
+		}
+	}
+	return false
+}
+
 // Expired reports whether the license term has ended at now.
 func (l License) Expired(now time.Time) bool {
 	return !l.Expires.IsZero() && now.After(l.Expires)
@@ -112,15 +149,11 @@ func Verify(data []byte, now time.Time) (License, error) {
 	if err != nil {
 		return License{}, fmt.Errorf("%w: signature is not base64: %w", ErrInvalid, err)
 	}
-	key, err := base64.StdEncoding.DecodeString(verificationKey)
-	if err != nil || len(key) != ed25519.PublicKeySize {
-		return License{}, fmt.Errorf("%w: this build has no usable verification key", ErrInvalid)
-	}
 	payload, err := canonical(signed.License)
 	if err != nil {
 		return License{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
-	if !ed25519.Verify(ed25519.PublicKey(key), payload, sig) {
+	if !verifyAgainstKeys(signed.License.Kid, payload, sig) {
 		return License{}, fmt.Errorf("%w: signature does not match the licensed details", ErrInvalid)
 	}
 	if !signed.License.Tier.Valid() {

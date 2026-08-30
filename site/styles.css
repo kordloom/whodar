@@ -581,3 +581,16 @@ h1 .sig { color: var(--signal); text-shadow: 0 0 28px rgba(var(--signal-rgb), 0.
 .cf-lab { fill: var(--signal); font-weight: 600; }
 .crossfig figcaption { margin-top: 10px; color: var(--muted); font-size: 13.5px; }
 .sysbar .sig b { color: var(--signal); }
+
+/* Verify page: key and command blocks. */
+.verify-block pre {
+	margin: 18px 0 0;
+	padding: 18px 22px;
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	background: var(--panel, rgba(255, 255, 255, 0.03));
+	overflow-x: auto;
+	font: 500 13.5px/1.7 "JetBrains Mono", monospace;
+	color: var(--signal);
+}
+

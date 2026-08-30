@@ -103,6 +103,7 @@ func newLicenseMintCmd() *cobra.Command {
 			now := time.Now().UTC()
 			lic := license.License{
 				ID:     id,
+				Kid:    license.CurrentKeyID,
 				Org:    org,
 				Tier:   license.Tier(tier),
 				Issued: now,

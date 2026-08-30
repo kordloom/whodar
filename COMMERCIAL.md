@@ -14,14 +14,24 @@ The Additional Use Grant in the license permits production use outright. If your
 team asks whether internal deployment triggers a source disclosure obligation, the answer
 is no. BUSL only restricts offering whodar to third parties as a hosted service.
 
-On 2030-08-03 this version converts to Apache License 2.0 and every restriction lapses.
+Each released version converts to Apache License 2.0 on the earlier of 2030-08-03
+or the fourth anniversary of its first public distribution, and every restriction
+on that version lapses then.
 
 ## You do need a commercial license to
 
 - Offer whodar to third parties as a hosted or managed service that provides its
-  primary functionality.
-- Embed whodar in a product you sell where whodar supplies the core capability.
-- Redistribute a modified whodar under different license terms.
+  primary functionality. This is the one restriction the BUSL text draws, and it
+  covers embedding whodar inside a hosted product you sell just as much as
+  hosting whodar directly.
+- Redistribute whodar, modified or not, under different license terms. BUSL
+  redistribution is permitted, but every copy and derivative stays under BUSL
+  with the license displayed.
+
+Shipping whodar inside an on-premises product you sell is permitted by the BUSL
+text as long as the license travels with it and nothing is offered as a hosted
+service. If you want to do that under your own terms, without BUSL attached, or
+with the whodar name on it, that is what a commercial license is for.
 
 ## If your policy blocks source-available licenses outright
 
