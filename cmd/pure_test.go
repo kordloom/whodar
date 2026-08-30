@@ -60,7 +60,7 @@ func TestAttestPayload(t *testing.T) {
 	}
 	report = append(report, resolve.TopicRisk{Topic: "healthy", Level: "ok", BusFactor: 4})
 
-	payload, evidence := attestPayload(report, true)
+	payload, evidence := attestPayload(report, true, map[string]any{"license": "stub"})
 	m, ok := payload.(map[string]any)
 	if !ok {
 		t.Fatalf("payload is %T, want map", payload)
@@ -70,6 +70,9 @@ func TestAttestPayload(t *testing.T) {
 	}
 	if m["evaluation"] != true {
 		t.Error("an unlicensed seal must carry evaluation inside the signed payload")
+	}
+	if m["licensee"] == nil {
+		t.Error("a bound license must ride inside the signed payload")
 	}
 	top, ok := m["top_critical"].([]any)
 	if !ok || len(top) != 10 {

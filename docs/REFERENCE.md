@@ -410,6 +410,17 @@ verify it offline with the loomseal verifier, with no account and nothing sent
 anywhere, so the finding can be trusted without trusting the machine that made
 it. The signing key is created once under the data directory and reused.
 
+
+A licensed install whose license names its sealing key (register it by sending
+the `sealing key` from `whodar license status` when requesting a license)
+embeds the signed license inside every sealed payload, making the seal provably
+issued to the organization. Check the licensing chain of any bundle with:
+
+    whodar attest verify FILE
+
+That judges the chain only; bundle integrity is the independent verifier's
+half: `loomseal verify FILE`. Keys are published at whodar.dev/verify.
+
 ## whodar identity
 
     whodar identity [PERSON]

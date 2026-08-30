@@ -41,8 +41,8 @@ The signing key is created once under the data directory and reused.`,
 				return err
 			}
 			report := resolve.Risk(ix, 0)
-			payload, evidence := attestPayload(report, riskEvaluation(opts))
 			pub, _ := priv.Public().(ed25519.PublicKey)
+			payload, evidence := attestPayload(report, riskEvaluation(opts), sealLicensee(opts, pub))
 			bundle, err := attest.Seal(priv, "whodar", version, attest.InstallID(pub),
 				"whodar.knowledge-risk/1", riskSubject(ix),
 				payload, evidence, time.Now())
@@ -53,6 +53,7 @@ The signing key is created once under the data directory and reused.`,
 			return err
 		},
 	}
+	cmd.AddCommand(newAttestVerifyCmd(opts))
 	return cmd
 }
 
@@ -73,7 +74,7 @@ func riskSubject(ix *index.Index) map[string]any {
 // full report as the evidence bytes the claim digests. An unlicensed seal is
 // still a real seal; evaluation rides inside the signed payload, so the label
 // cannot be stripped from the artifact without breaking it.
-func attestPayload(report []resolve.TopicRisk, evaluation bool) (any, []byte) {
+func attestPayload(report []resolve.TopicRisk, evaluation bool, licensee any) (any, []byte) {
 	critical := 0
 	var top []any
 	for _, t := range report {
@@ -97,6 +98,9 @@ func attestPayload(report []resolve.TopicRisk, evaluation bool) (any, []byte) {
 	}
 	if evaluation {
 		payload["evaluation"] = true
+	}
+	if licensee != nil {
+		payload["licensee"] = licensee
 	}
 	evidence, _ := json.Marshal(report)
 	return payload, evidence

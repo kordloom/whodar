@@ -28,6 +28,9 @@ type State struct {
 	// an invalid one, or an expired one. It is nil on the free tier with no
 	// license configured.
 	Err error
+	// Raw is the verified license file exactly as signed, kept so a sealed
+	// finding can embed the license without re-serializing it.
+	Raw []byte
 }
 
 // Has reports whether the state grants a tier. Tiers are a ladder: a Memory
@@ -71,7 +74,7 @@ func Resolve(dataDir string, now time.Time) State {
 	if err != nil {
 		return State{Tier: Free, License: lic, Err: err}
 	}
-	return State{Tier: lic.Tier, License: lic}
+	return State{Tier: lic.Tier, License: lic, Raw: raw}
 }
 
 // read returns the license bytes from the environment or the data directory.

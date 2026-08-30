@@ -372,7 +372,7 @@ func attestFn(ix *index.Index, opts *options, public bool, logw io.Writer) web.A
 		return nil
 	}
 	return func() ([]byte, error) {
-		payload, evidence := attestPayload(resolve.Risk(ix, 0), riskEvaluation(opts) && !public)
+		payload, evidence := attestPayload(resolve.Risk(ix, 0), riskEvaluation(opts) && !public, sealLicensee(opts, pub))
 		return attest.Seal(priv, "whodar", version, attest.InstallID(pub),
 			"whodar.knowledge-risk/1", riskSubject(ix),
 			payload, evidence, time.Now())

@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"time"
@@ -23,4 +26,24 @@ func renderEvaluationNote(w io.Writer, s style) {
 	fmt.Fprintf(w, "\n%s\n", s.dim(
 		"Evaluation. Findings are complete and nothing is held back; a license marks\n"+
 			"sealed reports as licensed. Early access: whodar.dev/pricing"))
+}
+
+// sealLicensee returns the signed license to embed in a sealed finding, or
+// nil. It embeds only when the install is licensed for the intelligence layer
+// AND the license names this install's sealing key: an unbound license proves
+// somebody bought one, a bound license proves THIS seal came from the install
+// it was issued to, and only the second is provenance.
+func sealLicensee(opts *options, pub ed25519.PublicKey) any {
+	state := license.Resolve(opts.dataDir, time.Now())
+	if !state.Has(license.Risk) || len(state.Raw) == 0 {
+		return nil
+	}
+	if state.License.AttestKey != base64.StdEncoding.EncodeToString(pub) {
+		return nil
+	}
+	var signed any
+	if err := json.Unmarshal(state.Raw, &signed); err != nil {
+		return nil
+	}
+	return signed
 }

@@ -142,7 +142,10 @@ kordloom-2026  5cdDIgH/DWQHWpGF8yjfM9EbKE/7jwfGM+O/hmkigJM=   active</code></pre
 		</div>
 		<div class="verify-block reveal"><pre><code>loomseal verify whodar-knowledge-risk.loomseal.json</code></pre></div>
 		<div class="sec-head reveal">
-			<p>Two honest caveats, because trust that cannot name its limits is not trust. A bundle's signing key is generated per install, so the signature proves the finding is intact and from one consistent install, not who ran it. And a run of the intelligence layer without a license carries <code>"evaluation": true</code> inside the signed payload; it cannot be removed without breaking the signature, so a licensed report and an evaluation can always be told apart.</p>
+			<p>Two honest caveats, because trust that cannot name its limits is not trust. A bundle's signing key is generated per install, so the signature alone proves the finding is intact and from one consistent install, not who ran it. And a run of the intelligence layer without a license carries <code>"evaluation": true</code> inside the signed payload; it cannot be removed without breaking the signature, so a licensed report and an evaluation can always be told apart.</p>
+		</div>
+		<div class="sec-head reveal">
+			<p>A licensed install goes further: its license names the install's sealing key and rides inside every sealed payload, so the seal is provably issued to that organization, verifiable against the key list above. Check any bundle's licensing chain with <code>whodar attest verify FILE</code>; a fork can strip a label, but it cannot mint this.</p>
 		</div>
 	</section>
 

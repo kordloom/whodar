@@ -50,6 +50,12 @@ func newLicenseStatusCmd(opts *options) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			state := license.Resolve(opts.dataDir, time.Now())
+			sealing := ""
+			if priv, err := opts.attestKey(); err == nil {
+				if pub, ok := priv.Public().(ed25519.PublicKey); ok {
+					sealing = base64.StdEncoding.EncodeToString(pub)
+				}
+			}
 			out := struct {
 				// Tier is the feature set in force.
 				Tier string `json:"tier"`
@@ -61,15 +67,31 @@ func newLicenseStatusCmd(opts *options) *cobra.Command {
 				Expires string `json:"expires,omitempty"`
 				// Reason explains the tier in a sentence.
 				Reason string `json:"reason"`
+				// SealingKey is this install's public sealing key. Include it
+				// when requesting a license so sealed findings become provably
+				// issued to your organization.
+				SealingKey string `json:"sealingKey,omitempty"`
+				// SealBound reports whether the license names this sealing key.
+				SealBound bool `json:"sealBound"`
 			}{
-				Tier:    string(state.Tier),
-				Org:     state.License.Org,
-				ID:      state.License.ID,
-				Expires: expiryText(state.License.Expires),
-				Reason:  state.Reason(),
+				Tier:       string(state.Tier),
+				Org:        state.License.Org,
+				ID:         state.License.ID,
+				Expires:    expiryText(state.License.Expires),
+				Reason:     state.Reason(),
+				SealingKey: sealing,
+				SealBound:  sealing != "" && state.License.AttestKey == sealing,
 			}
 			return opts.render(cmd.OutOrStdout(), out, func(w io.Writer, s style) {
 				renderLicense(w, string(state.Tier), state.License.Org, state.License.ID, expiryText(state.License.Expires), state.Reason(), s)
+				if sealing != "" {
+					fmt.Fprintf(w, "  %s %s\n", s.dim("sealing key:"), sealing)
+					if out.SealBound {
+						fmt.Fprintf(w, "  %s\n", s.dim("bound: sealed findings from this install carry the license"))
+					} else {
+						fmt.Fprintf(w, "  %s\n", s.dim("not bound: include the sealing key when requesting a license"))
+					}
+				}
 			})
 		},
 	}
@@ -80,11 +102,12 @@ func newLicenseStatusCmd(opts *options) *cobra.Command {
 // than as a separate tool.
 func newLicenseMintCmd() *cobra.Command {
 	var (
-		org     string
-		tier    string
-		id      string
-		days    int
-		outFile string
+		org       string
+		tier      string
+		id        string
+		days      int
+		outFile   string
+		attestKey string
 	)
 	cmd := &cobra.Command{
 		Use:    "mint",
@@ -102,11 +125,12 @@ func newLicenseMintCmd() *cobra.Command {
 			}
 			now := time.Now().UTC()
 			lic := license.License{
-				ID:     id,
-				Kid:    license.CurrentKeyID,
-				Org:    org,
-				Tier:   license.Tier(tier),
-				Issued: now,
+				ID:        id,
+				Kid:       license.CurrentKeyID,
+				Org:       org,
+				Tier:      license.Tier(tier),
+				AttestKey: attestKey,
+				Issued:    now,
 			}
 			if days > 0 {
 				lic.Expires = now.AddDate(0, 0, days)
@@ -131,6 +155,8 @@ func newLicenseMintCmd() *cobra.Command {
 	}
 	f := cmd.Flags()
 	f.StringVar(&org, "org", "", "Organization the license is issued to.")
+	f.StringVar(&attestKey, "attest-key", "",
+		"The install's sealing public key (base64), shown by whodar license status; binds seals to this license.")
 	f.StringVar(&tier, "tier", string(license.Memory), "Tier to grant.")
 	f.StringVar(&id, "id", "", "License identifier; defaults to a timestamp.")
 	f.IntVar(&days, "days", 365, "Term in days; 0 never expires.")

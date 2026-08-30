@@ -79,6 +79,11 @@ type License struct {
 	// Kid names the signing key that issued this license. Empty on licenses
 	// issued before keys had names; those verify against every listed key.
 	Kid string `json:"kid,omitempty"`
+	// AttestKey is the base64 ed25519 public key of the install's sealing key,
+	// when the organization registered one at issuance. A license carrying it
+	// rides inside every sealed finding that key produces, which is what makes
+	// a licensed seal provably issued rather than merely unlabeled.
+	AttestKey string `json:"attestKey,omitempty"`
 	// Org is the organization the license was issued to.
 	Org string `json:"org"`
 	// Tier is the feature set granted.

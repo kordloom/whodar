@@ -833,6 +833,14 @@ claim, a digest of the evidence behind it, and an ed25519 signature. Anyone can
 verify it offline with the loomseal verifier, with no account and nothing sent
 anywhere, so the finding can be trusted without trusting the machine that made
 it. The signing key is created once under the data directory and reused.</p>
+<p>A licensed install whose license names its sealing key (register it by sending
+the <code>sealing key</code> from <code>whodar license status</code> when requesting a license)
+embeds the signed license inside every sealed payload, making the seal provably
+issued to the organization. Check the licensing chain of any bundle with:</p>
+<pre><code>whodar attest verify FILE
+</code></pre>
+<p>That judges the chain only; bundle integrity is the independent verifier's
+half: <code>loomseal verify FILE</code>. Keys are published at whodar.dev/verify.</p>
 <h2 id="whodar-identity">whodar identity</h2>
 <pre><code>whodar identity [PERSON]
 </code></pre>
