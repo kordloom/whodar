@@ -874,13 +874,17 @@ exactly what you name.</p>
 the binary and never contacts a server, so a licensed install works offline.
 Put it at <code>license.json</code> in the data directory, or point <code>WHODAR_LICENSE</code> at it
 (the file itself or a path to it).</p>
-<p>Without one the free tier is in force: the people graph, and recall pointing back
-at the conversations you took part in. A Memory license adds the organization's
-memory: it keeps the words of Slack conversations on your own machines, so an
-answer can still show how something was solved after the messages are gone. It is
-$5,000 a year, flat per organization, with no seat count; larger organizations
-talk to us. See <a href="https://github.com/kordloom/whodar/blob/main/COMMERCIAL.md">COMMERCIAL.md</a>. An expired license drops to the
-free tier and leaves every byte already indexed on disk.</p>
+<p>Without one the free tier is in force, and nothing is held back: the people
+graph, recall, and the whole intelligence layer (risk, ownership, exposure,
+departure, sealed findings) all run. Unlicensed runs of the intelligence layer
+are labeled as evaluations, in the output and inside the signed payload of any
+sealed bundle, so a licensed report and a look at the product cannot be
+confused. Licenses are a ladder: a <code>risk</code> license removes the evaluation label
+from the intelligence layer, and a <code>memory</code> license adds the organization's
+memory on top, keeping the words of conversations on your own machines so an
+answer can still show how something was solved after the messages are gone.
+Both are in early access; email <a href="mailto:hello@whodar.dev">hello@whodar.dev</a>. An expired license drops to
+the free tier and leaves every byte already indexed on disk.</p>
 <h2 id="whodar-feedback">whodar feedback</h2>
 <p>Records, reviews, and clears votes on answers.</p>
 <pre><code>whodar feedback record QUESTION (--person ID | --channel NAME) (--helpful | --not-helpful) [--comment TEXT]

@@ -1277,7 +1277,8 @@ async function renderExposure() {
   const regions = data.regions || [];
   const crit = risk.filter((r) => r.level === "critical").length;
   expStatus.textContent =
-    risk.length + " topics scored, " + crit + " critical, " + drift.length + " drifting";
+    risk.length + " topics scored, " + crit + " critical, " + drift.length + " drifting" +
+    (data.evaluation ? " \u00b7 evaluation, unlicensed" : "");
 
   if (expRegions) {
     if (regions.length) {

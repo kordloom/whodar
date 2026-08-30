@@ -66,11 +66,18 @@ Examples:
 			report := resolve.Risk(ix, limit)
 			regions := resolve.Regions(ix, regionsShown)
 			spans := resolve.SoleSpans(ix, spansShown)
+			eval := riskEvaluation(opts)
 			view := map[string]any{"topics": report, "regions": regions, "spans": spans}
+			if eval {
+				view["evaluation"] = true
+			}
 			return opts.render(cmd.OutOrStdout(), view, func(w io.Writer, s style) {
 				renderRisk(w, report, s)
 				renderRegions(w, regions, s)
 				renderSpans(w, spans, s)
+				if eval {
+					renderEvaluationNote(w, s)
+				}
 			})
 		},
 	}

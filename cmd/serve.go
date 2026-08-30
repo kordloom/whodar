@@ -196,7 +196,7 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 	// when no key can be kept, generate DIFFERENT keys: the same finding would
 	// then be signed under one identity through the API and another through the
 	// command-line view, which is worse than not signing it.
-	sealer := attestFn(ix, opts, cmd.ErrOrStderr())
+	sealer := attestFn(ix, opts, cfg.public, cmd.ErrOrStderr())
 
 	handler, err := web.Handler(web.Config{
 		Ask: ask, Feedback: vote, Person: person, Version: version, AuthToken: token,
@@ -208,6 +208,9 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 				Drift:   resolve.Ownership(ix).Drift,
 				Regions: resolve.Regions(ix, regionsShown),
 				Spans:   resolve.SoleSpans(ix, spansShown),
+				// A public demo is sample data; the evaluation label would
+				// only confuse what it is a sample of.
+				Evaluation: riskEvaluation(opts) && !cfg.public,
 			}
 		},
 		Brief: func() report.Brief {
@@ -346,7 +349,7 @@ func cliFn(ix *index.Index, ask web.AskFunc, seal web.AttestFunc) web.CLIFunc {
 // such as the public demo, cannot keep one, so it signs with a key held only in
 // memory: the bundle carries its own public key, so it still verifies on its own
 // terms, it just does not claim the same identity across restarts.
-func attestFn(ix *index.Index, opts *options, logw io.Writer) web.AttestFunc {
+func attestFn(ix *index.Index, opts *options, public bool, logw io.Writer) web.AttestFunc {
 	priv, err := opts.attestKey()
 	if err != nil {
 		_, key, genErr := ed25519.GenerateKey(nil)
@@ -369,7 +372,7 @@ func attestFn(ix *index.Index, opts *options, logw io.Writer) web.AttestFunc {
 		return nil
 	}
 	return func() ([]byte, error) {
-		payload, evidence := attestPayload(resolve.Risk(ix, 0))
+		payload, evidence := attestPayload(resolve.Risk(ix, 0), riskEvaluation(opts) && !public)
 		return attest.Seal(priv, "whodar", version, attest.InstallID(pub),
 			"whodar.knowledge-risk/1", riskSubject(ix),
 			payload, evidence, time.Now())

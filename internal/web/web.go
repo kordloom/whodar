@@ -494,6 +494,9 @@ type Exposure struct {
 	// ever worked across. Both subjects may be well covered on their own, so
 	// nothing that counts experts per subject can show it.
 	Spans []resolve.Span `json:"spans"`
+	// Evaluation marks an unlicensed run of the intelligence layer. The
+	// findings are complete either way; the flag is what the UI labels.
+	Evaluation bool `json:"evaluation,omitempty"`
 }
 
 // BriefFunc builds the knowledge-risk brief for the index being served.

@@ -32,13 +32,33 @@ const (
 	// Free is the tier every install has without a license: the people graph,
 	// and recall pointing back at past conversations.
 	Free Tier = "free"
-	// Memory adds the archive: conversation content retained on the
-	// organization's own machines, and answers that quote it with citations.
+	// Risk adds the organizational intelligence layer as a licensed product:
+	// knowledge risk, ownership drift, departure impact, and sealed findings
+	// without the evaluation mark. Unlicensed installs still run all of it in
+	// evaluation mode, clearly labeled, because a leader has to see the
+	// finding before anyone budgets for it.
+	Risk Tier = "risk"
+	// Memory adds the archive on top of Risk: conversation content retained
+	// on the organization's own machines, and answers that quote it with
+	// citations.
 	Memory Tier = "memory"
 )
 
 // Valid reports whether t is a tier this build knows.
-func (t Tier) Valid() bool { return t == Free || t == Memory }
+func (t Tier) Valid() bool { return t == Free || t == Risk || t == Memory }
+
+// rank orders the tiers as a ladder, so a higher license grants everything
+// below it.
+func (t Tier) rank() int {
+	switch t {
+	case Memory:
+		return 2
+	case Risk:
+		return 1
+	default:
+		return 0
+	}
+}
 
 // License is what an organization bought. It is signed as it stands, so any
 // edit to any field invalidates it.

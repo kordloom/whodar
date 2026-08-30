@@ -44,8 +44,15 @@ Examples:
 				"unworked": report.Unworked,
 				"trailing": report.Trailing,
 			}
+			eval := riskEvaluation(opts)
+			if eval {
+				view["evaluation"] = true
+			}
 			return opts.render(cmd.OutOrStdout(), view, func(w io.Writer, s style) {
 				renderOwnership(w, report, s)
+				if eval {
+					renderEvaluationNote(w, s)
+				}
 			})
 		},
 	}

@@ -1154,11 +1154,11 @@ func TestTheStoryWalksAllThreeQuestions(t *testing.T) {
 	}
 	// One step per question, plus the why and the close.
 	for _, want := range []string{
-		"#people .card",         // ask: a ranked person
-		".chips",                // why: the reasons are the ranking
-		"#recall-list .card",    // how it was solved last time
-		"#exp-dep-result",       // what leaves if they leave
-		"brew install",          // the close points at installing
+		"#people .card",      // ask: a ranked person
+		".chips",             // why: the reasons are the ranking
+		"#recall-list .card", // how it was solved last time
+		"#exp-dep-result",    // what leaves if they leave
+		"brew install",       // the close points at installing
 	} {
 		if !strings.Contains(js, want) {
 			t.Errorf("the story never reaches %q", want)

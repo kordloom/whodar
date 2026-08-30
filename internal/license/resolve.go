@@ -30,12 +30,10 @@ type State struct {
 	Err error
 }
 
-// Has reports whether the state grants a tier.
+// Has reports whether the state grants a tier. Tiers are a ladder: a Memory
+// license grants Risk, and every state grants Free.
 func (s State) Has(t Tier) bool {
-	if t == Free {
-		return true
-	}
-	return s.Tier == t
+	return s.Tier.rank() >= t.rank()
 }
 
 // Reason explains the state in one sentence for a person reading output.

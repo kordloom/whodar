@@ -212,3 +212,28 @@ func TestResolveExpiredKeepsFreeTier(t *testing.T) {
 		t.Errorf("reason = %q, want it to say indexed data is untouched", state.Reason())
 	}
 }
+
+// TestTierLadder pins that licenses are a ladder: Memory grants Risk, Risk
+// grants Free, and Free grants only itself. The evaluation label everywhere
+// hangs off Has(Risk), so this ordering is load-bearing.
+func TestTierLadder(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		State State
+		Tier  Tier
+		Want  bool
+	}{
+		{State{Tier: Free}, Free, true},     // Test 0: Free has Free.
+		{State{Tier: Free}, Risk, false},    // Test 1: Free lacks Risk.
+		{State{Tier: Risk}, Risk, true},     // Test 2: Risk has Risk.
+		{State{Tier: Risk}, Memory, false},  // Test 3: Risk lacks Memory.
+		{State{Tier: Memory}, Risk, true},   // Test 4: Memory grants Risk.
+		{State{Tier: Memory}, Memory, true}, // Test 5: Memory has Memory.
+	}
+	for testNum, test := range tests {
+		if got := test.State.Has(test.Tier); got != test.Want {
+			t.Errorf("test %d: Has(%s) with tier %s = %v, want %v",
+				testNum, test.Tier, test.State.Tier, got, test.Want)
+		}
+	}
+}

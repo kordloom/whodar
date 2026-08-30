@@ -60,13 +60,16 @@ func TestAttestPayload(t *testing.T) {
 	}
 	report = append(report, resolve.TopicRisk{Topic: "healthy", Level: "ok", BusFactor: 4})
 
-	payload, evidence := attestPayload(report)
+	payload, evidence := attestPayload(report, true)
 	m, ok := payload.(map[string]any)
 	if !ok {
 		t.Fatalf("payload is %T, want map", payload)
 	}
 	if m["critical"] != 12 || m["topics_scored"] != 13 {
 		t.Errorf("critical=%v scored=%v, want 12 and 13", m["critical"], m["topics_scored"])
+	}
+	if m["evaluation"] != true {
+		t.Error("an unlicensed seal must carry evaluation inside the signed payload")
 	}
 	top, ok := m["top_critical"].([]any)
 	if !ok || len(top) != 10 {
