@@ -10,9 +10,10 @@ companies that is all you need, and it costs nothing.
 - Read, modify, fork, and self-host the source.
 - Use it on any number of internal teams or seats.
 
-The Additional Use Grant in the license permits production use outright. If your legal
-team asks whether internal deployment triggers a source disclosure obligation, the answer
-is no. BUSL only restricts offering whodar to third parties as a hosted service.
+The Additional Use Grant in the license permits internal production use outright. If
+your legal team asks whether internal deployment triggers a source disclosure
+obligation, the answer is no. BUSL restricts two things only: offering whodar to third
+parties as a hosted service, and selling whodar-produced findings to third parties.
 
 Each released version converts to Apache License 2.0 on the earlier of 2030-08-03
 or the fourth anniversary of its first public distribution, and every restriction
@@ -21,9 +22,11 @@ on that version lapses then.
 ## You do need a commercial license to
 
 - Offer whodar to third parties as a hosted or managed service that provides its
-  primary functionality. This is the one restriction the BUSL text draws, and it
-  covers embedding whodar inside a hosted product you sell just as much as
-  hosting whodar directly.
+  primary functionality. That covers embedding whodar inside a hosted product
+  you sell just as much as hosting whodar directly.
+- Provide reports, assessments, or analyses produced with whodar to third
+  parties as part of any paid service or engagement. Running it on your own
+  organization is free; charging others for its findings is licensed work.
 - Redistribute whodar, modified or not, under different license terms. BUSL
   redistribution is permitted, but every copy and derivative stays under BUSL
   with the license displayed.
