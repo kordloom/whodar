@@ -28,6 +28,7 @@ into one index with `--merge`. People join across sources by email, or by an
 | Source       | Reads                                        | Credentials                  | Dated  |
 | ------------ | -------------------------------------------- | ---------------------------- | ------ |
 | `org-csv`    | Org chart CSV: names, titles, teams, topics  | none                         | no     |
+| `matters`    | Time-entry or matter CSV from a billing or practice system | none                         | no     |
 | `codeowners` | CODEOWNERS paths per owner                   | none                         | no     |
 | `git`        | Commit authors per changed path              | none                         | yes    |
 | `slack`      | Users, channels, message history             | `WHODAR_SLACK_TOKEN`         | yes    |
@@ -65,7 +66,7 @@ Builds or extends the index from one source per run.
 | `--embed`           | off       | all        | Generate embeddings via Ollama for semantic search. |
 | `--embed-model`     |           | all        | Ollama embed model (default `nomic-embed-text`). |
 | `--ollama-url`      | localhost | all        | Ollama base URL for `--embed`.                   |
-| `--file`            |           | org-csv, codeowners | Path to the CSV or CODEOWNERS file (or repo root). |
+| `--file`            |           | org-csv, matters, codeowners | Path to the CSV, time-entry export, or CODEOWNERS file (or repo root). |
 | `--episodes`        | off       | slack, github, jira, pagerduty | Record past conversations so `recall` can point back at them. |
 | `--archive`         | off       | slack      | Keep the words of each conversation, not just a link. Needs a Memory license and an encryption key; implies `--episodes`. |
 | `--max-episodes-per-channel` | `200` | slack | Conversation cap per channel.                   |

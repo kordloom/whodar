@@ -110,6 +110,7 @@ so pass --full periodically to re-read everything and recompact.
 
 Sources and their credentials:
   org-csv     --file people.csv                          none
+  matters     --file time-entries.csv                    none
   codeowners  --file CODEOWNERS|repo-root                none
   git         --repo-path DIR (repeatable)               none
   json        --file FILE or - for stdin                 none
@@ -191,6 +192,13 @@ Start with the org chart, then merge everything else onto it:
 					episodes: episodes || archive, maxEpisodes: maxEpisodes,
 					archive: archive, maxArchive: maxArchive, since: since,
 				})
+			case "matters":
+				if file == "" {
+					return fmt.Errorf("%w: --file (a time-entry or matter CSV export) is required for matters", ErrBadArgs)
+				}
+				ms := connector.NewMatters(file)
+				ms.Log = cmd.ErrOrStderr()
+				recs, err = ms.Fetch(cmd.Context())
 			case "codeowners":
 				if file == "" {
 					return fmt.Errorf("%w: --file (CODEOWNERS path or repo root) required for codeowners", ErrBadArgs)
@@ -271,7 +279,7 @@ Start with the org chart, then merge everything else onto it:
 	}
 	f := cmd.Flags()
 	f.Var(newOnceValue(&source, "org-csv"), "source",
-		"Source type: org-csv, slack, codeowners, github, jira, confluence, pagerduty, git, json, or graph.")
+		"Source type: org-csv, matters, slack, codeowners, github, jira, confluence, pagerduty, git, json, or graph.")
 	f.StringVar(&file, "file", "", "Path to the source file: the CSV for org-csv, the CODEOWNERS file or repo root for codeowners, the JSON array for json (- for stdin).")
 	f.BoolVar(&includePrivate, "include-private", false, "Ingest private Slack channels if policy allows.")
 	f.BoolVar(&slackJoin, "slack-join", false,

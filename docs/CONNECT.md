@@ -260,6 +260,30 @@ Verify:
 
     whodar ask "who is on call for search"
 
+## Matters (billing or practice-management CSV)  ·  2 minutes
+
+What you get: who billed time to which matter, in which practice area, doing
+what. Billing narratives are the richest expertise signal a professional-
+services firm has: people describe their own work, per matter, dated. Every
+practice-management and billing system exports this as CSV, so no API
+integration is needed.
+
+**1. Export time entries.** Any range works; the last year or two is plenty.
+Recognized columns, matched case-insensitively in any order: timekeeper email,
+timekeeper or attorney name, matter, practice area, narrative, date.
+
+**2. Connect:**
+
+    whodar index --source matters --file time-entries.csv --merge
+
+Try it on the sample first:
+
+    whodar index --source matters --file examples/matters.csv
+
+Practice areas and matter names count as stated expertise; narrative words are
+mined and only corroborate. Entries from the last 180 days feed recency, so
+current work outranks history.
+
 ## Microsoft Graph (org chart)  ·  2 minutes
 
 What you get: the live org chart, every person and their reporting line, read from

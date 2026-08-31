@@ -66,6 +66,15 @@ func connectSpecs() []sourceSpec {
 			},
 		},
 		{
+			id:      "matters",
+			title:   "Matters (billing CSV)",
+			summary: "Who billed time to which matter, in which practice area, doing what. The universal export every practice-management system produces.",
+			steps: []string{
+				"Export time entries or matters as CSV from your billing or practice system.",
+				"Recognized columns: timekeeper email, name, matter, practice area, narrative, date.",
+			},
+		},
+		{
 			id:      "codeowners",
 			title:   "CODEOWNERS",
 			summary: "Who owns which paths, straight from a repository's CODEOWNERS file.",
@@ -205,7 +214,7 @@ Run with a source to set up just that one. Use --status for a non-interactive
 report. Credentials are read from the environment, validated in memory, and never
 written to disk; connect prints the export line for you to save yourself.
 
-Sources: org-csv, codeowners, git, slack, github, jira, confluence, pagerduty, graph.`,
+Sources: org-csv, matters, codeowners, git, slack, github, jira, confluence, pagerduty, graph.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if status {
