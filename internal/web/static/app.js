@@ -469,15 +469,19 @@ function showProfile(p) {
   });
   const modal = el("div", "modal");
 
-  const name = el("div", "name", p.name || p.id);
   const close = el("button", "modal-close", "close");
   close.type = "button";
   close.addEventListener("click", closeProfile);
-  name.appendChild(close);
-  modal.appendChild(name);
 
+  const header = el("div", "modal-head");
+  header.appendChild(personAvatar(p.name || p.id || ""));
+  const who = el("div", "person-who");
+  who.appendChild(el("div", "name", p.name || p.id));
   const sub = [p.title, p.team, p.org].filter(Boolean).join(" · ");
-  if (sub) modal.appendChild(el("div", "sub", sub));
+  if (sub) who.appendChild(el("div", "sub", sub));
+  header.appendChild(who);
+  header.appendChild(close);
+  modal.appendChild(header);
 
   const rows = el("div", "details");
   const row = (label, value) => {
@@ -496,7 +500,19 @@ function showProfile(p) {
   }
   if (p.id && p.id !== p.email) row("Id", el("span", "detail-value", p.id));
   if (p.identities && p.identities.length) {
-    row("Also known as", el("span", "detail-value", p.identities.join(", ")));
+    const v = el("span", "detail-value detail-chips");
+    for (const raw of p.identities) {
+      const cut = String(raw).indexOf(":");
+      const chip = el("span", "chip chip-id");
+      if (cut > 0) {
+        chip.appendChild(el("span", "chip-src", String(raw).slice(0, cut)));
+        chip.appendChild(document.createTextNode(String(raw).slice(cut + 1)));
+      } else {
+        chip.textContent = String(raw);
+      }
+      v.appendChild(chip);
+    }
+    row("Also known as", v);
   }
   if (p.joins && p.joins.length) {
     const v = el("span", "detail-value detail-joins");
@@ -519,7 +535,9 @@ function showProfile(p) {
     row("Manager", el("span", "detail-value", p.manager.name || p.manager.email));
   }
   if (p.channels && p.channels.length) {
-    row("Active in", el("span", "detail-value", p.channels.map((c) => "#" + c).join(", ")));
+    const v = el("span", "detail-value detail-chips");
+    for (const c of p.channels) v.appendChild(el("span", "chip chip-channel", "#" + c));
+    row("Active in", v);
   }
   if (p.topics && p.topics.length) {
     const v = el("span", "detail-value detail-chips");
@@ -1049,7 +1067,14 @@ function dirTopicRow(t) {
   card.appendChild(el("span", "name", t.name));
   // Who to ask, without a second click. A count alone makes every row look the
   // same and answers nothing.
-  if (t.lead) card.appendChild(el("span", "sub", t.lead));
+  if (t.lead) {
+    // Say what the name is. A person's name floating mid-row is read as a
+    // label for the row rather than as the answer to "who leads this".
+    const lead = el("span", "sub row-lead");
+    lead.appendChild(el("span", "row-lead-label", "leads"));
+    lead.appendChild(document.createTextNode(t.lead));
+    card.appendChild(lead);
+  }
   const people = t.people + (t.people === 1 ? " person" : " people");
   // Nobody working on something several people know is the finding worth
   // seeing in a list, so it is said rather than left to arithmetic.

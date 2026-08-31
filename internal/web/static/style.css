@@ -863,6 +863,16 @@ section h2 {
   .nav-count { display: none; }
   .nav-group { display: none; }
   .nav-tool { margin-top: 0; }
+  /* A roster's controls wrap instead of running off the side, and its rows and
+     chips are allowed to shrink: a phone viewport is narrower than a filter
+     row's natural width, and without this the whole page scrolled sideways. */
+  .dir-controls { flex-wrap: wrap; }
+  .dir-controls > * { min-width: 0; }
+  #dir-filter { flex: 1 1 100%; }
+  .dir-row, .card { max-width: 100%; }
+  .dir-row .person-head { flex-wrap: wrap; }
+  .chips { flex-wrap: wrap; }
+  main > section { min-width: 0; }
   /* The theme dots and doc links live at the end of the sheet, not in the bar. */
   .side-foot { display: none; }
   body.menu-open .side-foot {
@@ -996,6 +1006,36 @@ section h2 {
 @media (max-width: 620px) {
   .person-contact { display: none; }
 }
+
+/* A roster row's lead: the label is quiet, the person is not. */
+.row-lead-label {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-right: 7px;
+}
+
+/* The profile header reads like a person: face, name, role, and the close
+   control at the end of the same row. */
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.modal-head .avatar { width: 44px; height: 44px; font-size: 15px; }
+.modal-head .name { margin: 0; }
+.modal-head .modal-close { margin-left: auto; flex: 0 0 auto; }
+
+/* An identity chip names its source quietly and its handle plainly: the join
+   across tools is the product working, so it should not read as a dump. */
+.chip-id .chip-src {
+  color: var(--muted);
+  margin-right: 5px;
+  opacity: 0.85;
+}
+.chip-channel { font-family: var(--mono); }
 
 /* Directory rows are denser than answer cards: a roster is scanned, not read. */
 .dir-row { padding: 12px 16px; }

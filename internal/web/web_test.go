@@ -1214,3 +1214,29 @@ func TestListsScanBeforeTheyRead(t *testing.T) {
 		t.Error("the clamped participant list cannot be expanded back")
 	}
 }
+
+// TestTheProfileReadsAsAPerson pins what a profile panel owes a reader: a
+// face like every other person surface, and the cross-tool identity join shown
+// as named sources rather than as a raw comma-separated dump, since that join
+// is the product working and not debug output.
+func TestTheProfileReadsAsAPerson(t *testing.T) {
+	t.Parallel()
+	js := readStatic(t, "app.js")
+	i := strings.Index(js, "function showProfile")
+	if i < 0 {
+		t.Fatal("showProfile is gone")
+	}
+	body := js[i:min(i+3000, len(js))]
+	if !strings.Contains(body, "personAvatar") {
+		t.Error("the profile panel shows no face")
+	}
+	if strings.Contains(body, `p.identities.join(", ")`) {
+		t.Error("identities render as a raw comma run again")
+	}
+	if !strings.Contains(body, "chip-id") {
+		t.Error("identities no longer render as source-named chips")
+	}
+	if strings.Contains(body, `p.channels.map((c) => "#" + c).join(", ")`) {
+		t.Error("channels render as a raw comma run again")
+	}
+}
