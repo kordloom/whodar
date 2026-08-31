@@ -173,3 +173,39 @@ func TestGetJSON(t *testing.T) {
 
 // errBadDecode marks the decode case in the table above.
 var errBadDecode = errors.New("decode")
+
+// TestNewClientOwnsItsTransport verifies NewClient does not hand back a
+// client on the shared default transport. Anything can purge that one:
+// every httptest.Server.Close calls CloseIdleConnections on it, which broke
+// an unrelated client's request and failed CI at random. The race itself
+// cannot be forced in a test, since the transport silently retries most
+// dropped connections, so the invariant is what gets held here.
+func TestNewClientOwnsItsTransport(t *testing.T) {
+	t.Parallel()
+	client := NewClient(time.Second)
+	if client.Transport == nil {
+		t.Fatal("client has no transport of its own")
+	}
+	if client.Transport == http.DefaultTransport {
+		t.Error("client rides the shared default transport")
+	}
+	if other := NewClient(time.Second); other.Transport == client.Transport {
+		t.Error("two clients share one transport")
+	}
+	if client.Timeout != time.Second {
+		t.Errorf("timeout = %v, want 1s", client.Timeout)
+	}
+
+	served := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, "ok")
+	}))
+	t.Cleanup(served.Close)
+	resp, err := client.Get(served.URL)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+}
