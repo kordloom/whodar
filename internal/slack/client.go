@@ -68,7 +68,7 @@ func New(token string, opts ...Option) *Client {
 		panic("slack: New requires a non-empty token")
 	}
 	c := &Client{
-		token: token, baseURL: defaultBaseURL, http: &http.Client{Timeout: apiTimeout},
+		token: token, baseURL: defaultBaseURL, http: httputil.NewClient(apiTimeout),
 		maxRetries: 3, historyRetries: 10,
 	}
 	for _, o := range opts {

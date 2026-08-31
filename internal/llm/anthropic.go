@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/kordloom/whodar/internal/httputil"
 )
 
 // Anthropic API defaults.
@@ -80,7 +82,7 @@ func NewAnthropic(apiKey string, opts ...AnthropicOption) *Anthropic {
 		apiKey:  apiKey,
 		model:   anthropicDefaultModel,
 		baseURL: anthropicBaseURL,
-		http:    &http.Client{Timeout: 120 * time.Second},
+		http:    httputil.NewClient(120 * time.Second),
 	}
 	for _, opt := range opts {
 		opt(a)

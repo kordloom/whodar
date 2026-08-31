@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/kordloom/whodar/internal/httputil"
 )
 
 // OpenAI-compatible API defaults.
@@ -77,7 +79,7 @@ func NewOpenAI(apiKey string, opts ...OpenAIOption) *OpenAI {
 		apiKey:  apiKey,
 		model:   openaiDefaultModel,
 		baseURL: openaiBaseURL,
-		http:    &http.Client{Timeout: 120 * time.Second},
+		http:    httputil.NewClient(120 * time.Second),
 	}
 	for _, opt := range opts {
 		opt(o)

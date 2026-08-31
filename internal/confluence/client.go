@@ -91,7 +91,7 @@ func New(siteURL, email, token string, opts ...Option) *Client {
 		searchPath: apiBaseCloud + "/content/search",
 		userPath:   apiBaseCloud + "/user/current",
 		pingPath:   apiBaseCloud + "/user/current",
-		http:       &http.Client{Timeout: apiTimeout},
+		http:       httputil.NewClient(apiTimeout),
 		maxRetries: 3,
 	}
 	for _, o := range opts {
@@ -119,7 +119,7 @@ func NewServer(siteURL, token string, opts ...Option) *Client {
 		searchPath: apiBaseServer + "/content/search",
 		userPath:   apiBaseServer + "/user/current",
 		pingPath:   apiBaseServer + "/space?limit=1",
-		http:       &http.Client{Timeout: apiTimeout},
+		http:       httputil.NewClient(apiTimeout),
 		maxRetries: 3,
 	}
 	for _, o := range opts {

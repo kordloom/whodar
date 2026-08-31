@@ -60,7 +60,7 @@ func New(token string, opts ...Option) *Client {
 	if token == "" {
 		panic("pagerduty: New requires a non-empty token")
 	}
-	c := &Client{token: token, baseURL: defaultBaseURL, http: &http.Client{Timeout: apiTimeout}, maxRetries: 3}
+	c := &Client{token: token, baseURL: defaultBaseURL, http: httputil.NewClient(apiTimeout), maxRetries: 3}
 	for _, o := range opts {
 		o(c)
 	}

@@ -182,3 +182,17 @@ func GetJSON(ctx context.Context, d Doer, retries int, endpoint string, out any,
 	}
 	return nil
 }
+
+// NewClient returns an http.Client with the given timeout and its own
+// connection pool. Sharing http.DefaultTransport looks harmless until
+// something purges it: closing any httptest server calls
+// CloseIdleConnections on the default transport, which breaks another
+// client's request mid-flight when tests run in parallel. A private
+// transport keeps every client's connections its own.
+func NewClient(timeout time.Duration) *http.Client {
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return &http.Client{Timeout: timeout}
+	}
+	return &http.Client{Timeout: timeout, Transport: transport.Clone()}
+}

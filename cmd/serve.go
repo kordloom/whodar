@@ -20,6 +20,7 @@ import (
 	"github.com/kordloom/whodar/internal/attest"
 	"github.com/kordloom/whodar/internal/episode"
 	"github.com/kordloom/whodar/internal/feedback"
+	"github.com/kordloom/whodar/internal/httputil"
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/policy"
@@ -528,7 +529,7 @@ func ollamaUp(ctx context.Context, base string) bool {
 	if err != nil {
 		return false
 	}
-	client := &http.Client{Timeout: time.Second}
+	client := httputil.NewClient(time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return false

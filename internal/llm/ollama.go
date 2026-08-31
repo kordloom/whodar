@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/kordloom/whodar/internal/httputil"
 )
 
 // defaultBaseURL is the local Ollama server address.
@@ -69,7 +71,7 @@ const chatTimeout = 300 * time.Second
 func New(model string, opts ...Option) *Ollama {
 	o := &Ollama{
 		baseURL: defaultBaseURL, model: model, embedModel: defaultEmbedModel,
-		http: &http.Client{Timeout: chatTimeout},
+		http: httputil.NewClient(chatTimeout),
 	}
 	if o.model == "" {
 		o.model = defaultModel

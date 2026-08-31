@@ -128,9 +128,9 @@ func TestOwningOneFileIsNotHoldingAnArea(t *testing.T) {
 func TestHiddenSegmentsNameNoSubject(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		Path     string
-		WantHas  []string
-		WantNot  []string
+		Path    string
+		WantHas []string
+		WantNot []string
 	}{{ // Test 0: The hidden container yields nothing; its child names the area.
 		Path: ".github/workflows/release.yml", WantHas: []string{"workflows"}, WantNot: []string{"github"},
 	}, { // Test 1: A real directory named github still names its subject.

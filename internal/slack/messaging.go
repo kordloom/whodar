@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/kordloom/whodar/internal/httputil"
 )
 
 // okResp decodes a response that carries only the standard envelope.
@@ -111,7 +113,7 @@ func respond(ctx context.Context, responseURL, text, responseType, allowedPrefix
 		return fmt.Errorf("slack: respond: new request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := httputil.NewClient(10 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("slack: respond: %w", err)
