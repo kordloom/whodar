@@ -944,6 +944,96 @@ section h2 {
   .side-menu-btn { display: none; }
 }
 
+/* Person cards: a head row that reads as a person, then the evidence. The
+   avatar carries no information the row lacks; it exists so a list of answers
+   scans as people rather than as records. */
+.person-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.avatar {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 13px var(--sans, inherit);
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+.person-who { min-width: 0; flex: 1 1 auto; }
+.person-who .name { margin: 0; }
+.person-who .sub { margin: 2px 0 0; }
+.person-contact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding-left: 12px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.person-mail {
+  font: 12px var(--mono);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The copy button rides quiet until the card is under the pointer, so five
+   cards do not read as five buttons. Touch devices have no hover, so it stays
+   visible there. */
+.person-contact .copy { opacity: 0; transition: opacity 0.12s ease; }
+.person-card:hover .person-contact .copy,
+.person-contact .copy:focus-visible { opacity: 1; }
+@media (hover: none) {
+  .person-contact .copy { opacity: 1; }
+}
+@media (max-width: 620px) {
+  .person-contact { display: none; }
+}
+
+/* Exposure summary: the numbers a reader came for, before the prose. */
+.exp-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 10px;
+  margin: 18px 0 26px;
+}
+.exp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.exp-card:hover { transform: translateY(-1px); border-color: var(--accent); }
+.exp-card-n { font: 700 26px var(--sans, inherit); line-height: 1; }
+.exp-card-l {
+  font: 600 10.5px var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.exp-card-crit { border-left-color: var(--danger, #f87171); }
+.exp-card-crit .exp-card-n { color: var(--danger, #f87171); }
+.exp-card-elev { border-left-color: var(--warn, #fbbf24); }
+.exp-card-elev .exp-card-n { color: var(--warn, #fbbf24); }
+.exp-card-warn { border-left-color: var(--warn, #fbbf24); }
+.exp-card-drift { border-left-color: var(--accent); }
+.exp-card-drift .exp-card-n { color: var(--accent); }
+
 /* Theme switcher (sidebar footer) */
 .side-themes { display: flex; align-items: center; gap: 8px; padding: 12px 2px 6px; }
 .side-themes .oc-sw { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border); cursor: pointer; padding: 0; transition: transform 0.1s ease; }

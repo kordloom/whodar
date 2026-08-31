@@ -314,24 +314,62 @@ function rankBadge(i) {
   return el("span", "rank", String(i + 1).padStart(2, "0"));
 }
 
+// initials reduces a name to one or two letters for an avatar.
+function initials(name) {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+}
+
+// avatarHue derives a stable hue from a name, so the same person is always the
+// same color without storing anything.
+function avatarHue(name) {
+  let h = 0;
+  for (let i = 0; i < (name || "").length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+  return h;
+}
+
+// personAvatar builds the round initials mark. It carries no information the
+// row does not already state; it exists so a list of people scans as people.
+function personAvatar(name) {
+  const av = el("div", "avatar", initials(name));
+  const hue = avatarHue(name || "");
+  av.style.background = "hsl(" + hue + " 42% 22%)";
+  av.style.color = "hsl(" + hue + " 70% 78%)";
+  return av;
+}
+
 function personCard(p, query, i) {
-  const card = el("div", "card");
+  const card = el("div", "card person-card");
   card.appendChild(rankBadge(i));
+
+  const head = el("div", "person-head");
+  head.appendChild(personAvatar(p.name || p.email || ""));
+  const who = el("div", "person-who");
   const name = el("div", "name");
   const toggle = el("button", "name-toggle", p.name || p.email || "unknown");
   toggle.type = "button";
   toggle.title = "Show everything whodar knows";
   toggle.addEventListener("click", () => openProfile(p.id || p.email));
   name.appendChild(toggle);
-  const copyText = ((p.name || "") + (p.email ? " <" + p.email + ">" : "")).trim();
-  if (copyText) name.appendChild(copyButton(copyText));
   const badge = strengthBadge(p.strength);
   if (badge) name.appendChild(badge);
-  card.appendChild(name);
-
+  who.appendChild(name);
   const sub = [p.title, p.team].filter(Boolean).join(" · ");
-  if (sub) card.appendChild(el("div", "sub", sub));
-  if (p.email) card.appendChild(el("div", "sub", p.email));
+  if (sub) who.appendChild(el("div", "sub", sub));
+  head.appendChild(who);
+
+  // Contact sits at the end of the head row: the email and its copy button
+  // together, so the row answers "who" on the left and "reach them" on the
+  // right instead of stacking three lines of the same person.
+  if (p.email) {
+    const contact = el("div", "person-contact");
+    contact.appendChild(el("span", "person-mail", p.email));
+    const copyText = ((p.name || "") + " <" + p.email + ">").trim();
+    contact.appendChild(copyButton(copyText));
+    head.appendChild(contact);
+  }
+  card.appendChild(head);
   chips(card, p.reasons);
   if (query && p.id) card.appendChild(voteButtons(query, { person: p.id }));
   return card;
@@ -1275,10 +1313,40 @@ async function renderExposure() {
   const risk = data.risk || [];
   const drift = data.drift || [];
   const regions = data.regions || [];
+  const spans = data.spans || [];
   const crit = risk.filter((r) => r.level === "critical").length;
+  const elev = risk.filter((r) => r.level === "elevated").length;
   expStatus.textContent =
-    risk.length + " topics scored, " + crit + " critical, " + drift.length + " drifting" +
-    (data.evaluation ? " \u00b7 evaluation, unlicensed" : "");
+    risk.length + " topics scored" + (data.evaluation ? " \u00b7 evaluation, unlicensed" : "");
+
+  // The four numbers first, each a way into the section that explains it. A
+  // reader who came to find out whether they have a problem should not have to
+  // read three paragraphs to see the count.
+  const cards = document.getElementById("exp-cards");
+  if (cards) {
+    cards.replaceChildren();
+    const stat = (n, label, tone, target) => {
+      const c = el("button", "exp-card exp-card-" + tone);
+      c.type = "button";
+      c.appendChild(el("span", "exp-card-n", String(n)));
+      c.appendChild(el("span", "exp-card-l", label));
+      c.addEventListener("click", () => {
+        const to = document.getElementById(target);
+        if (to) to.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      return c;
+    };
+    cards.appendChild(stat(crit, crit === 1 ? "critical subject" : "critical subjects",
+      "crit", "exp-sec-risk"));
+    cards.appendChild(stat(elev, "elevated", "elev", "exp-sec-risk"));
+    cards.appendChild(stat(regions.length,
+      regions.length === 1 ? "joined body of work" : "joined bodies of work",
+      "warn", "exp-sec-regions"));
+    cards.appendChild(stat(spans.length,
+      spans.length === 1 ? "one-person connection" : "one-person connections",
+      "warn", "exp-sec-spans"));
+    cards.appendChild(stat(drift.length, "ownership drifted", "drift", "exp-sec-drift"));
+  }
 
   if (expRegions) {
     if (regions.length) {

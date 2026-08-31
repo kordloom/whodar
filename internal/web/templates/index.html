@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>whodar</title>
   <script src="/static/theme.js?v=10"></script>
-  <link rel="stylesheet" href="/static/style.css?v=29">
+  <link rel="stylesheet" href="/static/style.css?v=30">
   <link rel="icon" type="image/png" href="/static/whodar-logo.png">
 </head>
 <body>
@@ -184,24 +184,23 @@
         <p class="exp-lede">Deterministic over the graph, no model required. A topic is
           critical when one person holds most of it, elevated when two do.</p>
 
-        <h3 class="exp-head">Joined work</h3>
-        <p class="exp-note">Subjects that get worked on together where the same person leads
-          every one. Heavier than a concentrated subject on its own: whoever takes it over
-          has to learn the whole of it, and a list of subjects one at a time never shows
-          that.</p>
+        <div id="exp-cards" class="exp-cards"></div>
+
+        <h3 class="exp-head" id="exp-sec-regions">Joined work</h3>
+        <p class="exp-note">Subjects worked on together where the same person leads every
+          one. Heavier than one concentrated subject: whoever takes it over has to learn
+          the whole of it.</p>
         <div id="exp-regions" class="exp-list"></div>
 
-        <h3 class="exp-head">One-person connections</h3>
-        <p class="exp-note">Subjects only one person has ever worked across. They have their
-          own experts, so counting experts per subject never shows this: what rests on one
-          person is not any of the subjects but the knowledge that they belong together, and
-          whoever picks one up afterwards has no reason to look at the others. Where the
-          crossings join up they are shown as the one body of work they are.</p>
+        <h3 class="exp-head" id="exp-sec-spans">One-person connections</h3>
+        <p class="exp-note">Subjects only one person has ever worked across. Both sides have
+          their own experts, so counting experts per subject never shows it: what rests on
+          one person is the knowledge that they belong together.</p>
         <div id="exp-spans" class="exp-list"></div>
 
-        <h3 class="exp-head">Knowledge concentration</h3>
+        <h3 class="exp-head" id="exp-sec-risk">Knowledge concentration</h3>
         <div id="exp-risk" class="exp-list"></div>
-        <h3 class="exp-head">What walks out the door</h3>
+        <h3 class="exp-head" id="exp-sec-drift">What walks out the door</h3>
         <p class="exp-note">Name a person and see what loses its strongest expert the day
           they leave. Click any expert above to check them.</p>
         <div class="exp-dep-controls">
@@ -266,7 +265,7 @@
   </div>
 
   <script src="/static/portable.js?v=1"></script>
-  <script src="/static/app.js?v=31"></script>
+  <script src="/static/app.js?v=34"></script>
   <script src="/static/story.js?v=2"></script>
 </body>
 </html>
