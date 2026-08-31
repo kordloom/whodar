@@ -1173,3 +1173,44 @@ func TestTheStoryWalksAllThreeQuestions(t *testing.T) {
 		t.Error("the story cannot be escaped")
 	}
 }
+
+// TestListsScanBeforeTheyRead pins the density decisions a directory and a
+// recall list depend on. Both regressed into walls once: a roster of hundreds
+// with two copy buttons per row, and conversation cards where thirty
+// participant names buried the conversation itself.
+func TestListsScanBeforeTheyRead(t *testing.T) {
+	t.Parallel()
+	js := readStatic(t, "app.js")
+
+	// Test 0: People carry a face everywhere they are listed, so the answer
+	// list and the roster read as the same product.
+	if !strings.Contains(js, "function personAvatar") {
+		t.Error("the avatar helper is gone")
+	}
+	for _, fn := range []string{"function personCard", "function dirPersonRow"} {
+		i := strings.Index(js, fn)
+		if i < 0 {
+			t.Fatalf("%s is gone", fn)
+		}
+		body := js[i:min(i+1400, len(js))]
+		if !strings.Contains(body, "personAvatar") {
+			t.Errorf("%s no longer shows a face", fn)
+		}
+	}
+
+	// Test 1: The roster row keeps one copy control, not one per field.
+	i := strings.Index(js, "function dirPersonRow")
+	row := js[i:min(i+1400, len(js))]
+	if n := strings.Count(row, "copyButton("); n != 1 {
+		t.Errorf("roster row has %d copy buttons, want exactly 1", n)
+	}
+
+	// Test 2: A long participant list is summarized, with the rest one click
+	// away rather than gone.
+	if !strings.Contains(js, "recallPeopleLine") || !strings.Contains(js, "others") {
+		t.Error("recall no longer clamps its participant list")
+	}
+	if !strings.Contains(js, "show fewer") {
+		t.Error("the clamped participant list cannot be expanded back")
+	}
+}

@@ -960,30 +960,39 @@ function directoryRow(view, r) {
   }
 }
 
+// dirPersonRow is one person in the roster. A directory is read by scanning
+// hundreds of rows, not by studying one, so this is a dense row rather than a
+// card: face, who they are, what they know, and a copy that stays out of the
+// way until the row is under the pointer.
 function dirPersonRow(p) {
-  const card = el("div", "card");
+  const card = el("div", "card person-card dir-row");
+  const head = el("div", "person-head");
+  head.appendChild(personAvatar(p.name || p.id || ""));
+
+  const who = el("div", "person-who");
   const name = el("div", "name");
   const toggle = el("button", "name-toggle", p.name || p.id);
   toggle.type = "button";
   toggle.title = "Show everything whodar knows";
   toggle.addEventListener("click", () => openProfile(p.id));
   name.appendChild(toggle);
-  card.appendChild(name);
+  who.appendChild(name);
   const sub = [p.title, p.team, p.org].filter(Boolean).join(" · ");
-  if (sub) card.appendChild(el("div", "sub", sub));
-  if (p.email) {
-    const line = el("div", "sub", p.email);
-    line.appendChild(copyButton(p.email, "copy email"));
-    card.appendChild(line);
-  }
+  if (sub) who.appendChild(el("div", "sub", sub));
+  head.appendChild(who);
+
+  const contact = el("div", "person-contact");
+  if (p.email) contact.appendChild(el("span", "person-mail", p.email));
   // Everything whodar knows about them, in one paste: for a ticket, a handover
   // note, or the message you are about to write asking for help.
-  name.appendChild(copyButton(() => [
+  contact.appendChild(copyButton(() => [
     p.name || p.id,
     [p.title, p.team, p.org].filter(Boolean).join(" · "),
     p.email || "",
     (p.topics || []).length ? "Knows: " + (p.topics || []).join(", ") : "",
-  ].filter(Boolean).join("\n"), "copy all"));
+  ].filter(Boolean).join("\n"), "copy"));
+  head.appendChild(contact);
+  card.appendChild(head);
   chips(card, p.topics);
   return card;
 }
@@ -1242,7 +1251,7 @@ function recallCard(ep) {
     const place = ep.kind === "thread" || ep.kind === "window" ? "#" + ep.place : ep.place;
     card.appendChild(el("h3", "rc-title", place));
   }
-  card.appendChild(el("p", "rc-people", recallPeople(ep)));
+  card.appendChild(recallPeopleLine(ep));
 
   // ep.matched carries the scorer's stems, and "bill retri" is tokenizer
   // underwear no reader should see. The card's title and participants already
@@ -1282,12 +1291,47 @@ function recallCard(ep) {
   return card;
 }
 
-// recallPeople names who else was in a conversation.
+// recallNames is everyone else in a conversation, in order.
+function recallNames(ep) {
+  return (ep.people || []).map((p) => p.name || p.email || p.id).filter(Boolean);
+}
+
+// recallPeople names who else was in a conversation. A busy channel thread has
+// thirty participants, and printing all of them buries the conversation the
+// card is about, so it names the first few and counts the rest. The full list
+// is one click away rather than gone.
 function recallPeople(ep) {
-  const names = (ep.people || []).map((p) => p.name || p.email || p.id).filter(Boolean);
+  const names = recallNames(ep);
   if (!names.length) return "On your own";
   if (names.length === 1) return "With " + names[0];
-  return "With " + names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+  if (names.length <= 4) {
+    return "With " + names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+  }
+  return "With " + names.slice(0, 3).join(", ") + " and " + (names.length - 3) + " others";
+}
+
+// recallPeopleLine builds the participants line, with the rest revealed in
+// place when there are more than the summary names.
+function recallPeopleLine(ep) {
+  const names = recallNames(ep);
+  const line = el("div", "rc-people", recallPeople(ep));
+  if (names.length <= 4) return line;
+  const more = el("button", "rc-more", "show all " + names.length);
+  more.type = "button";
+  let open = false;
+  more.addEventListener("click", () => {
+    open = !open;
+    line.firstChild.textContent = open
+      ? "With " + names.slice(0, -1).join(", ") + " and " + names[names.length - 1]
+      : recallPeople(ep);
+    more.textContent = open ? "show fewer" : "show all " + names.length;
+  });
+  const wrap = el("div", "rc-people-wrap");
+  const text = el("span", "", line.textContent);
+  line.replaceChildren(text);
+  wrap.appendChild(line);
+  wrap.appendChild(more);
+  return wrap;
 }
 
 
