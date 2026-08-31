@@ -371,7 +371,7 @@ function personCard(p, query, i) {
   }
   card.appendChild(head);
   chips(card, p.reasons);
-  if (query && p.id) card.appendChild(voteButtons(query, { person: p.id }));
+  if (query && p.id && document.body.dataset.voting) card.appendChild(voteButtons(query, { person: p.id }));
   return card;
 }
 
@@ -692,7 +692,7 @@ function channelCard(c, query, i) {
     card.appendChild(link);
   }
   chips(card, c.reasons);
-  if (query && c.name) card.appendChild(voteButtons(query, { channel: c.name }));
+  if (query && c.name && document.body.dataset.voting) card.appendChild(voteButtons(query, { channel: c.name }));
   return card;
 }
 

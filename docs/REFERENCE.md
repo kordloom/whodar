@@ -601,7 +601,11 @@ Runs the local web UI over the same engine.
 | `--feedback`    | `normal`         | How hard votes move ranking: `off`, `low`, `normal`, `high`. |
 
 Queries are shareable links: `/?q=who+owns+billing` runs on load. Every
-result has feedback buttons.
+result has feedback buttons, except on a public server: there anyone could
+vote, and votes re-rank the shared index, so a server marked public records
+no votes and shows no buttons. Connections are bounded (30s read, 90s
+write, 2min idle) so slow or stalled clients cannot pile up on a shared
+box.
 
 ## whodar demo
 

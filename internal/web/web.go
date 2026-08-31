@@ -312,9 +312,12 @@ func indexHandler(tmpl *template.Template, cfg Config) http.HandlerFunc {
 		CLI bool
 		// Brief reports whether the knowledge-risk brief can be downloaded.
 		Brief bool
+		// Voting reports whether the server records feedback votes.
+		Voting bool
 	}{
 		Version: cfg.Version, Recall: cfg.Recall != nil, RecallMe: cfg.RecallMe,
 		Exposure: cfg.Exposure != nil, CLI: cfg.CLI != nil, Brief: cfg.Brief != nil,
+		Voting: cfg.Feedback != nil,
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -571,8 +574,9 @@ func relatedHandler(fn RelatedFunc) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "name the topic with ?topic=")
 			return
 		}
+		const maxLimit = 50
 		limit := 8
-		if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 {
+		if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 && n <= maxLimit {
 			limit = n
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -652,8 +656,9 @@ func searchHandler(search SearchFunc) http.HandlerFunc {
 		if tooLong(w, q) {
 			return
 		}
+		const maxLimit = 50
 		limit := 20
-		if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 {
+		if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 && n <= maxLimit {
 			limit = n
 		}
 		w.Header().Set("Content-Type", "application/json")

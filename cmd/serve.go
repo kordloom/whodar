@@ -170,8 +170,10 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 		}
 		return res.Resolve(ctx, query, limit)
 	}
+	// A public server takes votes from anyone, and every vote re-ranks the
+	// shared index and lands on disk, so voting stays off there.
 	var vote web.FeedbackFunc
-	if store != nil {
+	if store != nil && !cfg.public {
 		vote = func(e feedback.Entry) error {
 			if err := store.Add(e); err != nil {
 				return err
@@ -242,7 +244,16 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
+	// The write timeout leaves room for llm-mode asks, which wait on a local
+	// model; the other bounds keep slow or idle clients from holding
+	// connections open on a shared box.
+	srv := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      90 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+	}
 
 	// Bind before announcing. Serving is not worth printing until the port is
 	// actually held, and a bind failure underneath a success line reads as a

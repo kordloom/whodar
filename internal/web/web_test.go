@@ -1240,3 +1240,60 @@ func TestTheProfileReadsAsAPerson(t *testing.T) {
 		t.Error("channels render as a raw comma run again")
 	}
 }
+
+// TestVotingFollowsTheFeedbackRoute verifies the page only offers voting when
+// the server actually records votes, so a public demo shows no dead buttons.
+func TestVotingFollowsTheFeedbackRoute(t *testing.T) {
+	t.Parallel()
+	ask := func(_ context.Context, _, _, _ string, _ int) (resolve.Answer, error) {
+		return resolve.Answer{}, nil
+	}
+	tests := []struct {
+		Vote       FeedbackFunc
+		WantMarker bool
+	}{{ // Test 0: No feedback route, no voting marker.
+		Vote: nil, WantMarker: false,
+	}, { // Test 1: A feedback route stamps the marker.
+		Vote: func(feedback.Entry) error { return nil }, WantMarker: true,
+	}}
+	for testNum, test := range tests {
+		t.Run(fmt.Sprintf("test %d", testNum), func(t *testing.T) {
+			t.Parallel()
+			h, err := Handler(Config{Ask: ask, Version: "test", Feedback: test.Vote})
+			if err != nil {
+				t.Fatalf("Handler: %v", err)
+			}
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+			if got := strings.Contains(rec.Body.String(), "data-voting"); got != test.WantMarker {
+				t.Errorf("data-voting present = %v, want %v", got, test.WantMarker)
+			}
+		})
+	}
+}
+
+// TestRelatedClampsTheLimit verifies an oversized limit falls back to the
+// default instead of reaching the resolver.
+func TestRelatedClampsTheLimit(t *testing.T) {
+	t.Parallel()
+	ask := func(_ context.Context, _, _, _ string, _ int) (resolve.Answer, error) {
+		return resolve.Answer{}, nil
+	}
+	got := 0
+	h, err := Handler(Config{Ask: ask, Version: "test",
+		Related: func(_ string, limit int) []resolve.TopicRelation {
+			got = limit
+			return nil
+		}})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/related?topic=x&limit=999999", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if got != 8 {
+		t.Errorf("resolver limit = %d, want the default 8", got)
+	}
+}
