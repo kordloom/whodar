@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -229,12 +230,7 @@ func (s *Slack) Fetch(ctx context.Context) ([]Record, error) {
 
 		chRec, authorText, authorLatest := channelRecord(ch, msgs, byID, workspaceURL)
 		records = append(records, chRec)
-		for pid, text := range authorText {
-			records = append(records, Record{
-				Kind: KindPerson, Source: "slack", Weight: 1, PersonID: pid, Text: text,
-				Time: authorLatest[pid],
-			})
-		}
+		records = append(records, authorTextRecords(authorText, authorLatest)...)
 		if s.opts.Episodes {
 			eps := collectEpisodes(ch, msgs, episodeOpts{
 				byID:         byID,
@@ -359,6 +355,26 @@ func channelRecord(
 		Time:    latest,
 	}
 	return rec, authorText, authorLatest
+}
+
+// authorTextRecords turns per-author mined text into person records, in
+// sorted author order. Map order here was the one nondeterminism in a Slack
+// read: same workspace, differently ordered records, and byte-for-byte
+// reproducibility is a product claim.
+func authorTextRecords(authorText map[string]string, authorLatest map[string]time.Time) []Record {
+	pids := make([]string, 0, len(authorText))
+	for pid := range authorText {
+		pids = append(pids, pid)
+	}
+	sort.Strings(pids)
+	out := make([]Record, 0, len(pids))
+	for _, pid := range pids {
+		out = append(out, Record{
+			Kind: KindPerson, Source: "slack", Weight: 1, PersonID: pid, Text: authorText[pid],
+			Time: authorLatest[pid],
+		})
+	}
+	return out
 }
 
 // slackTime parses a Slack epoch timestamp such as "1712345678.000100",

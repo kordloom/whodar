@@ -122,7 +122,8 @@ func (p *PagerDuty) Fetch(ctx context.Context) ([]Record, error) {
 	}
 
 	records := make([]Record, 0, len(counts))
-	for key, m := range counts {
+	for _, key := range util.SortedKeys(counts) {
+		m := counts[key]
 		// PagerDuty has no label field: every topic here is mined from a service
 		// name or description, so all of them are weak by construction.
 		rec := pagerdutyPersonRecord(users[key], nil)

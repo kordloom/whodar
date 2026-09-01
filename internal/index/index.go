@@ -193,7 +193,13 @@ func (ix *Index) decay(t time.Time) float64 {
 	if t.IsZero() || ix.halfLife <= 0 {
 		return 1
 	}
-	age := ix.now().Sub(t)
+	// Age is measured from the top of the day, not the instant of the build.
+	// Half-lives are weeks to months, so a sub-day difference moves no
+	// ranking, and with the instant in the exponent two builds of one input a
+	// second apart differed in the last bits of every weight. Reproducibility
+	// is a product claim: the same input must build the same index, byte for
+	// byte, all day.
+	age := ix.now().UTC().Truncate(24 * time.Hour).Sub(t)
 	if age <= 0 {
 		return 1
 	}

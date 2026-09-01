@@ -8,7 +8,7 @@ import (
 )
 
 // evalNow is the pinned clock for decay tests.
-var evalNow = time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC) //nolint:gochecknoglobals // Not modified, simplifies testing.
+var evalNow = time.Date(2026, 7, 5, 0, 0, 0, 0, time.UTC) //nolint:gochecknoglobals // Not modified, simplifies testing.
 
 // recencyIndex builds an index with a pinned clock over one old and one recent
 // terraform owner with identical weight, plus an old and a recent channel.

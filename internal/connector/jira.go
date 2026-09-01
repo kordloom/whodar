@@ -161,7 +161,8 @@ func (j *Jira) Fetch(ctx context.Context) ([]Record, error) {
 		ties.note(stated, who, is.Fields.Project.Key)
 	}
 	records := make([]Record, 0, len(counts))
-	for key, c := range counts {
+	for _, key := range util.SortedKeys(counts) {
+		c := counts[key]
 		rec := jiraPersonRecord(users[key], nil)
 		rec.Topics, rec.WeakTopics = splitCurated(expandTopics(c), curated)
 		rec.Time = latest[key]

@@ -193,7 +193,8 @@ func (g *GitHistory) Fetch(ctx context.Context) ([]Record, error) {
 	// Fixing it means carrying a time per subject rather than per author; until
 	// then, a long --git-since-days buys coverage at the cost of ranking.
 	records := make([]Record, 0, len(counts))
-	for email, c := range counts {
+	for _, email := range util.SortedKeys(counts) {
+		c := counts[email]
 		rec := Record{
 			Kind:   KindPerson,
 			Source: "git",

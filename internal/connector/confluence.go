@@ -162,7 +162,8 @@ func (c *Confluence) Fetch(ctx context.Context) ([]Record, error) {
 	}
 
 	records := make([]Record, 0, len(counts))
-	for key, m := range counts {
+	for _, key := range util.SortedKeys(counts) {
+		m := counts[key]
 		rec := confluencePersonRecord(users[key], nil)
 		rec.Topics, rec.WeakTopics = splitCurated(expandTopics(m), curated)
 		rec.Time = latest[key]
