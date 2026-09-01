@@ -45,6 +45,7 @@ func TestScale(t *testing.T) {
 		{"department", Spec{People: 250, Channels: 60, Topics: 16, ThreadsPerChannel: 60, ChatterPerChannel: 400}},
 		{"company", Spec{People: 1000, Channels: 150, Topics: 16, ThreadsPerChannel: 100, ChatterPerChannel: 600}},
 		{"enterprise", Spec{People: 5000, Channels: 400, Topics: 16, ThreadsPerChannel: 120, ChatterPerChannel: 800}},
+		{"huge", Spec{People: 10000, Channels: 1000, Topics: 16, ThreadsPerChannel: 150, ChatterPerChannel: 800}},
 	}
 	t.Logf("%-11s %7s %7s %7s %8s %9s %9s %8s %8s %8s %8s %9s %8s %8s",
 		"size", "people", "convos", "terms", "ingest", "index", "estore", "cold", "ask", "recall",
