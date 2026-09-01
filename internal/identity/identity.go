@@ -180,3 +180,36 @@ func rank(id model.ID) int {
 func normalize(id model.ID) model.ID {
 	return model.ID(strings.ToLower(strings.TrimSpace(string(id))))
 }
+
+// Forget removes a set of identifiers from the resolver entirely, rebuilding
+// the union-find over what remains. A purged person's identifiers must not
+// survive as aliases in a saved index, which is where a purge would otherwise
+// quietly keep the one fact being erased: that these identities were one
+// person.
+func (r *Resolver) Forget(gone map[model.ID]bool) {
+	if len(gone) == 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	// Collect the surviving sets before touching anything, since find mutates.
+	groups := make(map[model.ID][]model.ID)
+	for id := range r.parent {
+		if gone[id] {
+			continue
+		}
+		root := r.find(id)
+		key := r.rep[root]
+		if gone[key] {
+			key = root
+		}
+		groups[key] = append(groups[key], id)
+	}
+	r.parent = make(map[model.ID]model.ID)
+	r.rep = make(map[model.ID]model.ID)
+	for _, ids := range groups {
+		for i := 1; i < len(ids); i++ {
+			r.union(ids[0], ids[i])
+		}
+	}
+}

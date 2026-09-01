@@ -108,7 +108,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(
 		newIndexCmd(opts), newConnectCmd(opts), newAskCmd(opts), newRecallCmd(opts), newNearCmd(opts),
 		newDirectoryCmd(opts), newIdentityCmd(opts), newSearchCmd(opts), newRiskCmd(opts), newOwnershipCmd(opts), newRelatedCmd(opts), newAttestCmd(opts), newStatusCmd(opts), newDoctorCmd(opts), newServeCmd(opts), newBotCmd(opts), newEvalCmd(opts),
-		newFeedbackCmd(opts), newFactCmd(opts), newDemoCmd(opts), newMCPCmd(opts), newVaultCmd(opts),
+		newFeedbackCmd(opts), newFactCmd(opts), newForgetCmd(opts), newDemoCmd(opts), newMCPCmd(opts), newVaultCmd(opts),
 		newRefreshCmd(opts), newScheduleCmd(opts),
 		newArchiveCmd(opts), newLicenseCmd(opts), newVersionCmd())
 	return root
