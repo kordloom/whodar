@@ -84,6 +84,7 @@ func TestAutoJoin(t *testing.T) {
 			}
 			if joinedPerson == nil {
 				t.Fatalf("person %s missing after join: %v", test.WantOn, peopleIDs(ix))
+				return
 			}
 			if !slices.Contains(joinedPerson.Identities, model.ID(test.WantAlias)) {
 				t.Errorf("identities = %v, want containing %s", joinedPerson.Identities, test.WantAlias)
@@ -339,6 +340,7 @@ func TestAutoJoinLinksHandleToItsOwnDomain(t *testing.T) {
 			}
 			if got == nil {
 				t.Fatal("the handle was left unlinked, though one address sits on its domain")
+				return
 			}
 			if got.Canonical != test.WantTo {
 				t.Errorf("joined to %s, want %s", got.Canonical, test.WantTo)
@@ -414,6 +416,7 @@ func TestAutoJoinLinksShortenedHandles(t *testing.T) {
 			}
 			if got == nil {
 				t.Fatal("the handle was left unlinked, though it is that person's name shortened")
+				return
 			}
 			if got.Canonical != test.WantTo {
 				t.Errorf("joined to %s, want %s", got.Canonical, test.WantTo)

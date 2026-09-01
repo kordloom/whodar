@@ -136,6 +136,7 @@ func TestDirectoryRoutesSquadsToTeams(t *testing.T) {
 	}
 	if squad == nil {
 		t.Fatalf("squad missing from teams: %+v", d.Teams)
+		return
 	}
 	if squad.People != 0 {
 		t.Errorf("squad membership = %d, want 0 for unknown", squad.People)

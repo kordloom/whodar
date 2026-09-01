@@ -72,6 +72,7 @@ func TestSlackFetch(t *testing.T) {
 
 	if channel == nil {
 		t.Fatal("no channel record emitted")
+		return
 	}
 	if channel.Name != "billing" || channel.Title != "retries and dunning" {
 		t.Errorf("channel = %+v, want billing / retries and dunning", channel)

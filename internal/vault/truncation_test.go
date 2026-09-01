@@ -44,6 +44,7 @@ func TestTruncatedFileIsRefused(t *testing.T) {
 			got, err := c.Decode(cut)
 			if err == nil {
 				t.Fatalf("a file cut to %d bytes decoded to %q", test.Keep, got)
+				return
 			}
 			if got != nil {
 				t.Errorf("decode returned %d bytes alongside its error, want none", len(got))

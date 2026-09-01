@@ -44,6 +44,7 @@ func TestJSONFetch(t *testing.T) {
 			if test.WantErr {
 				if err == nil {
 					t.Fatalf("want error, got nil")
+					return
 				}
 				return
 			}

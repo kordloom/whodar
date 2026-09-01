@@ -23,6 +23,7 @@ func TestFromEnvKey(t *testing.T) {
 	}
 	if c == nil {
 		t.Fatal("nil codec with a key set")
+		return
 	}
 	enc, err := c.Encode([]byte("data"))
 	if err != nil {

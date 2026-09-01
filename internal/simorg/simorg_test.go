@@ -45,6 +45,7 @@ func TestFullPipeline(t *testing.T) {
 	eve := ix.Graph.People["eve@corp.com"]
 	if eve == nil {
 		t.Fatal("missing eve@corp.com")
+		return
 	}
 	if !slices.Contains(eve.Identities, model.ID("github:eve-dev")) {
 		t.Errorf("eve identities = %v, want github:eve-dev", eve.Identities)

@@ -52,6 +52,7 @@ func TestGuardArchiveSaysWhyItRefused(t *testing.T) {
 	err := guardArchive(cmd, &options{dataDir: t.TempDir(), pol: policy.New(policy.Open, false)})
 	if err == nil {
 		t.Fatal("an unlicensed install was allowed to retain conversation content")
+		return
 	}
 	for _, want := range []string{"Memory license", "hello@whodar.dev"} {
 		if !bytes.Contains([]byte(err.Error()), []byte(want)) {

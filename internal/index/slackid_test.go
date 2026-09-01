@@ -29,6 +29,7 @@ func TestSlackIDResolvesToPerson(t *testing.T) {
 	p := ix.Graph.People["jane@x.com"]
 	if p == nil {
 		t.Fatalf("no person keyed by email; people = %v", ix.Graph.People)
+		return
 	}
 	found := false
 	for _, id := range p.Identities {

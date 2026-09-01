@@ -160,6 +160,7 @@ func TestUnpackRejectsOutOfRangeIndex(t *testing.T) {
 	_, err := unpackEpisode(packedEpisode{ID: "e", Participants: []uint32{2}}, []model.ID{"only@x.com"})
 	if err == nil {
 		t.Fatal("unpackEpisode with an out-of-range index = nil error, want failure")
+		return
 	}
 }
 

@@ -105,6 +105,7 @@ func TestAskSemanticWithoutEmbeddingsExplains(t *testing.T) {
 	_, stderr, err := runCmd(t, "ask", "--data-dir", dir, "--mode", "semantic", "who owns retries")
 	if err == nil {
 		t.Fatal("semantic ask on an index with no embeddings did not fail")
+		return
 	}
 	if !strings.Contains(err.Error(), "--embed") && !strings.Contains(string(stderr), "--embed") {
 		t.Errorf("message does not point at --embed: %v / %s", err, stderr)

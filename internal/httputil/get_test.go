@@ -48,5 +48,6 @@ func TestGetRefusesABadURL(t *testing.T) {
 	req, err := Get(context.Background(), "://not a url")()
 	if err == nil {
 		t.Fatalf("a malformed url built a request: %v", req)
+		return
 	}
 }

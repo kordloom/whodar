@@ -74,6 +74,7 @@ func TestEncryptedIndexNeedsKey(t *testing.T) {
 	_, _, err := runCmdStdin(t, "", "ask", "--data-dir", dir, "who owns billing")
 	if err == nil {
 		t.Fatal("ask without key: want error")
+		return
 	}
 	if !strings.Contains(err.Error(), keyring.EnvKey) {
 		t.Errorf("error does not name %s: %v", keyring.EnvKey, err)

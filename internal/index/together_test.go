@@ -25,6 +25,7 @@ func TestTopicLinksAreCarriedIntoTheGraph(t *testing.T) {
 	billing := ix.Graph.Topics[model.ID("billing")]
 	if billing == nil {
 		t.Fatal("billing is not in the graph")
+		return
 	}
 	if got := billing.Near[model.ID("ledger")].Weight; got != 0.4 {
 		t.Errorf("billing to ledger = %v, want the observed tie of 0.4", got)

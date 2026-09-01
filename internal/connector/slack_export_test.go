@@ -156,6 +156,7 @@ func TestSlackExportEpisodes(t *testing.T) {
 	}
 	if thread == nil {
 		t.Fatal("no thread episode from the webhook thread")
+		return
 	}
 	if thread.Messages != 4 {
 		t.Errorf("thread messages = %d, want parent plus 3 replies", thread.Messages)
@@ -177,6 +178,7 @@ func TestSlackExportEpisodes(t *testing.T) {
 
 	if window == nil {
 		t.Fatal("no window episode from the loose general conversation")
+		return
 	}
 	if !strings.Contains(window.Body, "kafka") {
 		t.Errorf("window body = %q, want the loose messages", window.Body)

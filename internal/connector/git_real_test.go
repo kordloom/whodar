@@ -192,6 +192,7 @@ func TestRealMailmapMatchesGit(t *testing.T) {
 	mm := loadMailmap(dir)
 	if mm == nil {
 		t.Fatal("loadMailmap returned nil for a repo with a .mailmap")
+		return
 	}
 
 	idents := []struct{ Name, Email string }{

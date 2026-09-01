@@ -34,6 +34,7 @@ func TestAliasJoinsAtBuild(t *testing.T) {
 	p := ix.Graph.People["alice@corp.com"]
 	if p == nil {
 		t.Fatal("missing canonical person alice@corp.com")
+		return
 	}
 	if diff := cmp.Diff([]model.ID{"github:alice"}, p.Identities); diff != "" {
 		t.Errorf("identities mismatch (-want +got):\n%s", diff)
@@ -77,6 +78,7 @@ func TestCanonicalizeMergesExisting(t *testing.T) {
 	p := ix.Graph.People["alice@corp.com"]
 	if p == nil {
 		t.Fatal("missing canonical person alice@corp.com")
+		return
 	}
 	if p.Name != "Alice Smith" || p.Title != "Engineer" {
 		t.Errorf("merged person lost fields: %+v", p)
@@ -142,6 +144,7 @@ func TestDualIdentityRecordAutoJoins(t *testing.T) {
 	p := ix.Graph.People["carol@corp.com"]
 	if p == nil {
 		t.Fatal("missing canonical person carol@corp.com")
+		return
 	}
 	if diff := cmp.Diff([]model.ID{"github:carol"}, p.Identities); diff != "" {
 		t.Errorf("identities mismatch (-want +got):\n%s", diff)

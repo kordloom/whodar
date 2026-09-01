@@ -24,6 +24,7 @@ func TestOnceValueRejectsASecondSource(t *testing.T) {
 	err := v.Set("codeowners")
 	if err == nil {
 		t.Fatal("second Set accepted, want an error")
+		return
 	}
 	for _, want := range []string{"git", "codeowners", "--merge"} {
 		if !strings.Contains(err.Error(), want) {

@@ -52,6 +52,7 @@ func TestOpenRepoHandlesEveryLayout(t *testing.T) {
 			defer func() { _ = closeRepo() }()
 			if repo == nil {
 				t.Fatalf("openRepo(%s) returned no repository", test.Name)
+				return
 			}
 			if _, err := repo.Head(); err != nil {
 				t.Fatalf("head of %s: %v", test.Name, err)

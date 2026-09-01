@@ -286,6 +286,7 @@ func TestSessionEndsWhenPingsGoUnanswered(t *testing.T) {
 	case err := <-done:
 		if err == nil {
 			t.Fatal("session returned no error for a connection that stopped answering")
+			return
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("session waited on a dead connection instead of giving up")

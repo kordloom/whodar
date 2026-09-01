@@ -86,6 +86,7 @@ func TestPickResolverCloudPolicy(t *testing.T) {
 	}
 	if res == nil {
 		t.Fatal("nil resolver")
+		return
 	}
 
 	if _, err := pickResolver(ix, redacted, "semantic", "", "", "http://localhost:11434", "anthropic", ""); err == nil {

@@ -76,6 +76,7 @@ func TestDriftIgnoresThePersonWhoTouchesEverything(t *testing.T) {
 	}
 	if payments == nil {
 		t.Fatalf("payments was not reported as drifted: %+v", report.Drift)
+		return
 	}
 	if payments.Actual != "Bob" {
 		t.Errorf("actual owner = %q, want Bob, who does this work rather than all work", payments.Actual)

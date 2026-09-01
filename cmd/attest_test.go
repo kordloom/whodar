@@ -25,6 +25,7 @@ func TestAttestKeyNamesTheDirectoryItCannotUse(t *testing.T) {
 	_, err := o.attestKey()
 	if err == nil {
 		t.Fatal("a key was made under an impossible path")
+		return
 	}
 	if !strings.Contains(err.Error(), o.dataDir) {
 		t.Errorf("error = %q, want it to name %q so the remedy is visible", err, o.dataDir)

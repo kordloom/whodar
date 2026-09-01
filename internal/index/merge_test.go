@@ -60,6 +60,7 @@ func TestMergeKeepsSubjectTies(t *testing.T) {
 	billing := ix.Graph.Topics[model.ID("billing")]
 	if billing == nil {
 		t.Fatal("billing left the graph entirely")
+		return
 	}
 	if got := billing.Near[model.ID("ledger")].Weight; got != 0.6 {
 		t.Errorf("billing to ledger = %v, want the stronger claim of 0.6", got)

@@ -31,6 +31,7 @@ func TestSalientTopicsHidesMinedWords(t *testing.T) {
 	p := ix.Graph.People["holly@corp.com"]
 	if p == nil {
 		t.Fatal("person not indexed")
+		return
 	}
 	got := salientTopics(ix, p.Topics, 8)
 	if !slices.Contains(got, "vacation") {
