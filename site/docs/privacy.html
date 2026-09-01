@@ -98,9 +98,13 @@ guarantees in one place.</p>
 <h2 id="where-your-data-lives">Where your data lives</h2>
 <ul>
 <li>The index lives at <code>~/.whodar/index.json</code>, on your machine, created readable only
-by you (mode <code>0600</code>). It is never uploaded. Besides the graph and ranking signals
-it holds a capped sample of each person's Slack messages, which is what ranking
-matches against. No other source's message bodies are kept.</li>
+by you (mode <code>0600</code>). It is never uploaded. Stated plainly, it holds: each person's
+name, email, title, team, and linked identities, their topic weights, an alias
+table joining one person's identifiers across sources, channel names with member
+lists, and an inverted search index of stemmed word terms keyed to people and
+channels. A stemmed term index is not message text, but it still says who used
+which words where, and you should treat the file with the same care as the
+conversations it was built from. Message bodies themselves are not kept.</li>
 <li>Past conversations live beside it at <code>~/.whodar/episodes.json</code>, same permissions,
 written only when you index with <code>--episodes</code>. A conversation record holds who
 took part, where, when, a link back to it, and the words it matched on. Who spoke
@@ -114,8 +118,25 @@ policy file, which no license overrides.</li>
 there, or from the environment, never from a flag, and nothing is logged. The
 keychain keeps a token out of your shell profile and history; an environment
 variable still wins when it is set.</li>
-<li>Indexing talks only to the sources you name, with your own tokens.</li>
+<li>Indexing talks only to the sources you name, with your own tokens. With no AI
+model configured, <code>index</code>, <code>ask</code>, and <code>serve</code> make no network requests at all,
+and a test in the suite proves it by refusing every request the process tries
+to make.</li>
+<li>Credentials pasted into messages and tickets are scrubbed at ingest. Keys,
+tokens, passwords, and private key blocks are replaced with <code>[redacted]</code>
+before anything reaches the index, the search terms, or retained
+conversation notes.</li>
 </ul>
+<h2 id="purging-a-person">Purging a person</h2>
+<p><code>whodar forget &lt;email or name&gt;</code> removes one person from everything whodar
+stores: their records under every identity they were known by, the alias
+entries joining those identities, their entries in channel member lists, their
+retained conversation notes, and any conversation where they were the only
+participant. A conversation with other participants keeps its pointer and
+loses its searchable words.</p>
+<p>Two caveats it prints and that bear repeating: <code>feedback.json</code> holds questions
+askers typed and is pruned by deleting the file, and re-indexing a source that
+still contains the person brings them back, so remove them at the source too.</p>
 <h2 id="encrypt-the-index-at-rest">Encrypt the index at rest</h2>
 <p>File permissions alone do not protect the index from a stolen disk, a stray backup,
 or another process running as you. Configure a key and whodar encrypts the index on

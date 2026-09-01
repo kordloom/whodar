@@ -174,6 +174,18 @@ works for any repo you can clone, including ones with no CODEOWNERS.</p>
 join other sources by their commit email. Bot accounts like dependabot are skipped.
 <code>--git-since-days</code> bounds the window (default 365) and <code>--max-commits</code> caps each repo
 (default 2000).</p>
+<h3 id="slack-export-zip">Slack export (zip)</h3>
+<p>What you get: everything the live Slack connector reads, from the export zip a
+workspace admin downloads at Settings, Import/Export Data. No token, no bot, no
+network. This is also the path for indexing a data-room export you were handed.</p>
+<pre><code>whodar index --source slack-export --file export.zip --episodes --merge
+</code></pre>
+<p>Point <code>--file</code> at the zip itself or a folder it was unzipped into. Public
+channels are read by default. Pass <code>--include-private</code> to read the private
+channels a corporate export contains; direct and group messages are never
+read, and the run names whatever it skipped. Standard exports omit member
+emails unless the admin enabled them, and without emails Slack activity will
+not merge with the same people from other sources.</p>
 <h2 id="json-import----anything-else">JSON import  ·  anything else</h2>
 <p>Any system that can emit JSON can feed whodar without a dedicated connector.
 Produce a JSON array of records and pipe it in:</p>

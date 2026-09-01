@@ -91,7 +91,7 @@
 		</aside>
 		<article class="doc">
 <h1 id="getting-started-with-whodar">Getting started with whodar</h1>
-<p>This guide takes you from nothing to a working setup: build the tool, index a
+<p>This guide takes you from nothing to a working setup: install the tool, index a
 source, and ask &quot;who do I talk to about X&quot; from the terminal or a browser.</p>
 <p>In a hurry to wire in one tool? <a href="/docs/connect">CONNECT.md</a> has a short copy-paste
 recipe for each source (Slack, GitHub, Jira, Confluence, PagerDuty, git), with
@@ -219,7 +219,18 @@ Angela Malone,angela@corp.com,Staff Engineer,Payments,billing;retries
 </code></pre>
 <h2 id="index-slack">Index Slack</h2>
 <p>Slack is the strongest source, because it shows which channels exist, what they
-are about, and who is active on each topic.</p>
+are about, and who is active on each topic. There are two ways in: a workspace
+export file, which needs no app and no token, or a bot token that can also
+re-read history on a schedule.</p>
+<h3 id="the-no-token-way-a-workspace-export">The no-token way: a workspace export</h3>
+<p>A workspace admin can download an export zip at Settings and administration,
+Workspace settings, Import/Export Data. Index it directly:</p>
+<pre><code>whodar index --source slack-export --file export.zip --episodes
+</code></pre>
+<p>Nothing touches the network. Public channels are read by default,
+<code>--include-private</code> reads the private channels a corporate export contains,
+and direct messages are never read. This is also the path when someone hands
+you an export to analyze rather than access to the workspace itself.</p>
 <h3 id="create-a-slack-app-and-token">Create a Slack app and token</h3>
 <ol>
 <li>

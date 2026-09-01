@@ -300,13 +300,13 @@ resolved PagerDuty incidents.</p>
 <tr>
 <td><code>--file</code></td>
 <td></td>
-<td>org-csv, matters, codeowners</td>
-<td>Path to the CSV, time-entry export, or CODEOWNERS file (or repo root).</td>
+<td>org-csv, matters, codeowners, slack-export</td>
+<td>Path to the CSV, time-entry export, CODEOWNERS file (or repo root), or Slack export zip (or its unzipped folder).</td>
 </tr>
 <tr>
 <td><code>--episodes</code></td>
 <td>off</td>
-<td>slack, github, jira, pagerduty</td>
+<td>slack, slack-export, github, jira, pagerduty</td>
 <td>Record past conversations so <code>recall</code> can point back at them.</td>
 </tr>
 <tr>
@@ -330,7 +330,7 @@ resolved PagerDuty incidents.</p>
 <tr>
 <td><code>--include-private</code></td>
 <td>off</td>
-<td>slack</td>
+<td>slack, slack-export</td>
 <td>Ingest private channels if policy allows.</td>
 </tr>
 <tr>
@@ -1002,6 +1002,32 @@ was written to be read by someone fixing the product.</p>
 <code>&quot;feedback_bundle&quot;: &quot;deny&quot;</code> in its policy file; the lock enforces what a
 promise only asserts. <code>whodar feedback summary</code> shows the same arithmetic in
 place without writing anything.</p>
+<h2 id="whodar-forget">whodar forget</h2>
+<p>Purges one person from everything whodar stores on this machine.</p>
+<pre><code>whodar forget jane@corp.com
+whodar forget &quot;Jane Roe&quot; --yes
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--yes</code></td>
+<td>Purge without asking.</td>
+</tr>
+</tbody>
+</table>
+<p>Their records are removed under every identity they were known by, the alias
+entries joining those identities are deleted, references to them are stripped
+from channel membership and org relations, their retained conversation notes
+are deleted, and conversations where they were the only participant are
+forgotten. A conversation with other participants keeps its pointer and loses
+its searchable words. <code>feedback.json</code> is not touched, and re-indexing a source
+that still contains the person brings them back.</p>
 <h2 id="whodar-fact">whodar fact</h2>
 <pre><code>whodar fact record SUBJECT RELATION OBJECT [--detail D] [--source S]
 whodar fact list [SUBJECT] [--relation R] [--source S] [--json]
