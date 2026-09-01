@@ -96,6 +96,10 @@ type Question struct {
 	Asker model.ID
 	// WantEpisode is the conversation that should come back, for recall.
 	WantEpisode string
+	// WantChannel is the channel that should come back first when the
+	// question is routed to a place rather than a person. It is set only when
+	// a channel is named for this question's subject.
+	WantChannel string
 }
 
 // Org is a synthesized company: fake APIs the real connectors can read, and
@@ -612,16 +616,29 @@ func sentence(rng *rand.Rand, templates []string, words []string) string {
 }
 
 // questionsForOwners asks who knows each subject, where the owner is the
-// answer by construction.
+// answer by construction. A who-knows question also has a right place to ask:
+// the channel named for the subject, when this subject is the one its channel
+// was named for.
 func questionsForOwners(owners []owner) []Question {
+	namedFor := make(map[string]int)
+	for _, o := range owners {
+		if _, ok := namedFor[o.channel]; !ok {
+			namedFor[o.channel] = o.subject
+		}
+	}
 	out := make([]Question, 0, len(owners)*3)
 	for _, o := range owners {
 		subject := subjects[o.subject]
+		wantChannel := ""
+		if namedFor[o.channel] == o.subject {
+			wantChannel = strings.ReplaceAll(subject.Topic, " ", "-")
+		}
 		out = append(out,
 			Question{
-				Kind:       KindWhoKnows,
-				Text:       "who knows about " + subject.Topic,
-				WantPerson: o.who.canonical(),
+				Kind:        KindWhoKnows,
+				Text:        "who knows about " + subject.Topic,
+				WantPerson:  o.who.canonical(),
+				WantChannel: wantChannel,
 			},
 			Question{
 				Kind:       KindAnchored,

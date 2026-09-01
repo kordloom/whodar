@@ -78,7 +78,14 @@ func (b *Built) ScoreSemantic(ctx context.Context, embedder resolve.Embedder, ki
 func Build(spec Spec, dir string) (*Built, error) {
 	org := Generate(spec)
 	defer org.Close()
+	return BuildFrom(org, dir, spec)
+}
 
+// BuildFrom runs the ingest pipeline over an already generated company. Two
+// calls over one company are two ingests of one input, which is what the
+// reproducibility claim is about; generating twice stamps new message times
+// and is two inputs.
+func BuildFrom(org *Org, dir string, spec Spec) (*Built, error) {
 	csvPath := filepath.Join(dir, "org.csv")
 	if err := os.WriteFile(csvPath, []byte(org.CSV), 0o600); err != nil {
 		return nil, fmt.Errorf("simorg: write org csv: %w", err)
@@ -190,6 +197,36 @@ func (b *Built) scoreKind(kind Kind, limit int) Score {
 		rank := 0
 		for i, m := range ans.People {
 			if m.Person != nil && m.Person.ID == q.WantPerson {
+				rank = i + 1
+				break
+			}
+		}
+		score.record(q.Text, rank)
+	}
+	return score
+}
+
+// ScoreChannelRouting asks every question with a known right place to ask,
+// and scores where that channel ranked among the channels the answer offers.
+// Sending somebody to the wrong channel wastes a whole team's attention, not
+// one person's, so routing is scored on its own rather than inferred from the
+// people ranking.
+func (b *Built) ScoreChannelRouting(limit int) Score {
+	res := resolve.NewKeyword(b.Index)
+	var score Score
+	for _, q := range b.Org.Questions {
+		if q.WantChannel == "" {
+			continue
+		}
+		score.Asked++
+		ans, err := res.Resolve(context.Background(), q.Text, limit)
+		if err != nil {
+			score.record(q.Text, 0)
+			continue
+		}
+		rank := 0
+		for i, m := range ans.Channels {
+			if m.Channel != nil && m.Channel.Name == q.WantChannel {
 				rank = i + 1
 				break
 			}

@@ -25,6 +25,11 @@ const (
 	// and the rest paraphrased that keyword mode must still answer first.
 	// Measured at 0.58; semantic fusion is what lifts this case further.
 	minAnchoredTop1 = 0.50
+	// minChannelTop1 is the share of routing questions whose named channel
+	// must come back first. The synthetic channels are named for their
+	// subjects, so this case is easy by construction and measured at 1.00
+	// across seeds; the floor leaves room for noise, not for regression.
+	minChannelTop1 = 0.85
 	// minFreeTierRecallTop3 is the share of recall questions a first-time user
 	// with no archive must still get in the first three. Thread replies fold
 	// into the searchable body even without retention, so the free tier is
@@ -32,6 +37,27 @@ const (
 	// hold.
 	minFreeTierRecallTop3 = 0.90
 )
+
+// TestChannelRoutingQuality scores where the right channel ranks when a
+// question has a known right place to ask. Sending somebody to the wrong
+// channel wastes a team's attention, and nothing else in the suite would
+// notice channels regressing while the people ranking held.
+func TestChannelRoutingQuality(t *testing.T) {
+	t.Parallel()
+	built, err := Build(Spec{Seed: 7}, t.TempDir())
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	ch := built.ScoreChannelRouting(5)
+	t.Logf("channel routing: %s", ch)
+	if ch.Asked == 0 {
+		t.Fatal("no routing questions were generated; the score is vacuous")
+	}
+	if ch.Precision1() < minChannelTop1 {
+		t.Errorf("channel routing p@1 = %.2f, want at least %.2f. Missed: %s",
+			ch.Precision1(), minChannelTop1, strings.Join(ch.Missed, "; "))
+	}
+}
 
 // TestFreeTierRecallQuality measures recall for a first-time user with no
 // archive, which is the experience most people run first. Without this floor a
