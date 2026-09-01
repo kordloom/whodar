@@ -1,6 +1,6 @@
 # Getting started with whodar
 
-This guide takes you from nothing to a working setup: build the tool, index a
+This guide takes you from nothing to a working setup: install the tool, index a
 source, and ask "who do I talk to about X" from the terminal or a browser.
 
 In a hurry to wire in one tool? [CONNECT.md](CONNECT.md) has a short copy-paste
@@ -116,7 +116,21 @@ Index it:
 ## Index Slack
 
 Slack is the strongest source, because it shows which channels exist, what they
-are about, and who is active on each topic.
+are about, and who is active on each topic. There are two ways in: a workspace
+export file, which needs no app and no token, or a bot token that can also
+re-read history on a schedule.
+
+### The no-token way: a workspace export
+
+A workspace admin can download an export zip at Settings and administration,
+Workspace settings, Import/Export Data. Index it directly:
+
+    whodar index --source slack-export --file export.zip --episodes
+
+Nothing touches the network. Public channels are read by default,
+`--include-private` reads the private channels a corporate export contains,
+and direct messages are never read. This is also the path when someone hands
+you an export to analyze rather than access to the workspace itself.
 
 ### Create a Slack app and token
 

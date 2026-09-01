@@ -48,3 +48,27 @@ Implement the connector Source interface, returning records for people or
 channels, and add a case to the index command. The index, resolvers, web UI, and
 bot then work with the new data without change. Every source after the first
 was added this way.
+
+## Measured scale
+
+The index and the episode store are each one JSON file read whole by every
+command, so the cost that grows with company size is the cold start, not the
+answer. Measured on an M-series laptop with the opt-in scale suite
+(`WHODAR_SCALE=1 go test ./internal/simorg/ -run TestScale`):
+
+| Size       | People | Conversations | Ingest | Index file | Episode file | Cold start | Ask  | Heap  |
+| ---------- | ------ | ------------- | ------ | ---------- | ------------ | ---------- | ---- | ----- |
+| Team       | 50     | 520           | 0.3s   | 146KB      | 784KB        | 9ms        | 1ms  | 4MB   |
+| Company    | 1,000  | 15,150        | 5.9s   | 4MB        | 13MB         | 170ms      | 3ms  | 95MB  |
+| Enterprise | 5,000  | 48,400        | 20s    | 17MB       | 40MB         | 575ms      | 12ms | 318MB |
+| Huge       | 10,000 | 151,000       | 59s    | 44MB       | 119MB        | 1.7s       | 32ms | 902MB |
+
+Answer latency stays in tens of milliseconds throughout. The costs that grow
+are the cold start each command pays to load the files and the heap held while
+serving. Both are acceptable to ten thousand people and known: crossing well
+past that scale means moving the store off one-file JSON, and nothing in the
+answer path needs to change to do it.
+
+Incremental refresh is bounded by the delta, not the corpus: Jira, Confluence,
+GitHub, and Slack query for items changed since the stored watermark, and git
+resumes from the last commit read per repository.

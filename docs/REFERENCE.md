@@ -66,12 +66,12 @@ Builds or extends the index from one source per run.
 | `--embed`           | off       | all        | Generate embeddings via Ollama for semantic search. |
 | `--embed-model`     |           | all        | Ollama embed model (default `nomic-embed-text`). |
 | `--ollama-url`      | localhost | all        | Ollama base URL for `--embed`.                   |
-| `--file`            |           | org-csv, matters, codeowners | Path to the CSV, time-entry export, or CODEOWNERS file (or repo root). |
-| `--episodes`        | off       | slack, github, jira, pagerduty | Record past conversations so `recall` can point back at them. |
+| `--file`            |           | org-csv, matters, codeowners, slack-export | Path to the CSV, time-entry export, CODEOWNERS file (or repo root), or Slack export zip (or its unzipped folder). |
+| `--episodes`        | off       | slack, slack-export, github, jira, pagerduty | Record past conversations so `recall` can point back at them. |
 | `--archive`         | off       | slack      | Keep the words of each conversation, not just a link. Needs a Memory license and an encryption key; implies `--episodes`. |
 | `--max-episodes-per-channel` | `200` | slack | Conversation cap per channel.                   |
 | `--max-archive-messages` | `50`  | slack      | Retained message cap per conversation.           |
-| `--include-private` | off       | slack      | Ingest private channels if policy allows.        |
+| `--include-private` | off       | slack, slack-export | Ingest private channels if policy allows.        |
 | `--slack-join`      | off       | slack      | Self-join public channels the bot is not in (needs `channels:join`; posts a join notice per channel). |
 | `--since-days`      | `180`     | slack      | History window in days.                          |
 | `--max-messages`    | `5000`    | slack      | Message cap per channel.                         |
@@ -538,6 +538,25 @@ An organization can pin even this manual path off with
 `"feedback_bundle": "deny"` in its policy file; the lock enforces what a
 promise only asserts. `whodar feedback summary` shows the same arithmetic in
 place without writing anything.
+
+## whodar forget
+
+Purges one person from everything whodar stores on this machine.
+
+    whodar forget jane@corp.com
+    whodar forget "Jane Roe" --yes
+
+| Flag    | What it does           |
+| ------- | ---------------------- |
+| `--yes` | Purge without asking.  |
+
+Their records are removed under every identity they were known by, the alias
+entries joining those identities are deleted, references to them are stripped
+from channel membership and org relations, their retained conversation notes
+are deleted, and conversations where they were the only participant are
+forgotten. A conversation with other participants keeps its pointer and loses
+its searchable words. `feedback.json` is not touched, and re-indexing a source
+that still contains the person brings them back.
 
 ## whodar fact
 

@@ -8,9 +8,13 @@ guarantees in one place.
 ## Where your data lives
 
 - The index lives at `~/.whodar/index.json`, on your machine, created readable only
-  by you (mode `0600`). It is never uploaded. Besides the graph and ranking signals
-  it holds a capped sample of each person's Slack messages, which is what ranking
-  matches against. No other source's message bodies are kept.
+  by you (mode `0600`). It is never uploaded. Stated plainly, it holds: each person's
+  name, email, title, team, and linked identities, their topic weights, an alias
+  table joining one person's identifiers across sources, channel names with member
+  lists, and an inverted search index of stemmed word terms keyed to people and
+  channels. A stemmed term index is not message text, but it still says who used
+  which words where, and you should treat the file with the same care as the
+  conversations it was built from. Message bodies themselves are not kept.
 - Past conversations live beside it at `~/.whodar/episodes.json`, same permissions,
   written only when you index with `--episodes`. A conversation record holds who
   took part, where, when, a link back to it, and the words it matched on. Who spoke
@@ -25,7 +29,27 @@ guarantees in one place.
   there, or from the environment, never from a flag, and nothing is logged. The
   keychain keeps a token out of your shell profile and history; an environment
   variable still wins when it is set.
-- Indexing talks only to the sources you name, with your own tokens.
+- Indexing talks only to the sources you name, with your own tokens. With no AI
+  model configured, `index`, `ask`, and `serve` make no network requests at all,
+  and a test in the suite proves it by refusing every request the process tries
+  to make.
+- Credentials pasted into messages and tickets are scrubbed at ingest. Keys,
+  tokens, passwords, and private key blocks are replaced with `[redacted]`
+  before anything reaches the index, the search terms, or retained
+  conversation notes.
+
+## Purging a person
+
+`whodar forget <email or name>` removes one person from everything whodar
+stores: their records under every identity they were known by, the alias
+entries joining those identities, their entries in channel member lists, their
+retained conversation notes, and any conversation where they were the only
+participant. A conversation with other participants keeps its pointer and
+loses its searchable words.
+
+Two caveats it prints and that bear repeating: `feedback.json` holds questions
+askers typed and is pruned by deleting the file, and re-indexing a source that
+still contains the person brings them back, so remove them at the source too.
 
 ## Encrypt the index at rest
 
