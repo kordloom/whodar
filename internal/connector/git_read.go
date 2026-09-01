@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -35,13 +37,14 @@ func (g *GitHistory) readRepo(
 	direct map[string]map[string]int,
 	ties *togetherIndex,
 ) (read, skipped int, err error) {
-	jobs, mark, err := g.scanCommits(ctx, path)
+	jobs, mark, skips, err := g.scanCommits(ctx, path)
 	if err != nil {
 		return 0, 0, err
 	}
 	if mark != "" {
 		g.marks[path] = mark
 	}
+	skips.report(g.opts.Log, path)
 	jobs = unshareSquashMailboxes(jobs)
 	return g.diffCommits(ctx, path, jobs, counts, names, latest, curated, recent, direct, ties)
 }
@@ -126,6 +129,58 @@ func normName(name string) string {
 	return b.String()
 }
 
+// maxNamedSkips caps how many automation accounts one report line names.
+const maxNamedSkips = 15
+
+// scanSkips records what a scan left out on purpose, so the operator hears
+// about every dropped commit by name rather than finding a person missing from
+// the map and having to guess why.
+type scanSkips struct {
+	// bots counts skipped commits per automation account, keyed by the
+	// account's "name <email>" form.
+	bots map[string]int
+	// noEmail counts commits with no author email, which cannot be credited to
+	// anyone.
+	noEmail int
+}
+
+// note records one skipped commit under the author it belonged to.
+func (s *scanSkips) note(name, email string) {
+	if email == "" {
+		s.noEmail++
+		return
+	}
+	if s.bots == nil {
+		s.bots = make(map[string]int)
+	}
+	s.bots[name+" <"+email+">"]++
+}
+
+// report writes what was skipped and why, naming each automation account. A
+// who-knows-what map that silently drops people is worse than one that says
+// who it left out.
+func (s *scanSkips) report(w io.Writer, path string) {
+	if len(s.bots) > 0 {
+		names := make([]string, 0, len(s.bots))
+		total := 0
+		for name, n := range s.bots {
+			names = append(names, name)
+			total += n
+		}
+		sort.Strings(names)
+		if len(names) > maxNamedSkips {
+			names = append(names[:maxNamedSkips],
+				fmt.Sprintf("and %d more", len(s.bots)-maxNamedSkips))
+		}
+		fmt.Fprintf(w, "git: %s: skipped %d commits from automation accounts: %s\n",
+			path, total, strings.Join(names, ", "))
+	}
+	if s.noEmail > 0 {
+		fmt.Fprintf(w, "git: %s: %d commits have no author email and are credited to nobody\n",
+			path, s.noEmail)
+	}
+}
+
 // commitJob is one commit worth walking: everything cheap about it, read once
 // during the scan so the parallel phase only has to do the expensive part.
 type commitJob struct {
@@ -148,10 +203,11 @@ type commitJob struct {
 // log is thousands of commits a second because it touches only commit objects;
 // everything slow happens afterwards, per commit and independently, which is
 // what makes the second phase worth running in parallel.
-func (g *GitHistory) scanCommits(ctx context.Context, path string) ([]commitJob, string, error) {
+func (g *GitHistory) scanCommits(ctx context.Context, path string) ([]commitJob, string, scanSkips, error) {
+	var skips scanSkips
 	repo, closeRepo, err := openRepo(path)
 	if err != nil {
-		return nil, "", fmt.Errorf("git: open %s: %w", path, err)
+		return nil, "", skips, fmt.Errorf("git: open %s: %w", path, err)
 	}
 	defer func() { _ = closeRepo() }()
 
@@ -165,7 +221,7 @@ func (g *GitHistory) scanCommits(ctx context.Context, path string) ([]commitJob,
 	}
 	iter, err := repo.Log(opts)
 	if err != nil {
-		return nil, "", fmt.Errorf("git: log %s: %w", path, err)
+		return nil, "", skips, fmt.Errorf("git: log %s: %w", path, err)
 	}
 	defer iter.Close()
 
@@ -196,7 +252,11 @@ func (g *GitHistory) scanCommits(ctx context.Context, path string) ([]commitJob,
 			name, email = mm.resolve(name, email)
 		}
 		email = strings.ToLower(strings.TrimSpace(email))
-		if email == "" || c.NumParents() > 1 || isBotAuthor(name, email) {
+		if c.NumParents() > 1 {
+			return nil
+		}
+		if email == "" || isBotAuthor(name, email) {
+			skips.note(name, email)
 			return nil
 		}
 		jobs = append(jobs, commitJob{
@@ -212,7 +272,7 @@ func (g *GitHistory) scanCommits(ctx context.Context, path string) ([]commitJob,
 		err = nil
 	}
 	if err != nil {
-		return nil, "", fmt.Errorf("git: log %s: %w", path, err)
+		return nil, "", skips, fmt.Errorf("git: log %s: %w", path, err)
 	}
 	// A mark this history no longer contains means it was rewritten under us,
 	// so what was just read is the whole window and not an increment.
@@ -224,13 +284,13 @@ func (g *GitHistory) scanCommits(ctx context.Context, path string) ([]commitJob,
 	// never reached by either run. Rather than record a position that would skip
 	// them, record none, and let the next run read the window again.
 	if g.opts.UntilDays > 0 {
-		return jobs, "", nil
+		return jobs, "", skips, nil
 	}
 	// Nothing new means the previous mark still stands.
 	if newest == "" {
 		newest = stop
 	}
-	return jobs, newest, nil
+	return jobs, newest, skips, nil
 }
 
 // tally is one worker's share of the walk, kept to itself so the workers never
