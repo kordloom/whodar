@@ -115,6 +115,7 @@ Sources and their credentials:
   git         --repo-path DIR (repeatable)               none
   json        --file FILE or - for stdin                 none
   slack       [--include-private] [--slack-join]         WHODAR_SLACK_TOKEN
+  slack-export --file export.zip|DIR [--include-private]  none
   github      --repo o/r | --github-org ORG              WHODAR_GITHUB_TOKEN
   jira        --jira-project KEY | --jira-jql JQL        WHODAR_JIRA_URL/EMAIL/TOKEN
               (--jira-server for self-hosted Server/DC)   WHODAR_JIRA_URL[/TOKEN]
@@ -192,6 +193,23 @@ Start with the org chart, then merge everything else onto it:
 					episodes: episodes || archive, maxEpisodes: maxEpisodes,
 					archive: archive, maxArchive: maxArchive, since: since,
 				})
+			case "slack-export":
+				if file == "" {
+					return fmt.Errorf("%w: --file (the export zip or its unzipped folder) is required for slack-export", ErrBadArgs)
+				}
+				se := connector.NewSlackExport(file, connector.SlackExportOptions{
+					IncludePrivate:        includePrivate,
+					SinceDays:             sinceDays,
+					MaxMessages:           maxMessages,
+					Episodes:              episodes || archive,
+					MaxEpisodesPerChannel: maxEpisodes,
+					Archive:               archive,
+					MaxArchiveMessages:    maxArchive,
+					Since:                 since,
+					Log:                   cmd.ErrOrStderr(),
+				})
+				recs, err = se.Fetch(cmd.Context())
+				eps = se.Episodes()
 			case "matters":
 				if file == "" {
 					return fmt.Errorf("%w: --file (a time-entry or matter CSV export) is required for matters", ErrBadArgs)
@@ -243,7 +261,7 @@ Start with the org chart, then merge everything else onto it:
 			case "graph":
 				recs, err = fetchGraph(cmd)
 			default:
-				return fmt.Errorf("%w: %q (want org-csv, slack, codeowners, github, jira, confluence, pagerduty, git, json, or graph)", ErrUnknownSource, source)
+				return fmt.Errorf("%w: %q (want org-csv, slack, slack-export, codeowners, github, jira, confluence, pagerduty, git, json, or graph)", ErrUnknownSource, source)
 			}
 			if err != nil {
 				return err
