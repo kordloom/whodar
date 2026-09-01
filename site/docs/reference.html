@@ -831,6 +831,63 @@ the judged areas only. The exception is a squad the org chart also knows as a
 team (<code>alerting-squad</code> and a team named Alerting): its members become the
 owners of record, and the area is judged by whether one of them leads it. Index
 an org-chart source alongside CODEOWNERS to get this.</p>
+<h2 id="whodar-assess">whodar assess</h2>
+<p>Produces a sealed knowledge-risk assessment from local exports: the
+deliverable for a diligence engagement, built with no tokens and no network.</p>
+<pre><code>whodar assess --repo-path ./target-repo --out acme-assessment
+whodar assess --repo-path ./svc-a --repo-path ./svc-b --slack-export export.zip
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--repo-path</code></td>
+<td></td>
+<td>Local repository root, repeatable.</td>
+</tr>
+<tr>
+<td><code>--slack-export</code></td>
+<td></td>
+<td>Slack export zip or its unzipped folder.</td>
+</tr>
+<tr>
+<td><code>--org-csv</code></td>
+<td></td>
+<td>Org chart CSV.</td>
+</tr>
+<tr>
+<td><code>--codeowners</code></td>
+<td></td>
+<td>CODEOWNERS file or a repo root holding one.</td>
+</tr>
+<tr>
+<td><code>--out</code></td>
+<td><code>whodar-assessment-&lt;date&gt;</code></td>
+<td>Output directory.</td>
+</tr>
+<tr>
+<td><code>--top</code></td>
+<td><code>10</code></td>
+<td>People covered in the departure file.</td>
+</tr>
+<tr>
+<td><code>--git-since-days</code></td>
+<td><code>730</code></td>
+<td>How far back to read git history.</td>
+</tr>
+</tbody>
+</table>
+<p>The index is built fresh in memory and never saved, so an assessment never
+mixes with your own index. The output directory holds <code>report.html</code> (the
+knowledge-risk brief), <code>findings.json</code>, <code>ownership.json</code>, <code>departures.json</code>,
+<code>assessment.loomseal</code> (the sealed finding, verified offline with
+<code>whodar attest verify</code>), and a <code>README.txt</code> explaining each file.</p>
 <h2 id="whodar-attest">whodar attest</h2>
 <pre><code>whodar attest
 </code></pre>

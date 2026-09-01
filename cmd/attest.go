@@ -36,16 +36,7 @@ The signing key is created once under the data directory and reused.`,
 			if err != nil {
 				return noIndexError(err)
 			}
-			priv, err := opts.attestKey()
-			if err != nil {
-				return err
-			}
-			report := resolve.Risk(ix, 0)
-			pub, _ := priv.Public().(ed25519.PublicKey)
-			payload, evidence := attestPayload(report, riskEvaluation(opts), sealLicensee(opts, pub))
-			bundle, err := attest.Seal(priv, "whodar", version, attest.InstallID(pub),
-				"whodar.knowledge-risk/1", riskSubject(ix),
-				payload, evidence, time.Now())
+			bundle, err := sealRiskBundle(opts, ix)
 			if err != nil {
 				return err
 			}
@@ -55,6 +46,22 @@ The signing key is created once under the data directory and reused.`,
 	}
 	cmd.AddCommand(newAttestVerifyCmd(opts))
 	return cmd
+}
+
+// sealRiskBundle seals the index's knowledge-risk finding into a LoomSeal
+// bundle with the install's persistent signing key. attest prints it; assess
+// files it beside the report it certifies.
+func sealRiskBundle(opts *options, ix *index.Index) ([]byte, error) {
+	priv, err := opts.attestKey()
+	if err != nil {
+		return nil, err
+	}
+	report := resolve.Risk(ix, 0)
+	pub, _ := priv.Public().(ed25519.PublicKey)
+	payload, evidence := attestPayload(report, riskEvaluation(opts), sealLicensee(opts, pub))
+	return attest.Seal(priv, "whodar", version, attest.InstallID(pub),
+		"whodar.knowledge-risk/1", riskSubject(ix),
+		payload, evidence, time.Now())
 }
 
 // riskSubject names what a knowledge-risk bundle is about: the organization

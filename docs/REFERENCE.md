@@ -401,6 +401,30 @@ team (`alerting-squad` and a team named Alerting): its members become the
 owners of record, and the area is judged by whether one of them leads it. Index
 an org-chart source alongside CODEOWNERS to get this.
 
+## whodar assess
+
+Produces a sealed knowledge-risk assessment from local exports: the
+deliverable for a diligence engagement, built with no tokens and no network.
+
+    whodar assess --repo-path ./target-repo --out acme-assessment
+    whodar assess --repo-path ./svc-a --repo-path ./svc-b --slack-export export.zip
+
+| Flag               | Default                | What it does                                    |
+| ------------------ | ---------------------- | ----------------------------------------------- |
+| `--repo-path`      |                        | Local repository root, repeatable.              |
+| `--slack-export`   |                        | Slack export zip or its unzipped folder.        |
+| `--org-csv`        |                        | Org chart CSV.                                  |
+| `--codeowners`     |                        | CODEOWNERS file or a repo root holding one.     |
+| `--out`            | `whodar-assessment-<date>` | Output directory.                           |
+| `--top`            | `10`                   | People covered in the departure file.           |
+| `--git-since-days` | `730`                  | How far back to read git history.               |
+
+The index is built fresh in memory and never saved, so an assessment never
+mixes with your own index. The output directory holds `report.html` (the
+knowledge-risk brief), `findings.json`, `ownership.json`, `departures.json`,
+`assessment.loomseal` (the sealed finding, verified offline with
+`whodar attest verify`), and a `README.txt` explaining each file.
+
 ## whodar attest
 
     whodar attest
