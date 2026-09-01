@@ -152,15 +152,20 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 		}
 	}
 
-	var (
-		codeOwnerRecords []Record
-		wg               sync.WaitGroup
-	)
+	// Per-repo results land in slots indexed by the repo's position, so the
+	// combined output follows the input order however the workers finish;
+	// byte-for-byte reproducibility is a product claim.
+	type repoResult struct {
+		recs []Record
+		eps  []episode.Episode
+	}
+	var wg sync.WaitGroup
 	// Each repository is read by its own worker, so each fills its own tally of
 	// what is worked on together and the parent folds them in.
 	ties := newTogether()
 	sem := make(chan struct{}, repoWorkers)
-	for _, full := range repos {
+	results := make([]repoResult, len(repos))
+	for i, full := range repos {
 		owner, name, ok := splitRepo(full)
 		if !ok {
 			continue
@@ -174,22 +179,26 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 			continue
 		}
 		wg.Add(1)
-		go func(full, owner, name string) {
+		go func(i int, full, owner, name string) {
 			defer wg.Done()
 			defer func() { <-sem }()
 			local := newTogether()
 			recs, eps, err := g.indexRepo(ctx, full, owner, name, bump, markCurated, local)
+			results[i] = repoResult{recs: recs, eps: eps}
 			mu.Lock()
-			codeOwnerRecords = append(codeOwnerRecords, recs...)
-			g.episodes = append(g.episodes, eps...)
 			ties.absorb(local)
 			mu.Unlock()
 			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				fmt.Fprintf(g.opts.Log, "github: skipping %s: %v\n", full, err)
 			}
-		}(full, owner, name)
+		}(i, full, owner, name)
 	}
 	wg.Wait()
+	var codeOwnerRecords []Record
+	for _, r := range results {
+		codeOwnerRecords = append(codeOwnerRecords, r.recs...)
+		g.episodes = append(g.episodes, r.eps...)
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -197,7 +206,8 @@ func (g *GitHub) Fetch(ctx context.Context) ([]Record, error) {
 	accounts := g.resolveAccounts(ctx, counts)
 
 	records := make([]Record, 0, len(counts)+len(codeOwnerRecords))
-	for login, tokenCounts := range counts {
+	for _, login := range util.SortedKeys(counts) {
+		tokenCounts := counts[login]
 		rec := githubPersonRecord(login, nil, accounts[login])
 		rec.Topics, rec.WeakTopics = splitCurated(expandTopics(tokenCounts), curated)
 		rec.Time = latest[login]
@@ -235,6 +245,12 @@ func (g *GitHub) indexRepo(
 		}
 		conCount = len(cons)
 		for _, c := range cons {
+			// The API types automation accounts; the login-suffix check in
+			// bump stays as a backstop for reviews and comments, which carry
+			// only a login.
+			if c.IsBot() {
+				continue
+			}
 			bump(c.Login, repoTokens, time.Time{})
 		}
 	}

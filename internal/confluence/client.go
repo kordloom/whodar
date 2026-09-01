@@ -250,13 +250,16 @@ func (p Page) LabelNames() []string {
 	return out
 }
 
-// Authors returns the distinct creator and last editor of the page.
+// Authors returns the distinct creator and last editor of the page, keyed by
+// whatever identity the deployment provides. Keying by account id alone
+// dropped every author on Server and Data Center, where users carry a
+// username and no account id, so self-hosted pages credited nobody.
 func (p Page) Authors() []*User {
 	return util.Distinct([]*User{p.History.CreatedBy, p.Version.By}, func(u *User) string {
 		if u == nil {
 			return ""
 		}
-		return u.AccountID
+		return u.Identity()
 	})
 }
 

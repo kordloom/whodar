@@ -78,8 +78,16 @@ type Repo struct {
 type Contributor struct {
 	// Login is the contributor's handle.
 	Login string `json:"login"`
+	// Type is the account type, "User" or "Bot". GitHub App bots also carry a
+	// "[bot]" login suffix, but the type is the API's own word for it.
+	Type string `json:"type"`
 	// Contributions is the contributor's commit count.
 	Contributions int `json:"contributions"`
+}
+
+// IsBot reports whether the contributor is an automation account.
+func (c Contributor) IsBot() bool {
+	return c.Type == "Bot" || strings.HasSuffix(c.Login, "[bot]")
 }
 
 // label is a pull request label.
