@@ -65,6 +65,7 @@ func TestDiagnose(t *testing.T) {
 			}
 			if found == nil {
 				t.Fatalf("no finding named %q in %+v", test.WantName, findings)
+				return
 			}
 			if found.Level != test.WantLevel {
 				t.Errorf("%q level = %d, want %d", test.WantName, found.Level, test.WantLevel)

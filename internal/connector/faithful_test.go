@@ -178,6 +178,7 @@ func TestSlackAgainstFaithfulSite(t *testing.T) {
 	}
 	if thr == nil {
 		t.Fatal("no thread episode formed")
+		return
 	}
 	// The word "circuit" is only in the replies, so its presence proves the
 	// replies were read and folded into the searchable body.

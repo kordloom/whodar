@@ -244,6 +244,7 @@ func TestGitJoinsGitHubByNoreplyLogin(t *testing.T) {
 	}
 	if octo == nil {
 		t.Fatal("no record for the noreply author")
+		return
 	}
 	if octo.PersonID != "github:octodev" {
 		t.Errorf("git author keyed as %q, want github:octodev so it joins GitHub", octo.PersonID)
