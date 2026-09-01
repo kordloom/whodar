@@ -23,7 +23,7 @@ func (ix *Index) Build(records []connector.Record) {
 	ix.personVecs = make(map[model.ID][]float32)
 	ix.channelVecs = make(map[model.ID][]float32)
 	ix.topicVecs = make(map[model.ID][]float32)
-	ix.take(records)
+	ix.take(scrubRecords(records))
 	ix.rebuild()
 }
 
@@ -34,8 +34,23 @@ func (ix *Index) Build(records []connector.Record) {
 // not named are left as they are. Person records merge by email or id, channel
 // records by name. Embeddings are left alone; call Embed to refresh vectors.
 func (ix *Index) Add(records []connector.Record) {
-	ix.take(records)
+	ix.take(scrubRecords(records))
 	ix.rebuild()
+}
+
+// scrubRecords strips credential-shaped substrings from every prose field
+// before anything downstream sees it: the postings, the stored source
+// records, and every answer derive from the scrubbed copy. People paste keys
+// into chat and tickets, and a who-knows-what index must never double as a
+// where-the-secrets-are index.
+func scrubRecords(records []connector.Record) []connector.Record {
+	out := make([]connector.Record, len(records))
+	for i, rec := range records {
+		rec.Text, _ = text.Scrub(rec.Text)
+		rec.Title, _ = text.Scrub(rec.Title)
+		out[i] = rec
+	}
+	return out
 }
 
 // take files records under the source that produced them, replacing that
@@ -121,7 +136,7 @@ func (ix *Index) MergeIncremental(records []connector.Record) {
 		ix.sources = make(map[string][]connector.Record)
 	}
 	incoming := make(map[string][]connector.Record)
-	for _, rec := range records {
+	for _, rec := range scrubRecords(records) {
 		incoming[rec.Source] = append(incoming[rec.Source], redactRecord(rec))
 	}
 	if ix.sourceCounts == nil {

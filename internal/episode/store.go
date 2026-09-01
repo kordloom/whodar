@@ -94,6 +94,18 @@ func (s *Store) Add(ep Episode) {
 	if ep.ID == "" {
 		return
 	}
+	// Credentials pasted into a conversation must never reach the store: not
+	// the search terms, and above all not the retained archive notes, which
+	// are quoted back verbatim.
+	ep.Body, _ = text.Scrub(ep.Body)
+	if len(ep.Archive) > 0 {
+		notes := make([]Note, len(ep.Archive))
+		for i, n := range ep.Archive {
+			n.Text, _ = text.Scrub(n.Text)
+			notes[i] = n
+		}
+		ep.Archive = notes
+	}
 	var vec []float32
 	if old, ok := s.episodes[ep.ID]; ok {
 		// Re-indexing must never quietly throw away what only the older run
@@ -475,4 +487,58 @@ func (s *Store) decay(at time.Time) float64 {
 		return 1
 	}
 	return math.Pow(0.5, age.Seconds()/half.Seconds())
+}
+
+// ForgetPerson removes a person from every conversation: their participant
+// links, their retained notes, and any episode where they were the only
+// participant. An episode that keeps other participants loses its searchable
+// words when they cannot be separated from the purged person's, and keeps the
+// pointer so the conversation can still be found through its place and people.
+// It reports how many episodes were dropped outright and how many were edited.
+func (s *Store) ForgetPerson(person model.ID) (dropped, edited int) {
+	for _, ep := range s.All() {
+		involved := false
+		for _, p := range ep.Participants {
+			if p == person {
+				involved = true
+				break
+			}
+		}
+		hasNotes := false
+		for _, n := range ep.Archive {
+			if n.Author == person {
+				hasNotes = true
+				break
+			}
+		}
+		if !involved && !hasNotes {
+			continue
+		}
+		if len(ep.Participants) <= 1 {
+			s.forget(ep)
+			dropped++
+			continue
+		}
+		updated := *ep
+		kept := make([]model.ID, 0, len(ep.Participants))
+		for _, p := range ep.Participants {
+			if p != person {
+				kept = append(kept, p)
+			}
+		}
+		updated.Participants = kept
+		notes := make([]Note, 0, len(ep.Archive))
+		for _, n := range ep.Archive {
+			if n.Author != person {
+				notes = append(notes, n)
+			}
+		}
+		updated.Archive = notes
+		s.forget(ep)
+		// Re-adding rebuilds the search terms from what remains; the original
+		// body is gone, which is the point.
+		s.Add(updated)
+		edited++
+	}
+	return dropped, edited
 }
