@@ -44,7 +44,13 @@ func Seal(
 			"location":   "whodar/risk.json",
 		}},
 	}
-	link, err := seal.LinkV1(nil, installID, 1, "", claim)
+	// The link commits to the claim's content, not to how this copy packages its evidence. An
+	// entry's present and location say whether and where the artifact travels beside this bundle,
+	// and the format excludes both, so a verifier strips them before recomputing. Passing the raw
+	// claim committed to them, and every bundle this produced failed to verify against the very
+	// verifier the feature exists to be checked by. ClaimContent is the one exported definition of
+	// what a link covers, so the strip is never spelled out here.
+	link, err := seal.LinkV1(nil, installID, 1, "", seal.ClaimContent(claim))
 	if err != nil {
 		return nil, fmt.Errorf("attest: link: %w", err)
 	}

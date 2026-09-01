@@ -59,15 +59,13 @@ The signing key is created once under the data directory and reused.`,
 
 // riskSubject names what a knowledge-risk bundle is about: the organization
 // the index describes, identified by the sources it was read from, so bundles
-// from two different indexes do not claim the same subject. The type is
-// "fleet" because that is the nearest subject type the LoomSeal schema allows
-// today; an "org" type is a format change and belongs to that repo.
+// from two different indexes do not claim the same subject.
 func riskSubject(ix *index.Index) map[string]any {
 	id := strings.Join(ix.SourceNames(), "+")
 	if id == "" {
 		id = "unnamed"
 	}
-	return map[string]any{"type": "fleet", "id": "org:" + id}
+	return map[string]any{"type": "org", "id": "org:" + id}
 }
 
 // attestPayload summarizes the risk report as the claim payload and returns the
