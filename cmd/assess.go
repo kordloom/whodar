@@ -18,6 +18,13 @@ import (
 // assessDeparturesListed caps how many people the departure file covers.
 const assessDeparturesListed = 10
 
+// assessMinPlaceWork is the least credited work a directory needs before it
+// is reported as a system.
+const assessMinPlaceWork = 30
+
+// assessPlacesListed caps how many systems the deliverable lists.
+const assessPlacesListed = 40
+
 // newAssessCmd builds the assess command, which turns a directory of exports
 // into a sealed knowledge-risk assessment: the deliverable, not the app.
 func newAssessCmd(opts *options) *cobra.Command {
@@ -42,9 +49,11 @@ mixes with your own index.
 
 The output directory holds the deliverable:
 
+  summary.md           the executive summary: findings, questions, actions
   report.html          the knowledge-risk brief, readable without whodar
   findings.json        every scored topic: bus factor, level, experts
   ownership.json       where the owner on paper is not the one doing the work
+  systems.json         each significant directory and who its work rests on
   departures.json      what leaves with each of the most load-bearing people
   assessment.loomseal  the sealed finding; verify offline with loomseal
   README.txt           what each file is and how to verify the seal
@@ -76,8 +85,9 @@ Examples:
 				}
 				ix.Add(recs)
 			}
+			var git *connector.GitHistory
 			if len(repoPaths) > 0 {
-				git := connector.NewGitHistory(connector.GitOptions{
+				git = connector.NewGitHistory(connector.GitOptions{
 					Paths: repoPaths, SinceDays: gitSinceDays, MaxCommits: maxCommits, Log: log,
 				})
 				recs, err := git.Fetch(cmd.Context())
@@ -113,12 +123,33 @@ Examples:
 			if err := writeAssessJSON(outDir, "findings.json", findings); err != nil {
 				return err
 			}
-			if err := writeAssessJSON(outDir, "ownership.json", resolve.Ownership(ix)); err != nil {
+			ownership := resolve.Ownership(ix)
+			if err := writeAssessJSON(outDir, "ownership.json", ownership); err != nil {
 				return err
 			}
 			departures := assessDepartures(ix, top)
 			if err := writeAssessJSON(outDir, "departures.json", departures); err != nil {
 				return err
+			}
+			var places []resolve.Place
+			if git != nil {
+				// Systems are places, not words: the per-directory tally
+				// answers who a system rests on without pooling every path
+				// that shares its name.
+				places = resolve.PlaceLeads(ix, git.DirWork(), git.WorkTotals(),
+					assessMinPlaceWork, 3)
+				if len(places) > assessPlacesListed {
+					places = places[:assessPlacesListed]
+				}
+				if err := writeAssessJSON(outDir, "systems.json", places); err != nil {
+					return err
+				}
+			}
+			spans := resolve.SoleSpans(ix, summaryListed)
+			summary := assessSummary(ix, findings, ownership, departures, spans, places)
+			if err := os.WriteFile(filepath.Join(outDir, "summary.md"),
+				[]byte(summary), 0o644); err != nil {
+				return fmt.Errorf("assess: %w", err)
 			}
 			if err := writeRiskHTML(cmd, ix, filepath.Join(outDir, "report.html"), briefRows); err != nil {
 				return err
@@ -213,11 +244,16 @@ func writeAssessJSON(dir, name string, v any) error {
 // assessReadme explains the deliverable to somebody who has never run whodar.
 const assessReadme = `This directory is a whodar knowledge-risk assessment.
 
+summary.md           The executive summary: what was found, the questions it
+                     raises for management, and the actions it suggests.
 report.html          The knowledge-risk brief. Open it in a browser.
 findings.json        Every scored topic: bus factor, risk level, and the
                      people who hold it.
 ownership.json       Areas whose declared owner is not the person doing the
                      work in them.
+systems.json         Each significant directory of the code base and the
+                     people its observed work rests on, breadth-discounted so
+                     wide-ranging committers do not outrank owners.
 departures.json      For each of the most load-bearing people, the subjects
                      that leave with them: sole means nobody else holds it.
 assessment.loomseal  A signed seal over the findings. Verify it offline:

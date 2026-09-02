@@ -33,7 +33,7 @@ func TestAssessProducesSealedDeliverable(t *testing.T) {
 	}
 
 	for _, name := range []string{
-		"report.html", "findings.json", "ownership.json", "departures.json",
+		"summary.md", "report.html", "findings.json", "ownership.json", "departures.json",
 		"assessment.loomseal", "README.txt",
 	} {
 		if _, err := os.Stat(filepath.Join(out, name)); err != nil {
@@ -51,6 +51,19 @@ func TestAssessProducesSealedDeliverable(t *testing.T) {
 	}
 	if len(findings) == 0 {
 		t.Error("no topics scored from two sources of real shape")
+	}
+
+	summary, err := os.ReadFile(filepath.Join(out, "summary.md"))
+	if err != nil {
+		t.Fatalf("read summary: %v", err)
+	}
+	for _, want := range []string{"# Knowledge continuity summary", "subjects scored"} {
+		if !strings.Contains(string(summary), want) {
+			t.Errorf("summary lacks %q:\n%s", want, summary)
+		}
+	}
+	if strings.Contains(string(summary), "%!") {
+		t.Errorf("summary has a formatting error:\n%s", summary)
 	}
 
 	html, err := os.ReadFile(filepath.Join(out, "report.html"))
