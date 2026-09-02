@@ -29,6 +29,7 @@ func newAssessCmd(opts *options) *cobra.Command {
 		outDir       string
 		top          int
 		gitSinceDays int
+		maxCommits   int
 	)
 	cmd := &cobra.Command{
 		Use:   "assess",
@@ -77,7 +78,7 @@ Examples:
 			}
 			if len(repoPaths) > 0 {
 				git := connector.NewGitHistory(connector.GitOptions{
-					Paths: repoPaths, SinceDays: gitSinceDays, Log: log,
+					Paths: repoPaths, SinceDays: gitSinceDays, MaxCommits: maxCommits, Log: log,
 				})
 				recs, err := git.Fetch(cmd.Context())
 				if err != nil {
@@ -158,6 +159,10 @@ Examples:
 	f.IntVar(&gitSinceDays, "git-since-days", 730,
 		"How far back to read git history. Two years, because an assessment is about "+
 			"what the company knows, not what it did this quarter.")
+	f.IntVar(&maxCommits, "max-commits", 100000,
+		"Commit cap per repository. Far above the indexing default: a cap that "+
+			"truncates history silently drops the people who built the older half of "+
+			"a system, which is exactly what an assessment is asked to find.")
 	return cmd
 }
 
