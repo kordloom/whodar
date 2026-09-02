@@ -59,6 +59,13 @@ type GitHubOptions struct {
 	// issues updated at or after it, and skips the whole-repo contributor and
 	// CODEOWNERS snapshots, whose weight would double if folded again.
 	Since time.Time
+	// MaxPages raises how many pages each listing may walk. Zero keeps the
+	// client default, which bounds a scheduled run; an assessment reads a
+	// repository once and asks for depth deliberately.
+	MaxPages int
+	// BaseURL is the API root, for a GitHub Enterprise Server deployment.
+	// Empty uses github.com.
+	BaseURL string
 	// Log receives progress lines; nil discards them.
 	Log io.Writer
 }
@@ -98,8 +105,11 @@ func (g *GitHub) PullPeople() map[int][]string { return g.pullPeople }
 
 // NewGitHub returns a GitHub connector authenticating with token.
 func NewGitHub(token string, opts GitHubOptions) *GitHub {
-	return &GitHub{client: github.New(token), opts: opts.withDefaults(),
-		pullPeople: make(map[int][]string)}
+	return &GitHub{
+		client:     github.New(token, github.WithMaxPages(opts.MaxPages), github.WithBaseURL(opts.BaseURL)),
+		opts:       opts.withDefaults(),
+		pullPeople: make(map[int][]string),
+	}
 }
 
 // NewGitHubWithClient returns a GitHub connector using a preconfigured client.
