@@ -32,6 +32,8 @@ type Client struct {
 	http httputil.Doer
 	// maxRetries bounds retries on a secondary rate limit.
 	maxRetries int
+	// maxPages caps how many pages one listing walks.
+	maxPages int
 }
 
 // Option configures a Client.
@@ -46,6 +48,18 @@ func WithBaseURL(u string) Option {
 	}
 }
 
+// WithMaxPages raises how many pages one listing may walk. The default bounds
+// a scheduled run so a pathological repository cannot eat the rate budget; an
+// assessment reads a repository once and wants the depth, so it asks for more
+// deliberately. A non-positive value keeps the default.
+func WithMaxPages(n int) Option {
+	return func(c *Client) {
+		if n > 0 {
+			c.maxPages = n
+		}
+	}
+}
+
 // apiTimeout bounds one HTTP exchange so a hung server cannot stall a run.
 const apiTimeout = 60 * time.Second
 
@@ -55,7 +69,10 @@ func New(token string, opts ...Option) *Client {
 	if token == "" {
 		panic("github: New requires a non-empty token")
 	}
-	c := &Client{token: token, baseURL: defaultBaseURL, http: httputil.NewClient(apiTimeout), maxRetries: 3}
+	c := &Client{
+		token: token, baseURL: defaultBaseURL, http: httputil.NewClient(apiTimeout),
+		maxRetries: 3, maxPages: defaultMaxPages,
+	}
 	for _, o := range opts {
 		o(c)
 	}
@@ -195,14 +212,14 @@ func (c *Client) Repo(ctx context.Context, owner, repo string) (Repo, error) {
 }
 
 // Contributors returns a repository's contributors, most commits first,
-// following pagination up to maxPages pages of 100.
+// following pagination up to the client page cap, in pages of 100.
 func (c *Client) Contributors(ctx context.Context, owner, repo string) ([]Contributor, error) {
 	q := url.Values{"per_page": {"100"}}
 	return getAll[Contributor](ctx, c, repoPath(owner, repo, "contributors"), q)
 }
 
 // PullRequests returns a repository's pull requests of any state, most
-// recently updated first, following pagination up to maxPages pages of 100.
+// recently updated first, following pagination up to the client page cap.
 func (c *Client) PullRequests(ctx context.Context, owner, repo string) ([]PullRequest, error) {
 	q := url.Values{"state": {"all"}, "per_page": {"100"}, "sort": {"updated"}, "direction": {"desc"}}
 	return getAll[PullRequest](ctx, c, repoPath(owner, repo, "pulls"), q)
@@ -254,7 +271,7 @@ func (c *Client) PullCommenters(ctx context.Context, owner, repo string, number 
 }
 
 // OrgRepos returns an org's repositories, most recently updated first,
-// following pagination up to maxPages pages of 100.
+// following pagination up to the client page cap, in pages of 100.
 func (c *Client) OrgRepos(ctx context.Context, org string) ([]Repo, error) {
 	q := url.Values{"per_page": {"100"}, "sort": {"updated"}}
 	return getAll[Repo](ctx, c, "/orgs/"+url.PathEscape(org)+"/repos", q)
@@ -321,9 +338,11 @@ func escapeSegments(p string) string {
 	return strings.Join(segs, "/")
 }
 
-// maxPages caps how many pages one listing walks so a pathological
-// repository cannot consume the whole rate budget.
-const maxPages = 10
+// defaultMaxPages caps how many pages one listing walks so a pathological
+// repository cannot consume the whole rate budget. An assessment reads a
+// repository once and wants depth, so it raises this deliberately; a
+// scheduled refresh should not.
+const defaultMaxPages = 10
 
 // get performs a GET request and decodes the JSON body into out.
 func (c *Client) get(ctx context.Context, path string, query url.Values, out any) error {
@@ -336,7 +355,7 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, out any
 }
 
 // getAll fetches every page of a list endpoint by following the Link header,
-// up to maxPages. Pagination stays on the API host so the bearer token cannot be
+// up to the client page cap. Pagination stays on the API host so the bearer token cannot be
 // sent anywhere else. If the cap is reached while another page remains, it
 // returns the partial results with ErrTruncated rather than passing them off as
 // complete, so the caller can warn instead of indexing a busy repo as whole.
@@ -351,8 +370,8 @@ func getAll[T any](ctx context.Context, c *Client, path string, query url.Values
 	}
 	var all []T
 	for page := 0; endpoint != ""; page++ {
-		if page >= maxPages {
-			return all, fmt.Errorf("github %s: %w at %d pages", path, ErrTruncated, maxPages)
+		if page >= c.maxPages {
+			return all, fmt.Errorf("github %s: %w at %d pages", path, ErrTruncated, c.maxPages)
 		}
 		var batch []T
 		next, err := c.getURL(ctx, endpoint, path, &batch)
