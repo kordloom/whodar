@@ -612,6 +612,18 @@ func commitSubject(msg string) string {
 	return msg
 }
 
+// automationNames are automation accounts whose names carry no "bot" word at
+// all. GitHub's coding agent commits as plain "Copilot", and on a real
+// repository it was named as the sole holder of a subject: an assessment that
+// tells an acquirer a machine is the only one who understands something is
+// worse than useless. Names here are matched whole, case-insensitively, so a
+// person called Robin Copilot-Smith is untouched.
+var automationNames = map[string]bool{
+	"copilot": true, "github-actions": true, "github actions": true,
+	"semantic-release": true, "release-please": true, "snyk": true,
+	"imgbot": true, "allcontributors": true, "codecov": true,
+}
+
 // isBotAuthor reports whether a commit author is an automation account, whose
 // activity says nothing about human expertise.
 //
@@ -628,6 +640,15 @@ func isBotAuthor(name, email string) bool {
 	local := email
 	if i := strings.IndexByte(local, '@'); i >= 0 {
 		local = local[:i]
+	}
+	// A GitHub noreply local part is "12345+login", and the login is what
+	// names the account.
+	if _, after, ok := strings.Cut(local, "+"); ok {
+		local = after
+	}
+	if automationNames[strings.ToLower(strings.TrimSpace(name))] ||
+		automationNames[strings.ToLower(strings.TrimSpace(local))] {
+		return true
 	}
 	return hasBotWord(name) || hasBotWord(local)
 }
