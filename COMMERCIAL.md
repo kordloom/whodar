@@ -26,7 +26,9 @@ on that version lapses then.
   you sell just as much as hosting whodar directly.
 - Provide reports, assessments, or analyses produced with whodar to third
   parties as part of any paid service or engagement. Running it on your own
-  organization is free; charging others for its findings is licensed work.
+  organization is free; charging others for its findings is licensed work. A
+  Partner License is what lifts this, and it exists precisely so diligence
+  practices and fractional CTO firms can do it.
 - Redistribute whodar, modified or not, under different license terms. BUSL
   redistribution is permitted, but every copy and derivative stays under BUSL
   with the license displayed.
@@ -55,34 +57,55 @@ telemetry, and no phone-home: the whole graph, every source, every surface, and
 recall pointing back at the conversations you took part in. whodar runs local by
 default and stays that way.
 
+## Knowledge Continuity Assessment
+
+The paid work is an assessment of one company: which parts of it rest on one
+person, what leaves when they do, and where the declared owner is not the one
+doing the work. It is built for the people who ask that question on a deadline
+and pay for the answer, which is technical due diligence before an acquisition.
+
+It runs on what a data room already holds: git history, a Slack export, an org
+chart, a CODEOWNERS file. No credentials, no bot to install, no access to the
+target's live systems, nothing sent anywhere. One command produces the whole
+deliverable.
+
+You get a report readable without whodar, the findings as data, the departure
+impact for the most load-bearing people, and a LoomSeal bundle that anyone can
+verify offline. The seal is the point: a board or an acquirer can confirm the
+findings came from a licensed install and have not been edited since.
+
+**From $7,500 per target**, scoped by the number of repositories and sources
+rather than by headcount. Five business days.
+
+## Partner License
+
+For diligence practices, fractional CTO firms, and anyone who runs assessments
+for their own clients. The license removes the restriction in the source
+license that otherwise forbids providing whodar findings to third parties as
+part of a paid engagement, and names your firm inside every sealed report, so a
+finding traces back to the practice that issued it.
+
+**From $10,000 a year, flat.** Unlimited engagements, unlimited targets. There
+is no seat count to true up and no audit, because whodar cannot phone home and
+does not know your headcount.
+
 ## Memory
 
-The line is between your history and the organization's. Finding people, and
-finding the conversations you took part in, are free forever. Memory is the
-organization's memory: it keeps the words of Slack conversations on your own
-machines, so whodar can still show how something was fixed after the messages
-themselves are gone. Without a license, whodar keeps a pointer and nothing more.
+Memory keeps the words of Slack conversations on your own machines, so whodar
+can still show how something was fixed after the messages themselves are gone.
+Without it, whodar keeps a pointer and nothing more. Most companies delete
+their own chat on a schedule for good legal reasons, and that purge also
+deletes the engineering record.
 
-Most companies delete their own chat on a schedule, for good legal reasons. That
-purge also deletes the engineering record: why a workaround shipped, how an
-outage was really fixed, what the person who left knew. Memory sits on the other
-side of that boundary, on hardware you control.
+It is available with an assessment or a partner license rather than sold on its
+own. If you want it by itself, say so and we will price it.
 
-**$5,000 a year, flat, per organization.** Any number of people, any number of
-sources. There is no seat count to true up, no per-user pricing, and no audit,
-because whodar cannot phone home and does not know your headcount. Paid annually.
+## How licensing works
 
-Larger organizations, several workspaces, air-gapped installs, or a support
-commitment in writing: talk to us. Still flat, still no seat count.
-
-Optional: a $5,000 deployment engagement to connect your sources, tune ranking to
-your organization, and run the first backfill. Included at no charge for selected
-early customers. Most teams do not need it.
-
-The license is a small signed file, verified against a key compiled into the binary.
-Nothing is checked over the network, so a licensed install works air-gapped. If a
-license expires, whodar drops to the free tier and every byte already on disk stays
-exactly where it is: nothing is deleted, hidden, or held hostage, and what you kept
-stays readable. New conversations simply stop being kept until you renew.
+The license is a small signed file, verified against a key compiled into the
+binary. Nothing is checked over the network, so a licensed install works
+air-gapped. If a license expires, whodar drops to the free tier and every byte
+already on disk stays exactly where it is: nothing is deleted, hidden, or held
+hostage, and what you kept stays readable.
 
 Ask at hello@whodar.dev.

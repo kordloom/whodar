@@ -146,7 +146,7 @@ Business Source License 1.1 (see [LICENSE](LICENSE)). Source-available: run whod
 production inside your company on your own infrastructure, with no seat count and no
 license key. Two restrictions: offering whodar to third parties as a hosted service, and
 selling whodar-produced reports or assessments to third parties. Using it on your own
-organization is never licensed work. It converts to Apache 2.0 on 2030-08-03.
+organization is never licensed work. It converts to Apache 2.0 on 2030-08-03, or four years after a given version was first published, whichever comes first.
 
 Hosting it for others, selling its findings, embedding it in something you sell, or
 bound by a policy that rejects source-available licenses? See [COMMERCIAL.md](COMMERCIAL.md).
