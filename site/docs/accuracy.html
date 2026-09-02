@@ -154,8 +154,7 @@ input. The naive baseline is git's top three committers per directory, and
 the directories where that baseline misses are scored as their own cohort,
 because a tool that only finds the maintainers who are also the top
 committers is a slower <code>git shortlog</code>.</p>
-<p>Measured 2026-09-02, two-year windows, place-scoped ownership model with
-review fusion:</p>
+<p>Measured 2026-09-02, two-year windows, place-scoped ownership model:</p>
 <table>
 <thead>
 <tr>
@@ -175,11 +174,11 @@ review fusion:</p>
 <td>24% (11/45)</td>
 </tr>
 <tr>
-<td>git plus GitHub review data</td>
+<td>git plus placed review data</td>
 <td>kubernetes/test-infra</td>
-<td>45% (53/117)</td>
+<td>60% (70/117)</td>
 <td>29% (34/117)</td>
-<td>28% (23/83)</td>
+<td>48% (40/83)</td>
 </tr>
 <tr>
 <td>git history only</td>
@@ -188,27 +187,40 @@ review fusion:</p>
 <td>42% (16/38)</td>
 <td>9% (2/22)</td>
 </tr>
+<tr>
+<td>git plus placed review data</td>
+<td>kubernetes/kubernetes</td>
+<td>29% (24/83)</td>
+<td>19% (16/83)</td>
+<td>21% (14/67)</td>
+</tr>
 </tbody>
 </table>
 <p>Three readings.</p>
 <p><strong>Ownership is asked about places, and scoring it by place is what wins.</strong>
 whodar's subjects pool every path sharing a name; the place model reads the
 same walk by directory, with the identity join, bot filtering, trailer
-credit, and a breadth discount layered on. On test-infra that beats the
-commit-counting baseline by thirteen points from git history alone, and by
-sixteen with review data fused in, on a judged set half again larger because
-reviewer identities resolve approvers commit history cannot map.</p>
-<p><strong>The breadth discount is tuned on one repository and validated on the
-other.</strong> A half-power discount over-punished the maintainers who work across
-a whole tree, which on a large project is exactly who the owners are; a
-quarter power held on both repositories. The number is in the source with
-its reasoning, not in a config nobody can audit.</p>
-<p><strong>kubernetes is the honest frontier.</strong> Its approvers approve through review
-rather than commits, so git history alone tops out near the baseline there,
-and the month of review depth a bounded API read returns is enough to double
-the judgeable population through identity resolution but not to rank on.
-Closing it is not a research question: it is a deeper review fetch, sized to
-that project's velocity.</p>
+credit, and a breadth discount layered on. From git history alone that beats
+commit counting by thirteen points on test-infra.</p>
+<p><strong>Where a review happened matters more than how much review data there is.</strong>
+Crediting reviewers with the words of a pull request's title, which is what
+a forge connector naturally gives you, adds nothing an ownership question can
+use: it doubled the population we could judge and left the ranking flat. The
+same reviews credited against the directories the pull request actually
+changed take test-infra to sixty percent against a twenty-nine percent
+baseline, and take the cohort that commit counting cannot reach from
+twenty-eight percent to forty-eight. The link costs no extra request: a merge
+commit names its pull request, so the history already knows which change
+touched which places.</p>
+<p><strong>Both repositories now beat the baseline, kubernetes included.</strong> Kubernetes
+is the harder case, because its approvers approve through review rather than
+authorship, and with git history alone whodar trailed commit counting there.
+With review placed properly it leads by ten points. The absolute numbers stay
+lower than test-infra's because two thousand pull requests is a few months of
+kubernetes velocity; the gap to close now is depth of read, not method.</p>
+<p>Read the cohort C column as the real one. Every judged directory where the
+designated approver is also a top committer is a directory commit counting
+already gets right, and a tool that only wins those is a slower git shortlog.</p>
 <p>Commit trailers (Reviewed-by, Acked-by, Co-authored-by) are also credited at
 ingest, which moved test-infra's git-only score two points; the mechanism
 matters more than the size here, since the Kubernetes ecosystem barely uses
