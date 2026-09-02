@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kordloom/whodar/internal/connector"
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/model"
 	"github.com/kordloom/whodar/internal/resolve"
@@ -225,6 +226,21 @@ func leafOf(dir string) string {
 	return dir
 }
 
+// humans returns every human author who touched the directory at all, keyed
+// for name comparison. Presence is a different question from volume: whether
+// the person you would be sent to is still working here does not depend on
+// them out-committing everybody.
+func (d dirCount) humans() map[string]bool {
+	out := make(map[string]bool, len(d.byAuthor))
+	for n := range d.byAuthor {
+		if connector.IsAutomationName(n) {
+			continue
+		}
+		out[nameKey(n)] = true
+	}
+	return out
+}
+
 // dirCount is one directory's activity: which authors touched files under it.
 type dirCount struct {
 	// byAuthor counts files touched per author name.
@@ -233,7 +249,10 @@ type dirCount struct {
 	total int
 }
 
-// top returns the k most active authors, ties broken by name.
+// top returns the k most active human authors, ties broken by name.
+// Automation is excluded: a robot that opens a hundred dependency bumps is
+// not a person the work rests on, and leaving it in rewards whichever side
+// of a comparison failed to filter it.
 func (d dirCount) top(k int) []string {
 	type pair struct {
 		n string
@@ -241,6 +260,9 @@ func (d dirCount) top(k int) []string {
 	}
 	out := make([]pair, 0, len(d.byAuthor))
 	for n, c := range d.byAuthor {
+		if connector.IsAutomationName(n) {
+			continue
+		}
 		out = append(out, pair{n, c})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -262,8 +284,19 @@ func (d dirCount) top(k int) []string {
 // dirActivity reads the log once and counts, for every directory prefix, how
 // many file touches each author made under it.
 func dirActivity(repo string, sinceDays int) (map[string]dirCount, error) {
-	cmd := exec.Command("git", "-C", repo, "log", "--since="+sinceDate(sinceDays),
-		"--no-merges", "--format=@@%aN", "--name-only")
+	return dirActivityRange(repo, sinceDays, 0)
+}
+
+// dirActivityRange is dirActivity over a window that may stop short of today,
+// so a holdout can read the past a prediction was made from and the future it
+// is judged against with the same code.
+func dirActivityRange(repo string, sinceDays, untilDays int) (map[string]dirCount, error) {
+	args := []string{"-C", repo, "log", "--since=" + sinceDate(sinceDays),
+		"--no-merges", "--format=@@%aN", "--name-only"}
+	if untilDays > 0 {
+		args = append(args, "--until="+sinceDate(untilDays))
+	}
+	cmd := exec.Command("git", args...)
 	var errb strings.Builder
 	cmd.Stderr = &errb
 	raw, err := cmd.Output()

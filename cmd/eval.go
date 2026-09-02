@@ -87,6 +87,7 @@ Examples:
 		},
 	}
 	cmd.AddCommand(newEvalOwnersCmd(opts))
+	cmd.AddCommand(newEvalHoldoutCmd(opts))
 	cmd.Flags().StringVar(&baseline, "baseline", "", "Compare against a measurement saved earlier")
 	cmd.Flags().StringVar(&save, "save", "", "Write this measurement to a file")
 	return cmd

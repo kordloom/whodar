@@ -850,6 +850,21 @@ var automationNames = map[string]bool{
 	"imgbot": true, "allcontributors": true, "codecov": true,
 }
 
+// IsAutomationName reports whether a display name belongs to an automation
+// account. It is the name-only half of the author check, exported because a
+// benchmark judging whodar has to hold its ground truth to the same standard:
+// scoring a predictor against a future full of bots rewards whichever
+// predictor failed to filter them.
+func IsAutomationName(name string) bool {
+	if strings.HasSuffix(name, "[bot]") {
+		return true
+	}
+	if automationNames[strings.ToLower(strings.TrimSpace(name))] {
+		return true
+	}
+	return hasBotWord(name)
+}
+
 // isBotAuthor reports whether a commit author is an automation account, whose
 // activity says nothing about human expertise.
 //
