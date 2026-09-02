@@ -10,6 +10,7 @@ import (
 	"io"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -130,6 +131,12 @@ func normName(name string) string {
 	return b.String()
 }
 
+// maxPullDirs bounds how many directories one pull request may credit its
+// reviewers with. A release merge or a tree-wide rename touches everything,
+// and reviewing it is not owning all of it, which is the same line the sweep
+// gate draws for authorship.
+const maxPullDirs = 25
+
 // maxNamedSkips caps how many automation accounts one report line names.
 const maxNamedSkips = 15
 
@@ -203,6 +210,28 @@ type commitJob struct {
 	Trailers []trailerPerson
 	// Root marks a commit with no parent, whose diff is its whole tree.
 	Root bool
+	// Pull is the pull request number a merge commit landed, or zero. A merge
+	// credits nobody with authorship, but it is the one place the history
+	// records which change belongs to which pull request, and that link is
+	// what lets a reviewer be credited with the places they reviewed.
+	Pull int
+}
+
+// pullMergeRe matches the merge subject GitHub writes when a pull request
+// lands, which is where the number-to-change link lives.
+var pullMergeRe = regexp.MustCompile(`^Merge pull request #(\d+)`)
+
+// pullNumber returns the pull request a merge commit landed, or zero.
+func pullNumber(subject string) int {
+	m := pullMergeRe.FindStringSubmatch(subject)
+	if m == nil {
+		return 0
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // trailerPerson is one person a commit trailer credits.
@@ -284,6 +313,7 @@ func (g *GitHistory) scanCommits(ctx context.Context, path string) ([]commitJob,
 
 	stop := g.opts.StopAt[path]
 	var jobs []commitJob
+	authored := 0
 	newest, reached := "", false
 	err = iter.ForEach(func(c *object.Commit) error {
 		// The newest commit seen, before any filtering, is where the next run
@@ -298,7 +328,11 @@ func (g *GitHistory) scanCommits(ctx context.Context, path string) ([]commitJob,
 			reached = true
 			return storer.ErrStop
 		}
-		if len(jobs) >= g.opts.MaxCommits {
+		// The cap counts authored commits, which is what it is about. Merge
+		// commits are walked only to learn which pull request changed which
+		// places, and letting them consume the cap starved a busy repository
+		// of the authorship it exists to read.
+		if authored >= g.opts.MaxCommits {
 			return storer.ErrStop
 		}
 		if err := ctx.Err(); err != nil {
@@ -310,12 +344,19 @@ func (g *GitHistory) scanCommits(ctx context.Context, path string) ([]commitJob,
 		}
 		email = strings.ToLower(strings.TrimSpace(email))
 		if c.NumParents() > 1 {
+			// A merge is not authorship, so nobody is credited for it. It is
+			// walked only when it names a pull request, to learn which places
+			// that pull request changed.
+			if pull := pullNumber(commitSubject(c.Message)); pull > 0 {
+				jobs = append(jobs, commitJob{Hash: c.Hash, When: c.Author.When, Pull: pull})
+			}
 			return nil
 		}
 		if email == "" || isBotAuthor(name, email) {
 			skips.note(name, email)
 			return nil
 		}
+		authored++
 		jobs = append(jobs, commitJob{
 			Hash: c.Hash, Email: email, Name: name, When: c.Author.When,
 			Subject:  commitSubject(c.Message),
@@ -381,6 +422,9 @@ type tally struct {
 	// workTotals counts every commit per author, sweeps included, which is
 	// the breadth a directory score is discounted by.
 	workTotals map[string]float64
+	// pullDirs records which directories each pull request changed, learned
+	// from the merge commit that landed it.
+	pullDirs map[int][]string
 	// read is how many commits this worker took in.
 	read int
 	// skipped is how many it could not diff.
@@ -453,6 +497,9 @@ func (g *GitHistory) diffCommits(
 		}
 		for email, n := range t.workTotals {
 			g.workTotals[email] += n
+		}
+		for pull, dirs := range t.pullDirs {
+			g.pullDirs[pull] = dirs
 		}
 		for tok := range t.curated {
 			curated[tok] = true
@@ -527,6 +574,7 @@ func (g *GitHistory) diffShare(
 		ties:       newTogether(),
 		dirWork:    make(map[string]map[string]float64),
 		workTotals: make(map[string]float64),
+		pullDirs:   make(map[int][]string),
 	}
 	repo, closeRepo, err := openRepo(path)
 	if err != nil {
@@ -548,6 +596,27 @@ func (g *GitHistory) diffShare(
 		paths, err := changedPaths(commit)
 		if err != nil {
 			t.skipped++
+			continue
+		}
+		if job.Pull > 0 {
+			// A merge credits nobody. It is here to record which places the
+			// pull request touched, so whoever reviewed it can be credited
+			// with those places rather than with the words of its title.
+			dirs := make(map[string]bool, len(paths))
+			for _, name := range paths {
+				parts := strings.Split(name, "/")
+				for i := 1; i < len(parts); i++ {
+					dirs[strings.Join(parts[:i], "/")] = true
+				}
+			}
+			if len(dirs) > 0 && len(dirs) <= maxPullDirs {
+				out := make([]string, 0, len(dirs))
+				for d := range dirs {
+					out = append(out, d)
+				}
+				sort.Strings(out)
+				t.pullDirs[job.Pull] = out
+			}
 			continue
 		}
 		if job.Root && len(paths) > maxRootCommitFiles {

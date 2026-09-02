@@ -106,7 +106,16 @@ type GitHistory struct {
 	dirWork map[string]map[string]float64
 	// workTotals counts every commit per author email, for breadth discounts.
 	workTotals map[string]float64
+	// pullDirs maps a pull request number to the directories its merge
+	// changed, so review credit can be placed rather than guessed from prose.
+	pullDirs map[int][]string
 }
+
+// PullDirs returns, per pull request number, the directories that pull request
+// changed, learned from the merge commits in the history. It is the local link
+// between a review and the places it was a review of, so crediting a reviewer
+// costs no extra API call.
+func (g *GitHistory) PullDirs() map[int][]string { return g.pullDirs }
 
 // DirWork returns the per-directory work tally the walk accumulated: for each
 // directory prefix, how many commits each author landed there, with the same
@@ -129,6 +138,7 @@ func NewGitHistory(opts GitOptions) *GitHistory {
 		opts: opts.withDefaults(), marks: make(map[string]string),
 		dirWork:    make(map[string]map[string]float64),
 		workTotals: make(map[string]float64),
+		pullDirs:   make(map[int][]string),
 	}
 }
 
