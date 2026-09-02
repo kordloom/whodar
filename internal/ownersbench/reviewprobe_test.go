@@ -2,13 +2,16 @@ package ownersbench
 
 import (
 	"context"
+	"encoding/json"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/kordloom/whodar/internal/connector"
 	"github.com/kordloom/whodar/internal/github"
 	"github.com/kordloom/whodar/internal/index"
+	"github.com/kordloom/whodar/internal/resolve"
 )
 
 // TestReviewSignalProbe is a one-off experiment runner, gated behind env
@@ -30,16 +33,41 @@ func TestReviewSignalProbe(t *testing.T) {
 		t.Fatalf("git: %v", err)
 	}
 
-	gh := connector.NewGitHubWithClient(github.New(token), connector.GitHubOptions{
-		Repos: []string{repoFull},
-		Since: time.Now().AddDate(-1, 0, 0),
-		Log:   os.Stderr,
-	})
+	pages := 10
+	if v := os.Getenv("WHODAR_PROBE_PAGES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			pages = n
+		}
+	}
+	gh := connector.NewGitHubWithClient(github.New(token, github.WithMaxPages(pages)),
+		connector.GitHubOptions{
+			Repos: []string{repoFull},
+			Since: time.Now().AddDate(-1, 0, 0),
+			Log:   os.Stderr,
+		})
 	ghRecs, err := gh.Fetch(context.Background())
 	if err != nil {
 		t.Fatalf("github: %v", err)
 	}
-	t.Logf("git records: %d, github records: %d", len(gitRecs), len(ghRecs))
+	t.Logf("git records: %d, github records: %d, pull dirs: %d, pull people: %d",
+		len(gitRecs), len(ghRecs), len(git.PullDirs()), len(gh.PullPeople()))
+
+	// Persist the place tally with review credit folded in, so the bench can
+	// score exactly what the product would build.
+	dirWork := resolve.AddReviewCredit(git.DirWork(), git.WorkTotals(),
+		git.PullDirs(), gh.PullPeople())
+	blob, err := json.Marshal(map[string]any{
+		"dirWork": dirWork, "workTotals": git.WorkTotals(),
+	})
+	if err != nil {
+		t.Fatalf("marshal tally: %v", err)
+	}
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(outDir+"/placetally.json", blob, 0o600); err != nil {
+		t.Fatalf("write tally: %v", err)
+	}
 
 	ix := index.New()
 	ix.Add(gitRecs)

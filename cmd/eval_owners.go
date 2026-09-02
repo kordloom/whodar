@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -20,6 +22,7 @@ func newEvalOwnersCmd(opts *options) *cobra.Command {
 		topK         int
 		maxLeafShare int
 		useIndex     bool
+		tallyPath    string
 		jsonOut      bool
 	)
 	cmd := &cobra.Command{
@@ -73,10 +76,22 @@ Examples:
 				ix.Canonicalize()
 			}
 
+			dirWork, workTotals := git.DirWork(), git.WorkTotals()
+			if tallyPath != "" {
+				// A saved tally carries review credit placed against the
+				// directories each pull request changed, which a git walk
+				// alone cannot know.
+				loaded, totals, err := loadPlaceTally(tallyPath)
+				if err != nil {
+					return err
+				}
+				dirWork, workTotals = loaded, totals
+			}
+
 			res, err := ownersbench.Run(ix, ownersbench.Config{
 				Repo: repo, SinceDays: sinceDays, MinCommits: minCommits,
 				TopK: topK, MaxLeafShare: maxLeafShare, Log: log,
-				DirWork: git.DirWork(), WorkTotals: git.WorkTotals(),
+				DirWork: dirWork, WorkTotals: workTotals,
 			})
 			if err != nil {
 				return err
@@ -126,8 +141,27 @@ Examples:
 	f.IntVar(&topK, "top-k", 3, "Names each side may offer.")
 	f.IntVar(&maxLeafShare, "max-leaf-share", 3,
 		"Most directories a leaf name may be shared by before it is unjudgeable.")
+	f.StringVar(&tallyPath, "place-tally", "",
+		"Saved place tally with review credit folded in, from the review probe.")
 	f.BoolVar(&useIndex, "use-index", false,
 		"Score the index in --data-dir instead of building one from git here.")
 	f.BoolVar(&jsonOut, "json", false, "Emit the full result as JSON.")
 	return cmd
+}
+
+// loadPlaceTally reads a saved place tally: per-directory work with review
+// credit already folded in, and the breadth totals that go with it.
+func loadPlaceTally(path string) (map[string]map[string]float64, map[string]float64, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("eval owners: read place tally: %w", err)
+	}
+	var blob struct {
+		DirWork    map[string]map[string]float64 `json:"dirWork"`
+		WorkTotals map[string]float64            `json:"workTotals"`
+	}
+	if err := json.Unmarshal(raw, &blob); err != nil {
+		return nil, nil, fmt.Errorf("eval owners: parse place tally: %w", err)
+	}
+	return blob.DirWork, blob.WorkTotals, nil
 }
