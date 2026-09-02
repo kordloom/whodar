@@ -82,11 +82,24 @@ type GitHub struct {
 	opts GitHubOptions
 	// episodes holds the merged changes seen by the last Fetch.
 	episodes []episode.Episode
+	// pullPeople records, per pull request number, everyone who took part in
+	// it: author, reviewers, assignees, and whoever actually reviewed or
+	// commented. Held so review credit can be placed against the directories
+	// the pull request changed, which the git history already knows.
+	pullPeople map[int][]string
+	// pullMu guards pullPeople, which repositories fill concurrently.
+	pullMu sync.Mutex
 }
+
+// PullPeople returns, per pull request number, the logins of everyone who
+// took part. Joined with the git history's pull-to-directory map, it says who
+// reviewed which places rather than which words.
+func (g *GitHub) PullPeople() map[int][]string { return g.pullPeople }
 
 // NewGitHub returns a GitHub connector authenticating with token.
 func NewGitHub(token string, opts GitHubOptions) *GitHub {
-	return &GitHub{client: github.New(token), opts: opts.withDefaults()}
+	return &GitHub{client: github.New(token), opts: opts.withDefaults(),
+		pullPeople: make(map[int][]string)}
 }
 
 // NewGitHubWithClient returns a GitHub connector using a preconfigured client.
@@ -95,7 +108,8 @@ func NewGitHubWithClient(client *github.Client, opts GitHubOptions) *GitHub {
 	if client == nil {
 		panic("connector: NewGitHubWithClient requires a non-nil client")
 	}
-	return &GitHub{client: client, opts: opts.withDefaults()}
+	return &GitHub{client: client, opts: opts.withDefaults(),
+		pullPeople: make(map[int][]string)}
 }
 
 // Ping verifies the token with a cheap authenticated request, so a wizard can
@@ -289,6 +303,12 @@ func (g *GitHub) indexRepo(
 				bump(u, tokens, pr.UpdatedAt)
 			}
 		}
+		took := append([]string{pr.Author()}, pr.Reviewers()...)
+		took = append(took, pr.AssigneeLogins()...)
+		took = append(took, helpers...)
+		g.pullMu.Lock()
+		g.pullPeople[pr.Number] = util.Distinct(took, func(s string) string { return s })
+		g.pullMu.Unlock()
 		if g.opts.Episodes {
 			if ep, ok := changeEpisode(owner, name, pr, helpers); ok {
 				episodes = append(episodes, ep)
