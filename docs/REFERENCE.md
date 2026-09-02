@@ -412,12 +412,23 @@ deliverable for a diligence engagement, built with no tokens and no network.
 | Flag               | Default                | What it does                                    |
 | ------------------ | ---------------------- | ----------------------------------------------- |
 | `--repo-path`      |                        | Local repository root, repeatable.              |
+| `--github-repo`    |                        | `owner/name` whose reviews to read, repeatable. |
+| `--github-url`     | github.com             | API root, for GitHub Enterprise Server.         |
+| `--github-pages`   | `20`                   | Pages of pull requests per repository, in hundreds. |
 | `--slack-export`   |                        | Slack export zip or its unzipped folder.        |
 | `--org-csv`        |                        | Org chart CSV.                                  |
 | `--codeowners`     |                        | CODEOWNERS file or a repo root holding one.     |
 | `--out`            | `whodar-assessment-<date>` | Output directory.                           |
 | `--top`            | `10`                   | People covered in the departure file.           |
 | `--git-since-days` | `730`                  | How far back to read git history.               |
+
+Pointing it at a GitHub repository with `--github-repo` reads who reviewed
+each change, and credits them with the directories that pull request touched
+rather than the words of its title. That is what surfaces the people who
+approve work without writing it, and on public repositories it is the
+difference between trailing a plain commit count and beating it. It needs
+`WHODAR_GITHUB_TOKEN`, and it is the only part of an assessment that touches
+the network.
 
 The index is built fresh in memory and never saved, so an assessment never
 mixes with your own index. The output directory holds `report.html` (the

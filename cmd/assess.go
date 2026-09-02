@@ -13,6 +13,7 @@ import (
 	"github.com/kordloom/whodar/internal/connector"
 	"github.com/kordloom/whodar/internal/index"
 	"github.com/kordloom/whodar/internal/resolve"
+	"github.com/kordloom/whodar/internal/secret"
 )
 
 // assessDeparturesListed caps how many people the departure file covers.
@@ -34,6 +35,9 @@ func newAssessCmd(opts *options) *cobra.Command {
 		orgCSV       string
 		codeowners   string
 		outDir       string
+		githubRepos  []string
+		githubURL    string
+		githubPages  int
 		top          int
 		gitSinceDays int
 		maxCommits   int
@@ -44,7 +48,9 @@ func newAssessCmd(opts *options) *cobra.Command {
 		Long: `Build a knowledge-risk assessment for one company from the material a data
 room provides: local git clones, a Slack export zip, an org chart CSV, a
 CODEOWNERS file. Nothing is fetched from the network and no credentials are
-used. The index is built fresh in memory and never saved, so an assessment never
+used, unless you also point it at a GitHub repository to read reviews from,
+which is the one thing a data room rarely contains and the only way to see
+the people who approve changes rather than write them. The index is built fresh in memory and never saved, so an assessment never
 mixes with your own index.
 
 The output directory holds the deliverable:
@@ -60,10 +66,12 @@ The output directory holds the deliverable:
 
 Examples:
   whodar assess --repo-path ./target-repo --out acme-assessment
+  whodar assess --repo-path ./target-repo --github-repo acme/platform
   whodar assess --repo-path ./svc-a --repo-path ./svc-b --slack-export export.zip`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if len(repoPaths) == 0 && slackExport == "" && orgCSV == "" && codeowners == "" {
+			if len(repoPaths) == 0 && slackExport == "" && orgCSV == "" && codeowners == "" &&
+				len(githubRepos) == 0 {
 				return fmt.Errorf("%w: name at least one input: --repo-path, --slack-export, "+
 					"--org-csv, or --codeowners", ErrBadArgs)
 			}
@@ -103,6 +111,21 @@ Examples:
 				}
 				ix.Add(recs)
 			}
+			var gh *connector.GitHub
+			if len(githubRepos) > 0 {
+				token := secret.Resolve(githubTokenEnv)
+				if token == "" {
+					return fmt.Errorf("%w: --github-repo needs %s", ErrBadArgs, githubTokenEnv)
+				}
+				gh = connector.NewGitHub(token, connector.GitHubOptions{
+					Repos: githubRepos, MaxPages: githubPages, BaseURL: githubURL, Log: log,
+				})
+				recs, err := gh.Fetch(cmd.Context())
+				if err != nil {
+					return explainSourceError("GitHub", githubTokenEnv, err)
+				}
+				ix.Add(recs)
+			}
 			if slackExport != "" {
 				se := connector.NewSlackExport(slackExport, connector.SlackExportOptions{
 					IncludePrivate: true, SinceDays: 36500, Log: log,
@@ -136,7 +159,16 @@ Examples:
 				// Systems are places, not words: the per-directory tally
 				// answers who a system rests on without pooling every path
 				// that shares its name.
-				places = resolve.PlaceLeads(ix, git.DirWork(), git.WorkTotals(),
+				dirWork, totals := git.DirWork(), git.WorkTotals()
+				if gh != nil {
+					// A review is evidence of holding the place it reviewed.
+					// The merges name their pull requests, so the link needs
+					// no extra request, and without it a reviewer is credited
+					// with the words of a title instead of the code.
+					dirWork = resolve.AddReviewCredit(dirWork, totals,
+						git.PullDirs(), gh.PullPeople())
+				}
+				places = resolve.PlaceLeads(ix, dirWork, totals,
 					assessMinPlaceWork, 3)
 				if len(places) > assessPlacesListed {
 					places = places[:assessPlacesListed]
@@ -185,6 +217,14 @@ Examples:
 	f.StringVar(&slackExport, "slack-export", "", "Slack export zip or its unzipped folder.")
 	f.StringVar(&orgCSV, "org-csv", "", "Org chart CSV.")
 	f.StringVar(&codeowners, "codeowners", "", "CODEOWNERS file or a repo root holding one.")
+	f.StringArrayVar(&githubRepos, "github-repo", nil,
+		"Repository as owner/name whose reviews to read, repeatable. Needs "+
+			githubTokenEnv+". Reviews are credited to the places they reviewed, "+
+			"which is what finds the people who approve rather than commit.")
+	f.StringVar(&githubURL, "github-url", "",
+		"API root, for GitHub Enterprise Server. Empty uses github.com.")
+	f.IntVar(&githubPages, "github-pages", 20,
+		"Pages of pull requests to read per repository, in hundreds.")
 	f.StringVar(&outDir, "out", "", "Output directory (default whodar-assessment-<date>).")
 	f.IntVar(&top, "top", assessDeparturesListed, "People to cover in the departure file.")
 	f.IntVar(&gitSinceDays, "git-since-days", 730,

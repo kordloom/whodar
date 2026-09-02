@@ -852,6 +852,21 @@ whodar assess --repo-path ./svc-a --repo-path ./svc-b --slack-export export.zip
 <td>Local repository root, repeatable.</td>
 </tr>
 <tr>
+<td><code>--github-repo</code></td>
+<td></td>
+<td><code>owner/name</code> whose reviews to read, repeatable.</td>
+</tr>
+<tr>
+<td><code>--github-url</code></td>
+<td>github.com</td>
+<td>API root, for GitHub Enterprise Server.</td>
+</tr>
+<tr>
+<td><code>--github-pages</code></td>
+<td><code>20</code></td>
+<td>Pages of pull requests per repository, in hundreds.</td>
+</tr>
+<tr>
 <td><code>--slack-export</code></td>
 <td></td>
 <td>Slack export zip or its unzipped folder.</td>
@@ -883,6 +898,13 @@ whodar assess --repo-path ./svc-a --repo-path ./svc-b --slack-export export.zip
 </tr>
 </tbody>
 </table>
+<p>Pointing it at a GitHub repository with <code>--github-repo</code> reads who reviewed
+each change, and credits them with the directories that pull request touched
+rather than the words of its title. That is what surfaces the people who
+approve work without writing it, and on public repositories it is the
+difference between trailing a plain commit count and beating it. It needs
+<code>WHODAR_GITHUB_TOKEN</code>, and it is the only part of an assessment that touches
+the network.</p>
 <p>The index is built fresh in memory and never saved, so an assessment never
 mixes with your own index. The output directory holds <code>report.html</code> (the
 knowledge-risk brief), <code>findings.json</code>, <code>ownership.json</code>, <code>departures.json</code>,
