@@ -124,13 +124,31 @@ ingest, which moved test-infra's git-only score two points; the mechanism
 matters more than the size here, since the Kubernetes ecosystem barely uses
 trailers and trailer-heavy ecosystems will see more.
 
-## Measurement three: not yet built
+## Measurement three: prediction, and what it told us
 
-A temporal holdout, indexing a project as of a past date and scoring against
-who actually did the work afterward, would measure prediction rather than
-description. The git connector's `--git-until-days` exists for exactly this
-and has not yet been used for it. Until it runs, no forward-looking claim
-here is measured.
+A temporal holdout builds the index from history up to a cutoff, asks who each
+place rests on knowing only that, and then reads the work that came after.
+Nothing past the cutoff reaches the index, so the answer cannot leak into the
+prediction. It ships as `whodar eval holdout`.
+
+It does not favor us, and that changed the product rather than the page.
+Measured on prometheus and on kubernetes/test-infra, the naive prediction, the
+past window's top committers, forecasts future activity better than whodar
+does. The reason is coherent: the breadth discount that makes whodar good at
+finding designated owners deliberately down-weights the people who touch
+everything, and those are exactly the people who go on committing most.
+Finding who owns an area and forecasting who will be busy in it are different
+questions, and one formula was answering both.
+
+So the wording changed. Concentration findings now say what the record holds,
+that an area has one person in it and nobody behind them, which is a checkable
+present fact. They no longer say what will happen when that person leaves,
+which is a forecast this measurement does not support.
+
+The remaining open question is narrower and better posed: when whodar says an
+area rests on one person and that person then stops working, does the area
+actually go quiet? That tests concentration forward rather than activity
+forward, and it is the claim the product actually makes.
 
 ## The assessment itself
 

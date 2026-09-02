@@ -331,7 +331,7 @@ Neither needs a taxonomy anyone had to write, and neither needs a model.
 
 Score knowledge concentration across the graph: the subjects where one or two
 people hold most of the expertise, so a single departure is visible before it
-hurts. Name a person for the offboarding view instead: what leaves with them.
+hurts. Name a person for the offboarding view instead: what the record shows only them in.
 
 `--html` writes a self-contained knowledge-risk brief to PATH rather than
 printing. The file needs no network, no server, and no whodar to open, so it can

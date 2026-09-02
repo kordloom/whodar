@@ -13,7 +13,7 @@ import (
 // It is a different risk from a subject resting on one expert, and nothing that
 // counts experts per subject can see it. Both areas may be well covered on
 // their own while the work that crosses between them has only ever been done by
-// one person, so what leaves with them is not a subject but the knowledge that
+// one person, so what rests on them is not a subject but the knowledge that
 // the two belong together. The person picking either one up afterwards has no
 // reason to look at the other.
 type Span struct {

@@ -180,7 +180,7 @@ func Risk(ix *index.Index, limit int) []TopicRisk {
 	return out
 }
 
-// DepartureImpact is the knowledge that would leave with a person: the topics
+// DepartureImpact is what the record shows resting on one person: the topics
 // where they are the only expert, and the topics where they rank first but
 // others remain.
 type DepartureImpact struct {

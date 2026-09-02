@@ -27,7 +27,7 @@ func newRiskCmd(opts *options) *cobra.Command {
 		Short: "Show where knowledge is dangerously concentrated",
 		Long: `Score knowledge concentration across the graph: the topics where one or two
 people hold most of the expertise, so a single departure is visible before it
-hurts. Name a person for the offboarding view: what leaves with them.
+hurts. Name a person for the offboarding view: what the record shows only them in.
 
 Deterministic arithmetic over the graph, no model needed.
 

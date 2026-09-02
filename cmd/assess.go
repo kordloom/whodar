@@ -60,7 +60,7 @@ The output directory holds the deliverable:
   findings.json        every scored topic: bus factor, level, experts
   ownership.json       where the owner on paper is not the one doing the work
   systems.json         each significant directory and who its work rests on
-  departures.json      what leaves with each of the most load-bearing people
+  departures.json      what the record shows resting on each key person
   assessment.loomseal  the sealed finding; verify offline with loomseal
   README.txt           what each file is and how to verify the seal
 
@@ -206,7 +206,7 @@ Examples:
 			}
 			fmt.Fprintf(log,
 				"assess: %d people across %v; %d topics scored, %d critical; "+
-					"departure impact for %d people\nassess: wrote %s\n",
+					"single-person coverage for %d people\nassess: wrote %s\n",
 				len(ix.Graph.People), ix.SourceNames(), len(findings), critical,
 				len(departures), outDir)
 			return nil
@@ -237,8 +237,11 @@ Examples:
 	return cmd
 }
 
-// assessDepartures computes departure impact for the people who lead the most
-// subjects, worst first.
+// assessDepartures reports, for the people who lead the most subjects, what
+// the record shows resting on them. It is a present finding about coverage
+// rather than a prediction: a measured holdout showed this model does not
+// forecast who will be active later, and the wording throughout says what is
+// in the record rather than what will happen.
 func assessDepartures(ix *index.Index, top int) []resolve.DepartureImpact {
 	seen := make(map[string]bool)
 	var out []resolve.DepartureImpact
@@ -295,7 +298,8 @@ systems.json         Each significant directory of the code base and the
                      people its observed work rests on, breadth-discounted so
                      wide-ranging committers do not outrank owners.
 departures.json      For each of the most load-bearing people, the subjects
-                     that leave with them: sole means nobody else holds it.
+                     the record shows resting on them: sole means nobody else
+                     appears in the record for it at all.
 assessment.loomseal  A signed seal over the findings. Verify it offline:
 
     whodar attest verify assessment.loomseal

@@ -70,7 +70,7 @@ func assessSummary(
 	}
 
 	if len(departures) > 0 {
-		b.WriteString("\n## What leaves with whom\n\n")
+		b.WriteString("\n## Where one person is the whole record\n\n")
 		for i, d := range departures {
 			if i == summaryListed {
 				fmt.Fprintf(&b, "- and %d more in departures.json\n", len(departures)-i)

@@ -706,7 +706,7 @@ func renderRelated(w io.Writer, topic string, rel []resolve.TopicRelation, s sty
 // renderSpans lists the connections between subjects that rest on one person.
 // Counting experts per subject cannot find these: both areas can be well
 // covered while the work crossing between them has only ever been done once, by
-// one person, and what leaves with them is the knowledge that the two belong
+// one person, and what rests on them is the knowledge that the two belong
 // together at all.
 func renderSpans(w io.Writer, spans []resolve.Span, s style) {
 	if len(spans) == 0 {
