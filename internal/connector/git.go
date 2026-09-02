@@ -101,7 +101,23 @@ type GitHistory struct {
 	// marks is the newest commit read per repository path, for the next run to
 	// stop at. Written during Fetch and read afterwards through Marks.
 	marks map[string]string
+	// dirWork counts, per directory prefix and per author email, the commits
+	// that touched it, across every repository read. Read through DirWork.
+	dirWork map[string]map[string]float64
+	// workTotals counts every commit per author email, for breadth discounts.
+	workTotals map[string]float64
 }
+
+// DirWork returns the per-directory work tally the walk accumulated: for each
+// directory prefix, how many commits each author landed there, with the same
+// canonicalization, bot filtering, sweep gating, and trailer credit the topic
+// tally gets. It answers ownership questions by place rather than by word,
+// which is what an ownership question is.
+func (g *GitHistory) DirWork() map[string]map[string]float64 { return g.dirWork }
+
+// WorkTotals returns each author's total commits read, sweeps included: the
+// breadth a directory score is discounted by.
+func (g *GitHistory) WorkTotals() map[string]float64 { return g.workTotals }
 
 // Marks returns where reading stopped in each repository, so a later run can
 // resume from there rather than reading the same history again.
@@ -109,7 +125,11 @@ func (g *GitHistory) Marks() map[string]string { return g.marks }
 
 // NewGitHistory returns a git history source over the given repositories.
 func NewGitHistory(opts GitOptions) *GitHistory {
-	return &GitHistory{opts: opts.withDefaults(), marks: make(map[string]string)}
+	return &GitHistory{
+		opts: opts.withDefaults(), marks: make(map[string]string),
+		dirWork:    make(map[string]map[string]float64),
+		workTotals: make(map[string]float64),
+	}
 }
 
 // Fetch reads each repository's recent history and returns one record per

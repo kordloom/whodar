@@ -25,11 +25,14 @@ func TestIsBotAuthorNamesAutomation(t *testing.T) {
 		Want: true,
 	}, { // Test 4: A merge robot named as a word.
 		Name: "PyTorch MergeBot", Email: "pytorchmergebot@users.noreply.github.com", Want: true,
-	}, { // Test 5: A person whose name merely contains bot letters.
+	}, { // Test 5: A release robot, whose name carries no bot word at all.
+		Name: "Kubernetes Release Robot", Email: "k8s-release-robot@users.noreply.github.com",
+		Want: true,
+	}, { // Test 6: A person whose name merely contains bot letters.
 		Name: "Talbot Abbott", Email: "talbot@corp.com", Want: false,
-	}, { // Test 6: A person sharing a surname with an automation word.
+	}, { // Test 7: A person sharing a surname with an automation word.
 		Name: "Robin Copilot-Smith", Email: "robin@corp.com", Want: false,
-	}, { // Test 7: An ordinary contributor.
+	}, { // Test 8: An ordinary contributor.
 		Name: "Julien Pivotto", Email: "291750+roidelapluie@users.noreply.github.com",
 		Want: false,
 	}}

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -195,8 +196,64 @@ type commitJob struct {
 	// Subject is the commit's first line, mined for vocabulary the filenames
 	// do not carry.
 	Subject string
+	// Trailers are the other people the commit message credits: co-authors,
+	// reviewers, ackers. They are the review signal a repository carries
+	// offline, and the people they name are often exactly the ones a commit
+	// count never surfaces.
+	Trailers []trailerPerson
 	// Root marks a commit with no parent, whose diff is its whole tree.
 	Root bool
+}
+
+// trailerPerson is one person a commit trailer credits.
+type trailerPerson struct {
+	// Email is the person's address, mailmap-resolved and lowercased.
+	Email string
+	// Name is their display name at that trailer.
+	Name string
+	// CoAuthor marks a Co-authored-by trailer: they changed the files, so
+	// their credit is the author's. A review trailer holds the area without
+	// having changed it, which is the same distinction Direct draws.
+	CoAuthor bool
+}
+
+// trailerRe matches the credit trailers a commit message carries. Only
+// trailers that name a person who engaged with the change count: Cc and
+// Signed-off-by are routing and process, not evidence of holding anything.
+var trailerRe = regexp.MustCompile(
+	"(?mi)^(Co-authored-by|Reviewed-by|Acked-by|Tested-by|Suggested-by):" +
+		"[ \\t]*([^<\\n]*?)[ \\t]*<([^>\\n]+)>[ \\t]*$")
+
+// parseTrailers extracts credited people from a commit message, resolved
+// through the mailmap, with automation accounts skipped the same way authors
+// are, and the author themselves never double-credited.
+func parseTrailers(msg string, mm mailmap, authorEmail string, skips *scanSkips) []trailerPerson {
+	matches := trailerRe.FindAllStringSubmatch(msg, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	var out []trailerPerson
+	seen := map[string]bool{authorEmail: true}
+	for _, m := range matches {
+		kind, name, email := strings.ToLower(m[1]), strings.TrimSpace(m[2]), m[3]
+		if mm != nil {
+			name, email = mm.resolve(name, email)
+		}
+		email = strings.ToLower(strings.TrimSpace(email))
+		if email == "" || seen[email] {
+			continue
+		}
+		if isBotAuthor(name, email) {
+			skips.note(name, email)
+			seen[email] = true
+			continue
+		}
+		seen[email] = true
+		out = append(out, trailerPerson{
+			Email: email, Name: name, CoAuthor: kind == "co-authored-by",
+		})
+	}
+	return out
 }
 
 // scanCommits walks the log and keeps the commits worth diffing. Reading the
@@ -261,7 +318,9 @@ func (g *GitHistory) scanCommits(ctx context.Context, path string) ([]commitJob,
 		}
 		jobs = append(jobs, commitJob{
 			Hash: c.Hash, Email: email, Name: name, When: c.Author.When,
-			Subject: commitSubject(c.Message), Root: c.NumParents() == 0,
+			Subject:  commitSubject(c.Message),
+			Trailers: parseTrailers(c.Message, mm, email, &skips),
+			Root:     c.NumParents() == 0,
 		})
 		return nil
 	})
@@ -314,6 +373,14 @@ type tally struct {
 	direct map[string]map[string]int
 	// ties is this worker's share of what was worked on together.
 	ties *togetherIndex
+	// dirWork counts, per directory prefix and per author, the commits that
+	// touched it: the directory-scoped view of the same walk. Subjects answer
+	// what somebody knows; directories answer what they own, and conflating
+	// the two made ownership questions pool every path sharing a name.
+	dirWork map[string]map[string]float64
+	// workTotals counts every commit per author, sweeps included, which is
+	// the breadth a directory score is discounted by.
+	workTotals map[string]float64
 	// read is how many commits this worker took in.
 	read int
 	// skipped is how many it could not diff.
@@ -374,6 +441,19 @@ func (g *GitHistory) diffCommits(
 	for _, t := range tallies {
 		read += t.read
 		skipped += t.skipped
+		for dir, people := range t.dirWork {
+			into := g.dirWork[dir]
+			if into == nil {
+				into = make(map[string]float64)
+				g.dirWork[dir] = into
+			}
+			for email, n := range people {
+				into[email] += n
+			}
+		}
+		for email, n := range t.workTotals {
+			g.workTotals[email] += n
+		}
 		for tok := range t.curated {
 			curated[tok] = true
 		}
@@ -438,13 +518,15 @@ func (g *GitHistory) diffShare(
 	done *atomic.Int64,
 ) tally {
 	t := tally{
-		counts:  make(map[string]map[string]int),
-		names:   make(map[string]map[string]int),
-		latest:  make(map[string]time.Time),
-		curated: make(map[string]bool),
-		recent:  make(map[string]map[string]int),
-		direct:  make(map[string]map[string]int),
-		ties:    newTogether(),
+		counts:     make(map[string]map[string]int),
+		names:      make(map[string]map[string]int),
+		latest:     make(map[string]time.Time),
+		curated:    make(map[string]bool),
+		recent:     make(map[string]map[string]int),
+		direct:     make(map[string]map[string]int),
+		ties:       newTogether(),
+		dirWork:    make(map[string]map[string]float64),
+		workTotals: make(map[string]float64),
 	}
 	repo, closeRepo, err := openRepo(path)
 	if err != nil {
@@ -473,6 +555,7 @@ func (g *GitHistory) diffShare(
 		}
 		t.read++
 		done.Add(1)
+		t.workTotals[job.Email]++
 
 		if job.When.After(t.latest[job.Email]) {
 			t.latest[job.Email] = job.When
@@ -584,6 +667,31 @@ func (g *GitHistory) diffShare(
 			for tok := range directHere {
 				direct[tok]++
 			}
+			// Directory credit, once per commit per prefix, for the author and
+			// everyone the message credits. Ownership is asked about places,
+			// not words, and word-level subjects pool every path sharing a
+			// name; this is the same walk read by place.
+			prefixes := make(map[string]bool, len(paths)*2)
+			for _, name := range paths {
+				parts := strings.Split(name, "/")
+				for i := 1; i < len(parts); i++ {
+					prefixes[strings.Join(parts[:i], "/")] = true
+				}
+			}
+			creditDir := func(email string) {
+				for pre := range prefixes {
+					m := t.dirWork[pre]
+					if m == nil {
+						m = make(map[string]float64)
+						t.dirWork[pre] = m
+					}
+					m[email]++
+				}
+			}
+			creditDir(job.Email)
+			for _, tp := range job.Trailers {
+				creditDir(tp.Email)
+			}
 		}
 		// Which of this commit's subjects name something of their own, so the
 		// words of one compound name are not read as subjects meeting.
@@ -597,6 +705,55 @@ func (g *GitHistory) diffShare(
 		// still lets ask match what the work was about, not just which files moved.
 		for _, tok := range phraseTokens(job.Subject) {
 			m[tok]++
+		}
+		// The people the message credits engaged with the same change: a
+		// co-author wrote it, a reviewer or acker held the area well enough to
+		// judge it. Each gets the commit's subjects the way the author does,
+		// because trailers are exactly where the people a commit count never
+		// surfaces show up. Only a co-author counts as direct, the same line
+		// Direct draws everywhere: they changed the files, a reviewer did not.
+		for _, tp := range job.Trailers {
+			t.workTotals[tp.Email]++
+			if job.When.After(t.latest[tp.Email]) {
+				t.latest[tp.Email] = job.When
+			}
+			if tp.Name != "" {
+				seen := t.names[tp.Email]
+				if seen == nil {
+					seen = make(map[string]int)
+					t.names[tp.Email] = seen
+				}
+				seen[tp.Name]++
+			}
+			tm := t.counts[tp.Email]
+			if tm == nil {
+				tm = make(map[string]int)
+				t.counts[tp.Email] = tm
+			}
+			var tfresh map[string]int
+			if lately {
+				tfresh = t.recent[tp.Email]
+				if tfresh == nil {
+					tfresh = make(map[string]int)
+					t.recent[tp.Email] = tfresh
+				}
+			}
+			for tok := range inCommit {
+				tm[tok]++
+				if tfresh != nil {
+					tfresh[tok]++
+				}
+			}
+			if tp.CoAuthor && len(changedDirs) <= maxTogether {
+				td := t.direct[tp.Email]
+				if td == nil {
+					td = make(map[string]int)
+					t.direct[tp.Email] = td
+				}
+				for tok := range directHere {
+					td[tok]++
+				}
+			}
 		}
 	}
 	return t
@@ -661,7 +818,8 @@ func hasBotWord(s string) bool {
 		s = strings.ReplaceAll(s, sep, " ")
 	}
 	for _, w := range strings.Fields(s) {
-		if w == "bot" || strings.HasSuffix(w, "bot") && (w == "mergebot" || w == "dependabot" || w == "renovatebot") {
+		if w == "bot" || w == "robot" ||
+			strings.HasSuffix(w, "bot") && (w == "mergebot" || w == "dependabot" || w == "renovatebot") {
 			return true
 		}
 	}
