@@ -226,27 +226,43 @@
 			<div class="faq reveal">
 				<details>
 					<summary>Is it really free, or free until it gets useful?</summary>
-					<p>Free to self-host with no seat cap and no expiry, and that includes every source, every surface, encryption at rest, and recall across your own past conversations. The paid tier adds organizational intelligence on top: where knowledge is concentrated, where ownership has drifted, and what leaves when someone does. Nothing moves from free to paid.</p>
+					<p>Free to self-host with no seat cap and no expiry, and that includes every source, every surface, encryption at rest, and recall across your own past conversations. Running whodar on your own organization is free forever and nothing moves from free to paid. What is paid is having us assess a company for you, or holding a license to run assessments for your own clients.</p>
 				</details>
 				<details>
-					<summary>Why flat per organization instead of per seat?</summary>
-					<p>Two reasons. A memory gets more useful the more people it covers, so charging per seat would punish the adoption that makes it work. And whodar cannot count seats without phoning home, which it will never do. Flat is the only price we can charge honestly.</p>
+					<summary>Why not just search Slack and GitHub?</summary>
+					<p>For finding one person who knows one thing, you should. Good search plus asking a colleague is genuinely competitive there, and we are not going to pretend otherwise. The questions whodar exists for are the ones you cannot type into a search box: who actually owns this system as opposed to who is listed, which people are the only bridge between two areas, and what knowledge leaves the company when a particular person does. Those are inference over the whole history rather than lookups.</p>
 				</details>
 				<details>
-					<summary>What happens if we stop paying?</summary>
-					<p>whodar drops to the free tier. Everything already on disk stays there and stays readable, and recall keeps working. New conversations stop being kept until you renew. Your data is never deleted or locked by a license check.</p>
+					<summary>Can a tool really know who the expert is?</summary>
+					<p>No, and whodar does not claim to. It measures signals correlated with knowledge: what people changed, what they were assigned, what they answered, what they own on paper. Someone can hold a system in their head, review every change, and barely appear in the record. That is why every result carries the evidence behind it and a strength rather than a verdict, and why the wording throughout is observed concentration rather than proven expertise. The right way to read a finding is as what your organization's own evidence shows, not as a fact about a person.</p>
+				</details>
+				<details>
+					<summary>Is this employee surveillance?</summary>
+					<p>It is a fair question and the honest answer is that it could be used that way, so here is where we stand. whodar is built to find organizational risk, not to rate people: it scores subjects and reports how concentrated they are, and a person's name appears because they are evidence for a subject rather than the thing being measured. It reads work artifacts, never keystrokes, presence, hours, or sentiment. Every finding is inspectable, so an attribution someone believes is wrong can be examined rather than argued about. <code>whodar forget</code> removes a named person from the index, the identity links, channel membership, and stored conversations. And in much of Europe, indexing a workspace is a works council conversation before it is a technical one. We would rather say that plainly than have you discover it later.</p>
+				</details>
+				<details>
+					<summary>Our documentation already says who owns what.</summary>
+					<p>It says who was assigned, on the day it was written. whodar reads what has happened since. The gap between the two is often the most useful thing it finds: an area whose declared owner has not touched it in a year, work that has quietly migrated to somebody who is not listed anywhere, or a system with an owner on paper and nobody actually in it. If your documentation and the evidence agree everywhere, that is a real answer too, and it takes an afternoon to establish.</p>
+				</details>
+				<details>
+					<summary>For diligence: why not just interview the engineering team?</summary>
+					<p>You should do that as well. Interviews reach judgment and intent that no history contains. They are also slow, expensive, limited to whoever you are given access to, and answered by people with an interest in the outcome. whodar reads the work itself: who changed what, who was assigned, who answered, over years. It is a second instrument rather than a replacement, and it is most useful where it disagrees with the interviews, because that disagreement is the thing worth asking about in the room.</p>
 				</details>
 				<details>
 					<summary>Does anything leave our network?</summary>
-					<p>No. Indexing talks only to the sources you name, with your own tokens. Answers are computed locally, and the default egress policy forbids sending anything to any model beyond your machine. The license is verified offline against a key compiled into the binary, so a licensed install works air-gapped.</p>
+					<p>No. Indexing talks only to the sources you name, with your own tokens, and an assessment can run entirely from exports with no live access at all. Answers are computed locally, and the default egress policy forbids sending anything to any model beyond your machine. A test in the suite proves it, by refusing every network request the process attempts and checking that indexing and asking attempt none. The license is verified offline against a key compiled into the binary, so a licensed install works air-gapped.</p>
+				</details>
+				<details>
+					<summary>Self-hosted means secure, then?</summary>
+					<p>It means the vendor trust boundary is small, not that there is nothing to review. You still own the connector scopes you grant, the tokens, the filesystem the index sits on, your backups, and who can reach the machine. What you do not have to review is us: no data-processing agreement, no third party holding your people graph. Encrypt the index at rest and treat the file with the same care as the conversations it was built from.</p>
 				</details>
 				<details>
 					<summary>What does the license allow?</summary>
-					<p>whodar is source-available under the Business Source License 1.1. Read it, modify it, self-host it, and run it in production inside your company, free, with no seat count. Two restrictions only: offering whodar to third parties as a hosted service, and selling whodar-produced reports or assessments to third parties. Using it on your own organization is never licensed work. It converts to Apache 2.0 on 2030-08-03. See the <a href="https://github.com/kordloom/whodar/blob/main/LICENSE" style="color: var(--signal);">LICENSE</a> for the exact terms.</p>
+					<p>whodar is source-available under the Business Source License 1.1. Read it, modify it, self-host it, and run it in production inside your company, free, with no seat count. Two restrictions: offering whodar to third parties as a hosted service, and providing whodar-produced reports or assessments to third parties as part of a paid engagement. A Partner License lifts the second, which is exactly what it is for. Using it on your own organization is never licensed work. It converts to Apache 2.0 on 2030-08-03, or four years after a given version was published, whichever comes first. See the <a href="https://github.com/kordloom/whodar/blob/main/LICENSE">LICENSE</a> for the exact terms.</p>
 				</details>
 				<details>
-					<summary>How do we get the paid tier?</summary>
-					<p>Email <a href="mailto:hello@whodar.dev?subject=whodar%20intelligence%20early%20access" style="color: var(--signal);">hello@whodar.dev</a>. It is in early access and there is no checkout yet, on purpose: we would rather understand what your organization needs to know about itself before you pay for it.</p>
+					<summary>How do we start an assessment or get a partner license?</summary>
+					<p>Email <a href="mailto:hello@whodar.dev?subject=whodar%20assessment">hello@whodar.dev</a>. There is no self-serve checkout on purpose: scope decides the price, and we would rather understand the target and the sources you have before quoting one. If you want to see the shape of the output first, the <a href="/sample-assessment.html">sample assessment</a> is a real run against a public codebase, published unedited.</p>
 				</details>
 			</div>
 		</section>
