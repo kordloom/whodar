@@ -130,6 +130,7 @@ func Risk(ix *index.Index, limit int) []TopicRisk {
 		case bus == 2:
 			level = "elevated"
 		}
+		concentrated := level
 		if len(experts) > 5 {
 			experts = experts[:5]
 		}
@@ -139,10 +140,11 @@ func Risk(ix *index.Index, limit int) []TopicRisk {
 		}
 		sort.Strings(includes)
 		out = append(out, TopicRisk{
-			Topic: topic, Level: level, Concentration: experts[0].Share, BusFactor: bus,
+			Topic: topic, Level: concentrated, Concentration: experts[0].Share, BusFactor: bus,
 			Weight: total, Experts: experts, Includes: includes,
 		})
 	}
+	demoteSlightSubjects(out)
 	sort.Slice(out, func(i, j int) bool {
 		if li, lj := levelRank(out[i].Level), levelRank(out[j].Level); li != lj {
 			return li < lj
@@ -183,6 +185,44 @@ type DepartureImpact struct {
 	// to learn the whole of it.
 	Regions []Region `json:"regions,omitempty"`
 }
+
+// demoteSlightSubjects downgrades a concentrated subject that rests on less
+// work than the median subject the organization has. Concentration alone makes
+// every one-file corner of a code base as critical as its core: measured on
+// prometheus, all thirty-four critical findings together carried one percent
+// of the work, and the report led with the sole author of a CSS accordion
+// while promql and tsdb, healthy at a bus factor above twenty, sat below them.
+//
+// A finding is not deleted by this, only levelled honestly: the subject keeps
+// its weight, its bus factor, and its place in the list. What changes is the
+// word an acquirer reads first.
+func demoteSlightSubjects(risks []TopicRisk) {
+	if len(risks) < minRisksToDemote {
+		return
+	}
+	weights := make([]float64, len(risks))
+	for i, r := range risks {
+		weights[i] = r.Weight
+	}
+	sort.Float64s(weights)
+	floor := weights[len(weights)/2]
+	for i := range risks {
+		if risks[i].Weight >= floor {
+			continue
+		}
+		switch risks[i].Level {
+		case "critical":
+			risks[i].Level = "elevated"
+		case "elevated":
+			risks[i].Level = "ok"
+		}
+	}
+}
+
+// minRisksToDemote is the fewest subjects a median is worth computing over. A
+// handful of subjects has no meaningful middle, and a young organization whose
+// every subject rests on one person deserves to hear that plainly.
+const minRisksToDemote = 12
 
 // Departure reports what leaves with the person matching query: the offboarding
 // view of Risk. It resolves the query by canonical id, then email, then a name
