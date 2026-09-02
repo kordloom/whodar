@@ -37,6 +37,53 @@ type Place struct {
 	Holders []PlaceHolder `json:"holders"`
 }
 
+// reviewWeight is what one review of a pull request contributes to holding
+// the places it changed, relative to a commit landing there. A review is real
+// evidence of holding an area and weaker evidence than changing it, and on
+// projects where approval is decoupled from authorship it is the only
+// evidence the record carries about the people who approve.
+const reviewWeight = 0.5
+
+// AddReviewCredit folds review participation into a place tally: everyone who
+// took part in a pull request is credited, at review weight, with the
+// directories that pull request changed. The two inputs come from different
+// places and neither costs an extra request: the git history knows which
+// merge landed which pull request, and the forge knows who took part in it.
+//
+// People are keyed by "github:login" so the identity join resolves them to
+// the same person their commits belong to. The tally is modified in place and
+// returned for convenience.
+func AddReviewCredit(
+	dirWork map[string]map[string]float64, workTotals map[string]float64,
+	pullDirs map[int][]string, pullPeople map[int][]string,
+) map[string]map[string]float64 {
+	if dirWork == nil {
+		dirWork = make(map[string]map[string]float64)
+	}
+	for pull, dirs := range pullDirs {
+		people := pullPeople[pull]
+		if len(people) == 0 || len(dirs) == 0 {
+			continue
+		}
+		for _, login := range people {
+			if login == "" {
+				continue
+			}
+			key := "github:" + strings.ToLower(login)
+			for _, dir := range dirs {
+				m := dirWork[dir]
+				if m == nil {
+					m = make(map[string]float64)
+					dirWork[dir] = m
+				}
+				m[key] += reviewWeight
+			}
+			workTotals[key] += reviewWeight
+		}
+	}
+	return dirWork
+}
+
 // PlaceLeads ranks, for every directory in a git connector's place tally, the
 // people its work rests on: work there discounted by breadth, identities
 // folded to their canonical person through the index. Subjects answer what

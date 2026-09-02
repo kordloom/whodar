@@ -63,3 +63,32 @@ func TestFuseRanksKeepsOrphanSignal(t *testing.T) {
 		t.Errorf("fused = %v; the review-only person was crowded out", got)
 	}
 }
+
+// TestAddReviewCredit verifies review participation lands on the places a
+// pull request changed rather than on the words of its title, and that a
+// reviewer who never commits can therefore hold a directory.
+func TestAddReviewCredit(t *testing.T) {
+	t.Parallel()
+	dirWork := map[string]map[string]float64{
+		"pkg/scheduler": {"author@x.com": 20},
+	}
+	totals := map[string]float64{"author@x.com": 400}
+	pullDirs := map[int][]string{7: {"pkg/scheduler"}, 9: {"pkg/other"}}
+	pullPeople := map[int][]string{7: {"reviewer-only"}, 8: {"nobody"}}
+
+	AddReviewCredit(dirWork, totals, pullDirs, pullPeople)
+
+	got := dirWork["pkg/scheduler"]["github:reviewer-only"]
+	if got != reviewWeight {
+		t.Errorf("scheduler review credit = %v, want %v", got, reviewWeight)
+	}
+	if totals["github:reviewer-only"] != reviewWeight {
+		t.Errorf("reviewer breadth = %v, want it counted", totals["github:reviewer-only"])
+	}
+	if _, ok := dirWork["pkg/other"]["github:nobody"]; ok {
+		t.Error("a pull request with no recorded participants credited somebody")
+	}
+	if dirWork["pkg/scheduler"]["author@x.com"] != 20 {
+		t.Error("existing commit work was disturbed")
+	}
+}
