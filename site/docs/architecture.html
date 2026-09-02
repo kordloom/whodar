@@ -129,9 +129,9 @@ channels, and add a case to the index command. The index, resolvers, web UI, and
 bot then work with the new data without change. Every source after the first
 was added this way.</p>
 <h2 id="measured-scale">Measured scale</h2>
-<p>The index and the episode store are each one JSON file read whole by every
-command, so the cost that grows with company size is the cold start, not the
-answer. Measured on an M-series laptop with the opt-in scale suite
+<p>The index and the episode store are each one JSON file, read whole by every
+command and written whole by every index run. Measured on an M-series laptop
+with the opt-in scale suite
 (<code>WHODAR_SCALE=1 go test ./internal/simorg/ -run TestScale</code>):</p>
 <table>
 <thead>
@@ -142,6 +142,7 @@ answer. Measured on an M-series laptop with the opt-in scale suite
 <th>Ingest</th>
 <th>Index file</th>
 <th>Episode file</th>
+<th>Save</th>
 <th>Cold start</th>
 <th>Ask</th>
 <th>Heap</th>
@@ -155,9 +156,22 @@ answer. Measured on an M-series laptop with the opt-in scale suite
 <td>0.3s</td>
 <td>146KB</td>
 <td>784KB</td>
-<td>9ms</td>
+<td>86ms</td>
+<td>8ms</td>
 <td>1ms</td>
 <td>4MB</td>
+</tr>
+<tr>
+<td>Department</td>
+<td>250</td>
+<td>3,660</td>
+<td>1.7s</td>
+<td>892KB</td>
+<td>4MB</td>
+<td>283ms</td>
+<td>41ms</td>
+<td>1ms</td>
+<td>24MB</td>
 </tr>
 <tr>
 <td>Company</td>
@@ -166,7 +180,8 @@ answer. Measured on an M-series laptop with the opt-in scale suite
 <td>5.9s</td>
 <td>4MB</td>
 <td>13MB</td>
-<td>170ms</td>
+<td>1.0s</td>
+<td>166ms</td>
 <td>3ms</td>
 <td>95MB</td>
 </tr>
@@ -177,7 +192,8 @@ answer. Measured on an M-series laptop with the opt-in scale suite
 <td>20s</td>
 <td>17MB</td>
 <td>40MB</td>
-<td>575ms</td>
+<td>3.7s</td>
+<td>580ms</td>
 <td>12ms</td>
 <td>318MB</td>
 </tr>
@@ -185,23 +201,46 @@ answer. Measured on an M-series laptop with the opt-in scale suite
 <td>Huge</td>
 <td>10,000</td>
 <td>151,000</td>
-<td>59s</td>
+<td>57s</td>
 <td>44MB</td>
 <td>119MB</td>
+<td>9.4s</td>
 <td>1.7s</td>
-<td>32ms</td>
+<td>29ms</td>
 <td>902MB</td>
 </tr>
 </tbody>
 </table>
-<p>Answer latency stays in tens of milliseconds throughout. The costs that grow
-are the cold start each command pays to load the files and the heap held while
-serving. Both are acceptable to ten thousand people and known: crossing well
-past that scale means moving the store off one-file JSON, and nothing in the
-answer path needs to change to do it.</p>
-<p>Incremental refresh is bounded by the delta, not the corpus: Jira, Confluence,
-GitHub, and Slack query for items changed since the stored watermark, and git
-resumes from the last commit read per repository.</p>
+<p>Answering stays in tens of milliseconds throughout, so the query path is not
+what limits size. Three other costs are.</p>
+<p><strong>Writing is the worst of them, and it is not I/O.</strong> Saving ten thousand
+people takes 9.4 seconds for a 44MB file, while the larger 119MB episode file
+writes in under a second. The difference is that <code>Save</code> rebuilds the entire
+posting index from scratch every time, re-encoding every term for every person.
+Save runs about six times the cold start at every size measured.</p>
+<p>That has a consequence worth stating plainly, because the incremental refresh
+section below is easy to over-read. Fetching is bounded by the delta: Jira,
+Confluence, GitHub, and Slack query for what changed since the stored
+watermark, and git resumes from the last commit read per repository. The write
+is not. A refresh that reads three new commits still re-encodes and rewrites
+the whole index, and pays the full save cost in the table above. Reading a
+delta and writing a corpus is the current shape.</p>
+<p>For the work whodar is pointed at today this is affordable. An assessment is a
+batch run where the save is ten seconds of a minute-long job, and an
+organization of a few hundred people saves in under a third of a second. It
+becomes worth fixing for a long-running <code>serve</code> deployment at a large
+organization doing scheduled refreshes, and the fix is to reuse the encoding of
+terms that did not change rather than to change the storage format.</p>
+<p><strong>Holding the graph in memory</strong> is the second cost: 902MB at ten thousand
+people, and every process holds its whole graph, so several open at once
+multiply it.</p>
+<p><strong>Changing the storage format is not the cheap answer</strong>, despite the file being
+the obvious suspect. The at-rest encryption works precisely because the file is
+one opaque blob: the vault seals plaintext bytes with AES-256-GCM and writes
+the result. An embedded database would mean either giving up whole-database
+encryption or taking a cgo dependency, and cgo would break the cross-compiled
+release that ships six architecture and platform pairs. Both of those are
+load-bearing, so the format stays until something forces the trade.</p>
 
 			<div class="doc-foot">
 				<a class="dpn prev" href="/docs/reference"><span>← Previous</span><b>Reference</b></a>

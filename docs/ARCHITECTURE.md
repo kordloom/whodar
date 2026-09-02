@@ -51,24 +51,51 @@ was added this way.
 
 ## Measured scale
 
-The index and the episode store are each one JSON file read whole by every
-command, so the cost that grows with company size is the cold start, not the
-answer. Measured on an M-series laptop with the opt-in scale suite
+The index and the episode store are each one JSON file, read whole by every
+command and written whole by every index run. Measured on an M-series laptop
+with the opt-in scale suite
 (`WHODAR_SCALE=1 go test ./internal/simorg/ -run TestScale`):
 
-| Size       | People | Conversations | Ingest | Index file | Episode file | Cold start | Ask  | Heap  |
-| ---------- | ------ | ------------- | ------ | ---------- | ------------ | ---------- | ---- | ----- |
-| Team       | 50     | 520           | 0.3s   | 146KB      | 784KB        | 9ms        | 1ms  | 4MB   |
-| Company    | 1,000  | 15,150        | 5.9s   | 4MB        | 13MB         | 170ms      | 3ms  | 95MB  |
-| Enterprise | 5,000  | 48,400        | 20s    | 17MB       | 40MB         | 575ms      | 12ms | 318MB |
-| Huge       | 10,000 | 151,000       | 59s    | 44MB       | 119MB        | 1.7s       | 32ms | 902MB |
+| Size       | People | Conversations | Ingest | Index file | Episode file | Save  | Cold start | Ask  | Heap  |
+| ---------- | ------ | ------------- | ------ | ---------- | ------------ | ----- | ---------- | ---- | ----- |
+| Team       | 50     | 520           | 0.3s   | 146KB      | 784KB        | 86ms  | 8ms        | 1ms  | 4MB   |
+| Department | 250    | 3,660         | 1.7s   | 892KB      | 4MB          | 283ms | 41ms       | 1ms  | 24MB  |
+| Company    | 1,000  | 15,150        | 5.9s   | 4MB        | 13MB         | 1.0s  | 166ms      | 3ms  | 95MB  |
+| Enterprise | 5,000  | 48,400        | 20s    | 17MB       | 40MB         | 3.7s  | 580ms      | 12ms | 318MB |
+| Huge       | 10,000 | 151,000       | 57s    | 44MB       | 119MB        | 9.4s  | 1.7s       | 29ms | 902MB |
 
-Answer latency stays in tens of milliseconds throughout. The costs that grow
-are the cold start each command pays to load the files and the heap held while
-serving. Both are acceptable to ten thousand people and known: crossing well
-past that scale means moving the store off one-file JSON, and nothing in the
-answer path needs to change to do it.
+Answering stays in tens of milliseconds throughout, so the query path is not
+what limits size. Three other costs are.
 
-Incremental refresh is bounded by the delta, not the corpus: Jira, Confluence,
-GitHub, and Slack query for items changed since the stored watermark, and git
-resumes from the last commit read per repository.
+**Writing is the worst of them, and it is not I/O.** Saving ten thousand
+people takes 9.4 seconds for a 44MB file, while the larger 119MB episode file
+writes in under a second. The difference is that `Save` rebuilds the entire
+posting index from scratch every time, re-encoding every term for every person.
+Save runs about six times the cold start at every size measured.
+
+That has a consequence worth stating plainly, because the incremental refresh
+section below is easy to over-read. Fetching is bounded by the delta: Jira,
+Confluence, GitHub, and Slack query for what changed since the stored
+watermark, and git resumes from the last commit read per repository. The write
+is not. A refresh that reads three new commits still re-encodes and rewrites
+the whole index, and pays the full save cost in the table above. Reading a
+delta and writing a corpus is the current shape.
+
+For the work whodar is pointed at today this is affordable. An assessment is a
+batch run where the save is ten seconds of a minute-long job, and an
+organization of a few hundred people saves in under a third of a second. It
+becomes worth fixing for a long-running `serve` deployment at a large
+organization doing scheduled refreshes, and the fix is to reuse the encoding of
+terms that did not change rather than to change the storage format.
+
+**Holding the graph in memory** is the second cost: 902MB at ten thousand
+people, and every process holds its whole graph, so several open at once
+multiply it.
+
+**Changing the storage format is not the cheap answer**, despite the file being
+the obvious suspect. The at-rest encryption works precisely because the file is
+one opaque blob: the vault seals plaintext bytes with AES-256-GCM and writes
+the result. An embedded database would mean either giving up whole-database
+encryption or taking a cgo dependency, and cgo would break the cross-compiled
+release that ships six architecture and platform pairs. Both of those are
+load-bearing, so the format stays until something forces the trade.

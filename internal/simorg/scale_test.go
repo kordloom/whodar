@@ -47,17 +47,18 @@ func TestScale(t *testing.T) {
 		{"enterprise", Spec{People: 5000, Channels: 400, Topics: 16, ThreadsPerChannel: 120, ChatterPerChannel: 800}},
 		{"huge", Spec{People: 10000, Channels: 1000, Topics: 16, ThreadsPerChannel: 150, ChatterPerChannel: 800}},
 	}
-	t.Logf("%-11s %7s %7s %7s %8s %9s %9s %8s %8s %8s %8s %9s %8s %8s",
-		"size", "people", "convos", "terms", "ingest", "index", "estore", "cold", "ask", "recall",
-		"embed", "vectors", "sem", "heap")
+	t.Logf("%-11s %7s %7s %7s %8s %9s %9s %8s %8s %8s %8s %8s %9s %8s %8s",
+		"size", "people", "convos", "terms", "ingest", "index", "estore", "save", "cold", "ask",
+		"recall", "embed", "vectors", "sem", "heap")
 	for _, size := range sizes {
 		size.Spec.Seed = 11
 		t.Run(size.Name, func(t *testing.T) {
 			m := measure(t, size.Spec)
-			t.Logf("%-11s %7d %7d %7d %8s %9s %9s %8s %8s %8s %8s %9s %8s %9s",
+			t.Logf("%-11s %7d %7d %7d %8s %9s %9s %8s %8s %8s %8s %8s %9s %8s %9s",
 				size.Name, m.people, m.episodes, m.postings, short(m.ingest), bytes(m.indexBytes),
-				bytes(m.episodeBytes), short(m.coldStart), short(m.askLatency), short(m.recallLatency),
-				short(m.embed), bytes(m.vectorBytes), short(m.semantic), bytes(int64(m.heap)))
+				bytes(m.episodeBytes), short(m.save), short(m.coldStart), short(m.askLatency),
+				short(m.recallLatency), short(m.embed), bytes(m.vectorBytes), short(m.semantic),
+				bytes(int64(m.heap)))
 		})
 	}
 }
@@ -75,6 +76,12 @@ type measurement struct {
 	// coldStart is how long loading both files from disk took, which every
 	// command pays before it can answer anything.
 	coldStart time.Duration
+	// save is how long writing the index back took. It is measured separately
+	// from the file size because it is not bounded by either: the whole
+	// posting index is re-encoded on every write, so a refresh that read three
+	// commits still pays this in full. It is the cost that grows worst with
+	// size, and the one an incremental refresh does not avoid.
+	save time.Duration
 	// askLatency and recallLatency are median-ish answer times.
 	askLatency, recallLatency time.Duration
 	// embed is how long filling every person's vector took.
@@ -108,9 +115,11 @@ func measure(t *testing.T, spec Spec) measurement {
 
 	indexPath := filepath.Join(dir, "index.json")
 	episodePath := filepath.Join(dir, "episodes.json")
+	start = time.Now()
 	if err := built.Index.Save(indexPath); err != nil {
 		t.Fatalf("save index: %v", err)
 	}
+	m.save = time.Since(start)
 	if err := built.Episodes.Save(episodePath); err != nil {
 		t.Fatalf("save episodes: %v", err)
 	}
