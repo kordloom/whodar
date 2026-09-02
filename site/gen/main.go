@@ -98,6 +98,8 @@ func docList(root string) []Doc {
 			"Every command, flag, source, and environment variable."},
 		{filepath.Join(root, "docs", "ARCHITECTURE.md"), "architecture", "Architecture",
 			"How whodar turns scattered work data into a map of who knows what."},
+		{filepath.Join(root, "docs", "ACCURACY.md"), "accuracy", "Accuracy",
+			"How the named people are checked, on what, and what the numbers were."},
 		{filepath.Join(root, "docs", "DEPLOY.md"), "deploy", "Deploying",
 			"Run the web app and the Slack bot as long-running services."},
 		{filepath.Join(root, "docs", "DIGEST.md"), "digest", "Personal digest",

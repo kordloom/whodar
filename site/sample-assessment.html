@@ -1,0 +1,1365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Knowledge risk brief</title>
+<style>
+:root {
+	--bg: #f6f7f9;
+	--panel: #ffffff;
+	--ink: #12161c;
+	--muted: #5a6472;
+	--line: #dde1e7;
+	--accent: #0f6f4d;
+	--accent-soft: #e6f2ec;
+	--critical: #a11f2c;
+	--critical-soft: #fbe9eb;
+	--elevated: #8a5a00;
+	--elevated-soft: #fdf1de;
+	--ok: #3f6b52;
+	--ok-soft: #ecf3ee;
+}
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #0d1117;
+		--panel: #151b23;
+		--ink: #e6eaf0;
+		--muted: #9aa5b4;
+		--line: #262d38;
+		--accent: #4bd0a0;
+		--accent-soft: #12261f;
+		--critical: #ff8a95;
+		--critical-soft: #2a1418;
+		--elevated: #e8b562;
+		--elevated-soft: #2a2113;
+		--ok: #8fd3ae;
+		--ok-soft: #16241c;
+	}
+}
+* { box-sizing: border-box; }
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--ink);
+	font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+a { color: var(--accent); }
+.layout { display: flex; align-items: flex-start; gap: 32px; max-width: 1400px; margin: 0 auto; padding: 32px; }
+nav {
+	position: sticky; top: 32px; flex: 0 0 300px; width: 300px;
+	background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px;
+}
+nav h2 { margin: 0 0 4px; font-size: 15px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+nav ul { list-style: none; margin: 12px 0 0; padding: 0; }
+nav li { margin: 0 0 2px; }
+nav button {
+	display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 6px;
+	background: transparent; color: var(--ink); font: inherit; font-size: 15px; cursor: pointer;
+}
+nav button:hover, nav button:focus-visible { background: var(--accent-soft); color: var(--accent); outline: none; }
+main { flex: 1 1 auto; min-width: 0; }
+header.brief { margin-bottom: 24px; }
+h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: -.01em; }
+.provenance { color: var(--muted); font-size: 14px; margin: 0; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 24px; margin: 0 0 24px; scroll-margin-top: 24px; }
+section h2 { margin: 0 0 6px; font-size: 21px; }
+section p.desc { margin: 0 0 18px; color: var(--muted); font-size: 15px; max-width: 72ch; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 24px; }
+.card {
+	background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+	border-radius: 10px; padding: 16px 18px; cursor: pointer; text-align: left; font: inherit; color: inherit;
+}
+.card:hover, .card:focus-visible { border-color: var(--accent); outline: none; }
+.card.crit { border-left-color: var(--critical); }
+.card.elev { border-left-color: var(--elevated); }
+.card .n { display: block; font-size: 34px; font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.card .k { display: block; font-size: 14px; color: var(--muted); margin-top: 4px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+input[type=search] {
+	flex: 1 1 240px; min-width: 180px; padding: 8px 11px; font: inherit; font-size: 15px;
+	background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 7px;
+}
+button.action {
+	padding: 8px 13px; font: inherit; font-size: 14px; cursor: pointer;
+	background: var(--accent-soft); color: var(--accent); border: 1px solid var(--line); border-radius: 7px;
+}
+button.action:hover { border-color: var(--accent); }
+.scroller { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 13px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+th[data-sort] { cursor: pointer; user-select: none; }
+th[data-sort]:hover { color: var(--accent); }
+th .arrow { opacity: .45; font-size: 11px; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+tbody tr:hover { background: var(--accent-soft); }
+.pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.pill.critical { background: var(--critical-soft); color: var(--critical); }
+.pill.elevated { background: var(--elevated-soft); color: var(--elevated); }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.also { color: var(--muted); font-size: 14px; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; background: var(--accent-soft); color: var(--accent); padding: 1px 5px; border-radius: 4px; }
+details { border-top: 1px solid var(--line); padding: 12px 0; }
+details:first-of-type { border-top: 0; }
+summary { cursor: pointer; font-size: 16px; font-weight: 600; }
+summary::marker { color: var(--muted); }
+details .body { padding: 10px 0 4px 18px; }
+details h4 { margin: 12px 0 4px; font-size: 14px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+details p { margin: 0; font-size: 15px; }
+.count { color: var(--muted); font-weight: 400; font-size: 15px; }
+.empty { color: var(--muted); font-size: 15px; margin: 0; }
+footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 1400px; margin: 0 auto; }
+@media print {
+	nav, .toolbar, .card { display: none !important; }
+	body { background: #fff; color: #000; }
+	section { border: 0; padding: 0; margin: 0 0 22px; break-inside: avoid; }
+	details { break-inside: avoid; }
+	details[open] .body, details .body { display: block; }
+	.layout { display: block; padding: 0; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+	<h2>Knowledge risk</h2>
+	<p class="provenance">428 people, 190 scored subjects</p>
+	<ul>
+		<li><button type="button" data-jump="summary">Summary</button></li>
+		<li><button type="button" data-jump="topics">Concentrated subjects</button></li>
+		<li><button type="button" data-jump="people">Who is exposed</button></li>
+		<li><button type="button" data-jump="joined">Joined work</button></li>
+		<li><button type="button" data-jump="spans">One-person connections</button></li>
+		<li><button type="button" data-jump="method">How this was measured</button></li>
+	</ul>
+</nav>
+<main>
+<header class="brief">
+	<h1>Knowledge risk brief</h1>
+	<p class="provenance">
+		Generated 1 September 2026, 18:56 CDT across 428 people,
+		indexed from codeowners, git.
+	</p>
+</header>
+
+
+<section id="summary">
+	<h2>Summary</h2>
+	<p class="desc">Where this company's knowledge rests on too few people. Each figure below jumps to the detail behind it.</p>
+	<div class="cards">
+		<button type="button" class="card crit" data-jump="topics">
+			<span class="n">0</span>
+			<span class="k">Critical subjects</span>
+		</button>
+		<button type="button" class="card elev" data-jump="topics">
+			<span class="n">34</span>
+			<span class="k">Elevated subjects</span>
+		</button>
+		<button type="button" class="card" data-jump="topics">
+			<span class="n">28</span>
+			<span class="k">Held by one person</span>
+		</button>
+		<button type="button" class="card crit" data-jump="topics">
+			<span class="n">85</span>
+			<span class="k">Whose expert has moved on</span>
+		</button>
+		<button type="button" class="card" data-jump="people">
+			<span class="n">9</span>
+			<span class="k">People holding knowledge alone</span>
+		</button>
+	</div>
+</section>
+
+<section id="topics">
+	<h2>Concentrated subjects <span class="count">(worst 100 of 190)</span></h2>
+	<p class="desc">Listed here are the 100 subjects resting on the most work, of 190 scored. The figures above count all 190 of them. Run the report with <code>--limit 0</code> for the whole table.</p>
+	<p class="desc">Where an expert is marked <em>not lately</em>, they know the subject but have stopped working on it. That is a sharper finding than concentration alone: measured against a real project, a lead who had already stopped was less than half as likely to still hold the subject six months on.</p>
+	<p class="desc">A subject is concentrated when most of its expertise sits with one or two people. Bus factor is how few people together hold the majority of it, so a bus factor of one means a single departure takes the topic with it.</p>
+	
+	<div class="toolbar">
+		<input type="search" id="topic-filter" placeholder="Filter topics, people, or levels" aria-label="Filter topics">
+		<button type="button" class="action" id="topic-csv">Export CSV</button>
+	</div>
+	<div class="scroller">
+	<table id="topic-table">
+		<thead>
+			<tr>
+				<th data-sort="text">Topic <span class="arrow">&#9662;</span></th>
+				<th data-sort="rank">Level <span class="arrow">&#9662;</span></th>
+				<th data-sort="num">Bus factor <span class="arrow">&#9662;</span></th>
+				<th data-sort="num">Top expert holds <span class="arrow">&#9662;</span></th>
+				<th data-sort="text">Who holds it <span class="arrow">&#9662;</span></th>
+				<th>Also covers</th>
+			</tr>
+		</thead>
+		<tbody>
+		
+			<tr>
+				<td>oci</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">2</td>
+				<td class="num">64%</td>
+				<td>Amaan Ul Haq Siddiqui (64%), Julien Pivotto (24%), Rohit Behera (12%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>css</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">81%</td>
+				<td>Julius Volz (81%), Akshaj Rawat (16%), Aman (2%), Julien (1%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>corpus</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">94%</td>
+				<td>Julien Pivotto (94%), Martin Valiente Ainz (6%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>binaryexpr</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">90%</td>
+				<td>Julius Volz (90%, not lately), ADITYA TIWARI (10%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>corpus-gen</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Julien Pivotto (100%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>accordion</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Julius Volz (100%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>flot</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">91%</td>
+				<td>Julius Volz (91%), tongjicoder (9%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>legacymanager</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>machine424 (100%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>accordioncontrol</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Julius Volz (100%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>accordionitem</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Julius Volz (100%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>accordionpanel</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Julius Volz (100%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>testrecord</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Owen Williams (100%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>tsdbstatus</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Arve Knudsen (100%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>consoles</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">92%</td>
+				<td>Julius Volz (92%, not lately), Julien (8%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>fuzz-data</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Julien Pivotto (100%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>parseexpr</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Julien Pivotto (100%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>parsemetric</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Julien Pivotto (100%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>issue-template</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Julius Volz (100%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>almost</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Ben Kochie (100%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>goversion</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Ben Kochie (100%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>jsonutil</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Ben Kochie (100%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>junitxml</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Ben Kochie (100%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>netconnlimit</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Ben Kochie (100%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>osutil</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Ben Kochie (100%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>runutil</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Ben Kochie (100%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>swarmprom-plugin</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Anas Khan (100%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>dockeripv6</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Vaivaswat (100%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>bootstrap4-glyphicons</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Julien (100%)</td>
+				<td class="also">glyphicons</td>
+			</tr>
+		
+			<tr>
+				<td>html</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Julien (100%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>bootstrap-4</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Julien (100%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>console-libraries</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Julien (100%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>fontawesome</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Julien (100%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>fonts</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Julien (100%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>rickshaw</td>
+				<td><span class="pill elevated" data-rank="2">elevated</span></td>
+				<td class="num">1</td>
+				<td class="num">100%</td>
+				<td>Julien (100%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>promql</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">31</td>
+				<td class="num">7%</td>
+				<td>George Krajcsovits (7%), Julien Pivotto (5%), Bryan Boreham (5%, not lately), Arve Knudsen (4%), Linas Medziunas (4%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>tsdb</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">24</td>
+				<td class="num">10%</td>
+				<td>George Krajcsovits (10%), Bryan Boreham (6%, not lately), Arve Knudsen (5%), Julien Pivotto (5%), Bartek Plotka (5%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>discovery</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">31</td>
+				<td class="num">6%</td>
+				<td>Eugene Kalinin (6%), Julien Pivotto (6%), Rohit Behera (6%), machine424 (5%, not lately), matt-gp (5%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>remote</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">26</td>
+				<td class="num">9%</td>
+				<td>Bartek Plotka (9%), George Krajcsovits (9%), Arve Knudsen (7%), Arthur Silva Sens (6%), Julien Pivotto (5%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>storage</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">27</td>
+				<td class="num">10%</td>
+				<td>Bartek Plotka (10%), George Krajcsovits (10%), Arve Knudsen (7%), Arthur Silva Sens (6%), machine424 (5%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>web</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">28</td>
+				<td class="num">9%</td>
+				<td>Julien Pivotto (9%), Julius Volz (8%), George Krajcsovits (7%), Arve Knudsen (6%), Bryan Boreham (6%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>scrape</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">24</td>
+				<td class="num">10%</td>
+				<td>George Krajcsovits (10%), Bartek Plotka (7%), Bryan Boreham (6%, not lately), Lukasz Mierzwa (6%), Julien Pivotto (5%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>prometheus</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">25</td>
+				<td class="num">8%</td>
+				<td>Julien Pivotto (8%), machine424 (7%), Arve Knudsen (7%), Bartek Plotka (6%), Arthur Silva Sens (6%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>model</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">21</td>
+				<td class="num">15%</td>
+				<td>George Krajcsovits (15%, not lately), Bartek Plotka (8%, not lately), Bryan Boreham (7%), Jeanette Tan (5%), Julien Pivotto (5%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>config</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">19</td>
+				<td class="num">9%</td>
+				<td>Julien Pivotto (9%), Arve Knudsen (8%, not lately), Bartek Plotka (7%), Owen Williams (6%, not lately), Arthur Silva Sens (5%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>yaml</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">20</td>
+				<td class="num">11%</td>
+				<td>Julien Pivotto (11%), Arve Knudsen (9%), Ben Kochie (9%), machine424 (7%), Bartek Plotka (7%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>promqltest</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">17</td>
+				<td class="num">11%</td>
+				<td>Julien Pivotto (11%), George Krajcsovits (9%), Linas Medziunas (9%), Arve Knudsen (6%), vpranckaitis (6%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>histogram</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">19</td>
+				<td class="num">15%</td>
+				<td>George Krajcsovits (15%), Linas Medziunas (7%), Carrie Edwards (7%), Jeanette Tan (6%), Julien Pivotto (5%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>mantine-ui</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">12</td>
+				<td class="num">15%</td>
+				<td>Julius Volz (15%), Julien Pivotto (12%), George Krajcsovits (12%), Bryan Boreham (8%, not lately), machine424 (8%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>configuration</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">31</td>
+				<td class="num">9%</td>
+				<td>Arve Knudsen (9%, not lately), Julien Pivotto (8%), matt-gp (7%), Amaan Ul Haq Siddiqui (6%), machine424 (6%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>api</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">23</td>
+				<td class="num">13%</td>
+				<td>Julien Pivotto (13%), Julius Volz (12%), Bartek Plotka (7%, not lately), Arve Knudsen (5%, not lately), George Krajcsovits (5%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>labels</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">22</td>
+				<td class="num">10%</td>
+				<td>Bryan Boreham (10%, not lately), Bartek Plotka (7%, not lately), George Krajcsovits (7%, not lately), Arve Knudsen (7%, not lately), Lukasz Mierzwa (6%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>write</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">15</td>
+				<td class="num">14%</td>
+				<td>Bartek Plotka (14%), Arve Knudsen (10%), George Krajcsovits (10%, not lately), Arthur Silva Sens (9%), Bryan Boreham (7%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>module</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">12</td>
+				<td class="num">13%</td>
+				<td>George Krajcsovits (13%), Julien Pivotto (11%), Julius Volz (10%), Bryan Boreham (10%, not lately), machine424 (8%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>parser</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">15</td>
+				<td class="num">17%</td>
+				<td>Julien Pivotto (17%), Bryan Boreham (10%, not lately), George Krajcsovits (8%, not lately), Julius Volz (7%, not lately), Arve Knudsen (6%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>codemirror-promql</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">10</td>
+				<td class="num">15%</td>
+				<td>Julien Pivotto (15%), George Krajcsovits (15%), Bryan Boreham (11%, not lately), machine424 (8%), Jan Fajerski (8%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>textparse</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">9</td>
+				<td class="num">25%</td>
+				<td>George Krajcsovits (25%, not lately), Bartek Plotka (13%, not lately), Jeanette Tan (9%, not lately), Bryan Boreham (8%), Julien Pivotto (8%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>promtool</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">22</td>
+				<td class="num">10%</td>
+				<td>Arve Knudsen (10%, not lately), Bryan Boreham (9%, not lately), Julien Pivotto (8%), Matthieu MOREL (7%), Ben Kochie (6%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>typescript</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">13</td>
+				<td class="num">21%</td>
+				<td>Julius Volz (21%), Julien Pivotto (17%), Arve Knudsen (10%), ADITYA TIWARI (8%), Flying Musk (4%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>agent</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">11</td>
+				<td class="num">13%</td>
+				<td>Bartek Plotka (13%), Kyle Eckhart (12%), Bryan Boreham (9%, not lately), Carrie Edwards (9%, not lately), Patryk Prus (8%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>aws</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">12</td>
+				<td class="num">17%</td>
+				<td>matt-gp (17%), Eugene Kalinin (16%), Raj (9%), Julien Pivotto (9%), Minh Vu (8%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>workflows</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">8</td>
+				<td class="num">19%</td>
+				<td>Julien Pivotto (19%), machine424 (14%), Ben Kochie (13%), Bartek Plotka (12%), Arve Knudsen (8%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>javascript</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">7</td>
+				<td class="num">17%</td>
+				<td>George Krajcsovits (17%), Bryan Boreham (14%, not lately), Julien Pivotto (14%), Julius Volz (12%), machine424 (11%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>rules</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">16</td>
+				<td class="num">13%</td>
+				<td>Julien Pivotto (13%), Arve Knudsen (11%, not lately), Julius Volz (10%, not lately), Bartek Plotka (7%, not lately), Ben Kochie (6%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>lezer-promql</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">7</td>
+				<td class="num">18%</td>
+				<td>George Krajcsovits (18%), Bryan Boreham (15%, not lately), Julien Pivotto (13%), machine424 (11%), Jan Fajerski (10%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>flags</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">13</td>
+				<td class="num">19%</td>
+				<td>Julien Pivotto (19%), Bartek Plotka (11%), Carrie Edwards (10%), Julius Volz (8%, not lately), Ridwan Sharif (7%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>otlptranslator</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">10</td>
+				<td class="num">21%</td>
+				<td>Arve Knudsen (21%), Arthur Silva Sens (16%), George Krajcsovits (14%, not lately), Bartek Plotka (10%, not lately), Ben Kochie (8%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>query</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">10</td>
+				<td class="num">24%</td>
+				<td>Julius Volz (24%), Julien Pivotto (12%), Akshaj Rawat (12%), Dan Cech (9%), Arve Knudsen (5%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>documentation</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">17</td>
+				<td class="num">11%</td>
+				<td>Julien Pivotto (11%), Bartek Plotka (10%), Arve Knudsen (10%, not lately), Bryan Boreham (8%, not lately), Arthur Silva Sens (7%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>querying</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">15</td>
+				<td class="num">17%</td>
+				<td>Julien Pivotto (17%), Julius Volz (14%), Charles Korn (10%), Arve Knudsen (8%), George Krajcsovits (5%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>prometheusremotewrite</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">7</td>
+				<td class="num">24%</td>
+				<td>Arve Knudsen (24%), George Krajcsovits (17%, not lately), Arthur Silva Sens (16%), Bartek Plotka (10%, not lately), Ben Kochie (8%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>client</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">12</td>
+				<td class="num">15%</td>
+				<td>Julien Pivotto (15%), Bartek Plotka (12%, not lately), Jeanette Tan (11%, not lately), Matthieu MOREL (9%, not lately), Arve Knudsen (7%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>chunkenc</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">4</td>
+				<td class="num">41%</td>
+				<td>George Krajcsovits (41%), Julien Pivotto (19%), Bryan Boreham (13%, not lately), Carrie Edwards (6%), Ben Kochie (6%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>kubernetes</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">9</td>
+				<td class="num">17%</td>
+				<td>machine424 (17%, not lately), Pranshu Srivastava (13%), Giedrius Statkevičius (10%, not lately), Matthieu MOREL (10%, not lately), Ben Kochie (10%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>chunks</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">8</td>
+				<td class="num">20%</td>
+				<td>George Krajcsovits (20%), Bryan Boreham (14%, not lately), Julien Pivotto (11%), Ben Kochie (10%, not lately), machine424 (9%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>wlog</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">9</td>
+				<td class="num">15%</td>
+				<td>Bartek Plotka (15%), Carrie Edwards (14%, not lately), Patryk Prus (11%), Ben Kochie (11%, not lately), George Krajcsovits (9%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>command-line</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">17</td>
+				<td class="num">14%</td>
+				<td>Julien Pivotto (14%), Bryan Boreham (9%, not lately), machine424 (9%), Ben Kochie (9%, not lately), Carrie Edwards (7%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>examples</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">12</td>
+				<td class="num">12%</td>
+				<td>Arve Knudsen (12%, not lately), Bartek Plotka (11%), Julien Pivotto (10%), Julius Volz (9%), Bryan Boreham (7%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>errors</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">13</td>
+				<td class="num">16%</td>
+				<td>Ben Kochie (16%, not lately), Arve Knudsen (10%, not lately), George Krajcsovits (9%, not lately), Julien Pivotto (8%), Arthur Silva Sens (7%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>index</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">8</td>
+				<td class="num">26%</td>
+				<td>Bryan Boreham (26%, not lately), Oleg Zaytsev (15%, not lately), Ben Kochie (12%, not lately), Patryk Prus (10%, not lately), Arve Knudsen (8%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>scripts</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">5</td>
+				<td class="num">28%</td>
+				<td>Julien Pivotto (28%), machine424 (20%), Ben Kochie (19%), Matthieu MOREL (8%, not lately), Arve Knudsen (5%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>record</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">5</td>
+				<td class="num">26%</td>
+				<td>George Krajcsovits (26%, not lately), Carrie Edwards (23%, not lately), Bartek Plotka (14%), Miguel Bernabeu Diaz (13%), Ben Kochie (7%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>pages</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">7</td>
+				<td class="num">38%</td>
+				<td>Julius Volz (38%), Julien Pivotto (16%), Arve Knudsen (8%), Akshaj Rawat (6%), Morax (5%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>file</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">17</td>
+				<td class="num">8%</td>
+				<td>machine424 (8%, not lately), Julius Volz (7%, not lately), Amaan Ul Haq Siddiqui (6%, not lately), Jan Fajerski (6%, not lately), Matthieu MOREL (6%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>metadata</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">9</td>
+				<td class="num">20%</td>
+				<td>Bartek Plotka (20%, not lately), Arve Knudsen (20%, not lately), Arthur Silva Sens (15%, not lately), George Krajcsovits (7%, not lately), machine424 (5%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>react-app</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">7</td>
+				<td class="num">18%</td>
+				<td>George Krajcsovits (18%), Bryan Boreham (17%, not lately), Arve Knudsen (15%), Julius Volz (13%), Julien Pivotto (9%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>format</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">12</td>
+				<td class="num">16%</td>
+				<td>George Krajcsovits (16%), Julius Volz (13%, not lately), Julien Pivotto (12%), Carrie Edwards (9%), Bryan Boreham (6%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>shell</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">5</td>
+				<td class="num">35%</td>
+				<td>Julien Pivotto (35%), machine424 (18%), Ben Kochie (18%), Julius Volz (6%, not lately), Bartek Plotka (6%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>annotations</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">11</td>
+				<td class="num">11%</td>
+				<td>George Krajcsovits (11%), Vamsi Mathala (10%), zenador (9%, not lately), Arthur Silva Sens (9%), Julius Volz (9%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>complete</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">7</td>
+				<td class="num">20%</td>
+				<td>Julien Pivotto (20%), Julius Volz (18%, not lately), ADITYA TIWARI (18%), Arve Knudsen (7%, not lately), Asish Kumar (7%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>timestamp</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">11</td>
+				<td class="num">18%</td>
+				<td>George Krajcsovits (18%, not lately), Carrie Edwards (13%, not lately), vpranckaitis (10%, not lately), Arthur Silva Sens (9%, not lately), Julien Pivotto (7%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>remote-storage</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">7</td>
+				<td class="num">16%</td>
+				<td>Bartek Plotka (16%), Arve Knudsen (14%, not lately), Bryan Boreham (14%, not lately), machine424 (13%), Julien Pivotto (10%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>docker</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">11</td>
+				<td class="num">17%</td>
+				<td>Julien Pivotto (17%), Paul Übermasser (17%), Matthieu MOREL (8%, not lately), alex boten (8%), Arve Knudsen (7%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>features</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">10</td>
+				<td class="num">32%</td>
+				<td>Julien Pivotto (32%), matt-gp (10%, not lately), Julius Volz (10%, not lately), Carrie Edwards (7%), George Krajcsovits (7%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>notifier</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">6</td>
+				<td class="num">25%</td>
+				<td>machine424 (25%), Arve Knudsen (22%, not lately), Ben Kochie (10%, not lately), Siavash Safi (10%), Matthieu MOREL (9%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>tools</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">7</td>
+				<td class="num">18%</td>
+				<td>Julius Volz (18%, not lately), Julien Pivotto (16%), Bryan Boreham (12%, not lately), Bartek Plotka (11%), George Krajcsovits (10%)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>stats</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">7</td>
+				<td class="num">28%</td>
+				<td>Dan Cech (28%), George Krajcsovits (11%, not lately), Julius Volz (11%, not lately), beorn7 (10%), Arve Knudsen (8%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>prompb</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">7</td>
+				<td class="num">24%</td>
+				<td>Bartek Plotka (24%), Carrie Edwards (13%), Julien Pivotto (13%), Ben Kochie (12%), Arve Knudsen (9%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>encoding</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">3</td>
+				<td class="num">39%</td>
+				<td>Julien Pivotto (39%), Carrie Edwards (26%, not lately), Bryan Boreham (17%, not lately), George Krajcsovits (8%, not lately), Ben Kochie (4%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>types</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">11</td>
+				<td class="num">16%</td>
+				<td>Julius Volz (16%), Julien Pivotto (13%), George Krajcsovits (12%, not lately), Bartek Plotka (12%, not lately), Arve Knudsen (5%, not lately)</td>
+				<td class="also"></td>
+			</tr>
+		
+			<tr>
+				<td>make</td>
+				<td><span class="pill ok" data-rank="1">ok</span></td>
+				<td class="num">7</td>
+				<td class="num">36%</td>
+				<td>Julien Pivotto (36%), Ben Kochie (17%), machine424 (13%), @prometheus/default-maintainers (5%), Simon Pasquier (5%)</td>
+				<td class="also"></td>
+			</tr>
+		
+		</tbody>
+	</table>
+	</div>
+	
+</section>
+
+<section id="people">
+	<h2>Who is exposed <span class="count">(10)</span></h2>
+	<p class="desc">The same finding read by person rather than by topic. Sole knowledge has no cover behind it at all. Led knowledge has others contributing, so it degrades rather than disappears.</p>
+	
+		
+		<details>
+			<summary>Ben Kochie <span class="count">&mdash; 7 sole, 0 led</span></summary>
+			<div class="body">
+				
+				<h4>Would leave with them</h4>
+				<p>almost, goversion, jsonutil, junitxml, netconnlimit, osutil, runutil</p>
+				
+				
+			</div>
+		</details>
+		
+		<details>
+			<summary>Julien <span class="count">&mdash; 7 sole, 0 led</span></summary>
+			<div class="body">
+				
+				<h4>Would leave with them</h4>
+				<p>bootstrap-4, bootstrap4-glyphicons, console-libraries, fontawesome, fonts, html, rickshaw</p>
+				
+				
+			</div>
+		</details>
+		
+		<details>
+			<summary>Julius Volz <span class="count">&mdash; 5 sole, 4 led</span></summary>
+			<div class="body">
+				
+				<h4>Would leave with them</h4>
+				<p>accordion, accordioncontrol, accordionitem, accordionpanel, issue-template</p>
+				
+				
+				<h4>Would lose its lead</h4>
+				<p>binaryexpr, consoles, css, flot</p>
+				
+			</div>
+		</details>
+		
+		<details>
+			<summary>Julien Pivotto <span class="count">&mdash; 4 sole, 1 led</span></summary>
+			<div class="body">
+				
+				<h4>Would leave with them</h4>
+				<p>corpus-gen, fuzz-data, parseexpr, parsemetric</p>
+				
+				
+				<h4>Would lose its lead</h4>
+				<p>corpus</p>
+				
+			</div>
+		</details>
+		
+		<details>
+			<summary>Anas Khan <span class="count">&mdash; 1 sole, 0 led</span></summary>
+			<div class="body">
+				
+				<h4>Would leave with them</h4>
+				<p>swarmprom-plugin</p>
+				
+				
+			</div>
+		</details>
+		
+		<details>
+			<summary>Arve Knudsen <span class="count">&mdash; 1 sole, 0 led</span></summary>
+			<div class="body">
+				
+				<h4>Would leave with them</h4>
+				<p>tsdbstatus</p>
+				
+				
+			</div>
+		</details>
+		
+		<details>
+			<summary>Owen Williams <span class="count">&mdash; 1 sole, 0 led</span></summary>
+			<div class="body">
+				
+				<h4>Would leave with them</h4>
+				<p>testrecord</p>
+				
+				
+			</div>
+		</details>
+		
+		<details>
+			<summary>Vaivaswat <span class="count">&mdash; 1 sole, 0 led</span></summary>
+			<div class="body">
+				
+				<h4>Would leave with them</h4>
+				<p>dockeripv6</p>
+				
+				
+			</div>
+		</details>
+		
+		<details>
+			<summary>machine424 <span class="count">&mdash; 1 sole, 0 led</span></summary>
+			<div class="body">
+				
+				<h4>Would leave with them</h4>
+				<p>legacymanager</p>
+				
+				
+			</div>
+		</details>
+		
+		<details>
+			<summary>Amaan Ul Haq Siddiqui <span class="count">&mdash; 0 sole, 1 led</span></summary>
+			<div class="body">
+				
+				
+				<h4>Would lose its lead</h4>
+				<p>oci</p>
+				
+			</div>
+		</details>
+		
+	
+</section>
+
+
+<section id="spans">
+	<h2>One-person connections <span class="count">(3)</span></h2>
+	<p class="desc">Subjects that only one person has ever done work across. They have their own experts, so nothing that counts experts per subject shows this: what rests on one person is not any of the subjects but the knowledge that they belong together, and whoever picks one up afterwards has no reason to look at the others. Where the crossings join up they are listed as the one body of work they are, since that is what would leave.</p>
+	<div class="scroller">
+	<table>
+		<thead><tr><th>Subjects</th><th>Only</th><th>People holding them</th><th>Worked on together</th></tr></thead>
+		<tbody>
+		
+			<tr>
+				<td>corpus + fuzzing</td>
+				<td>Julien Pivotto</td>
+				<td class="num">7</td>
+				<td class="num">31%</td>
+			</tr>
+		
+			<tr>
+				<td>triton + xds</td>
+				<td>intojhanurag</td>
+				<td class="num">11</td>
+				<td class="num">12%</td>
+			</tr>
+		
+			<tr>
+				<td>css + query</td>
+				<td>Julius Volz</td>
+				<td class="num">29</td>
+				<td class="num">10%</td>
+			</tr>
+		
+		</tbody>
+	</table>
+	</div>
+</section>
+
+
+
+<section id="joined">
+	<h2>Joined work <span class="count">(2)</span></h2>
+	<p class="desc">Subjects that get worked on together, where the same person leads every one of them. This is a heavier finding than a concentrated subject on its own: whoever takes the work over has to learn the whole of it at once, and a list of subjects one at a time never shows that.</p>
+	
+	<details>
+		<summary>Julius Volz <span class="count">&mdash; 4 joined subjects</span></summary>
+		<div class="body"><p>css, explainviews, metricsexplorer, pages</p></div>
+	</details>
+	
+	<details>
+		<summary>Morax <span class="count">&mdash; 3 joined subjects</span></summary>
+		<div class="body"><p>components, service-discovery, targets</p></div>
+	</details>
+	
+</section>
+
+
+<section id="method">
+	<h2>How this was measured</h2>
+	<p class="desc">Every figure here is arithmetic over the indexed graph, with no model involved and no judgement applied. A person's share of a topic is their weight in it against everyone else's. Bus factor counts the fewest people whose combined share passes a majority. A topic is critical when one person holds most of it, and elevated when two do.</p>
+	<p class="desc">The finding only sees what was indexed, which here was codeowners, git. Knowledge that lives somewhere whodar was not pointed at does not appear, so this is a floor on concentration rather than a complete picture.</p>
+</section>
+</main>
+</div>
+<footer>Generated by whodar. Deterministic, offline, and self-contained: this file needs nothing to open.</footer>
+
+<script>
+(function () {
+	"use strict";
+	
+	
+	document.querySelectorAll("[data-jump]").forEach(function (el) {
+		el.addEventListener("click", function () {
+			var target = document.getElementById(el.getAttribute("data-jump"));
+			if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+		});
+	});
+
+	var table = document.getElementById("topic-table");
+	if (!table) return;
+	var body = table.tBodies[0];
+
+	var filter = document.getElementById("topic-filter");
+	filter.addEventListener("input", function () {
+		var q = filter.value.trim().toLowerCase();
+		Array.prototype.forEach.call(body.rows, function (row) {
+			row.style.display = !q || row.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+		});
+	});
+
+	function cellKey(row, i, kind) {
+		var cell = row.cells[i];
+		if (kind === "rank") {
+			var pill = cell.querySelector("[data-rank]");
+			return pill ? Number(pill.getAttribute("data-rank")) : 0;
+		}
+		if (kind === "num") return parseFloat(cell.textContent.replace(/[^0-9.\-]/g, "")) || 0;
+		return cell.textContent.trim().toLowerCase();
+	}
+
+	Array.prototype.forEach.call(table.tHead.rows[0].cells, function (th, i) {
+		var kind = th.getAttribute("data-sort");
+		if (!kind) return;
+		var descending = true;
+		th.addEventListener("click", function () {
+			var rows = Array.prototype.slice.call(body.rows);
+			rows.sort(function (a, b) {
+				var x = cellKey(a, i, kind), y = cellKey(b, i, kind);
+				if (x < y) return descending ? 1 : -1;
+				if (x > y) return descending ? -1 : 1;
+				return 0;
+			});
+			rows.forEach(function (r) { body.appendChild(r); });
+			descending = !descending;
+		});
+	});
+
+	document.getElementById("topic-csv").addEventListener("click", function () {
+		var lines = [];
+		function quote(s) { return '"' + String(s).replace(/"/g, '""') + '"'; }
+		function push(row, tag) {
+			var cells = Array.prototype.map.call(row.cells, function (c) { return quote(c.textContent.trim()); });
+			lines.push(cells.join(","));
+		}
+		push(table.tHead.rows[0]);
+		Array.prototype.forEach.call(body.rows, function (row) {
+			if (row.style.display !== "none") push(row);
+		});
+		var blob = new Blob([lines.join("\n")], { type: "text/csv" });
+		var a = document.createElement("a");
+		a.href = URL.createObjectURL(blob);
+		a.download = "whodar-knowledge-risk.csv";
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(a.href);
+	});
+})();
+</script>
+</body>
+</html>
