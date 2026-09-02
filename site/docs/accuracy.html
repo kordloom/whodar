@@ -242,10 +242,71 @@ questions, and one formula was answering both.</p>
 that an area has one person in it and nobody behind them, which is a checkable
 present fact. They no longer say what will happen when that person leaves,
 which is a forecast this measurement does not support.</p>
-<p>The remaining open question is narrower and better posed: when whodar says an
-area rests on one person and that person then stops working, does the area
-actually go quiet? That tests concentration forward rather than activity
-forward, and it is the claim the product actually makes.</p>
+<h2 id="measurement-four-does-concentration-predict-fragility">Measurement four: does concentration predict fragility</h2>
+<p>The holdout above asks who will be busy, which whodar does not claim to know.
+The claim it does make is narrower: that an area resting on one person is
+fragile. That is testable in the same windows. Take every area busy before the
+cutoff, note whether whodar called it single-held, then read the future for
+the areas whose leading person stopped working there, and see which ones fell
+silent.</p>
+<p>Measured 2026-09-02 across five repositories, a three-year window with a
+one-year cutoff, quiet meaning activity fell by ninety percent:</p>
+<table>
+<thead>
+<tr>
+<th>Repository</th>
+<th>flagged single-held, went quiet</th>
+<th>not flagged, went quiet</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>kubernetes/kubernetes</td>
+<td>94% (34/36)</td>
+<td>16% (95/602)</td>
+</tr>
+<tr>
+<td>prometheus/prometheus</td>
+<td>100% (5/5)</td>
+<td>2% (1/41)</td>
+</tr>
+<tr>
+<td>tektoncd/pipeline</td>
+<td>43% (13/30)</td>
+<td>17% (12/70)</td>
+</tr>
+<tr>
+<td>knative/serving</td>
+<td>100% (1/1)</td>
+<td>41% (20/49)</td>
+</tr>
+<tr>
+<td>kubernetes/test-infra</td>
+<td>0% (0/1)</td>
+<td>36% (50/137)</td>
+</tr>
+<tr>
+<td><strong>pooled</strong></td>
+<td><strong>73% (53/73)</strong></td>
+<td><strong>20% (178/899)</strong></td>
+</tr>
+</tbody>
+</table>
+<p>When whodar says an area rests on one person and that person stops working
+there, the area goes quiet about three and a half times as often as an area it
+did not flag whose leading person also left. Two repositories contribute a
+single flagged area each and are noise on their own; they are in the table
+because leaving them out after seeing them would be choosing the sample to fit
+the answer.</p>
+<p>One honest qualification. Part of this is definitional: an area with one
+person in the record has, by construction, nobody else already there. What is
+not definitional, and is the whole of the risk being described, is that nobody
+new arrives either. A single-held area could plausibly attract a successor and
+mostly does not; a covered area could plausibly collapse when its leading
+person goes and mostly does not.</p>
+<p>This is the forward-looking measurement the concentration finding rests on,
+and unlike the activity holdout it supports the claim. It ships as part of
+<code>whodar eval holdout</code>.</p>
 <h2 id="the-assessment-itself">The assessment itself</h2>
 <p>The report this was measured on is published as it came out of the command,
 unedited, at <a href="https://whodar.dev/sample-assessment.html">whodar.dev/sample-assessment.html</a>,

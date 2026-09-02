@@ -79,6 +79,22 @@ Examples:
 				return writeJSON(cmd.OutOrStdout(), res, true)
 			}
 			res.Report(cmd.OutOrStdout(), topK)
+
+			// The holdout above asks who will be busy. The claim the product
+			// makes is narrower: that a place resting on one person is
+			// fragile. Score that too, from the same windows.
+			sur, err := ownersbench.RunSurvival(ix, ownersbench.SurvivalConfig{
+				Repo: repo, SinceDays: sinceDays, CutoffDays: cutoffDays,
+				MinPast: minPast, Log: log,
+				DirWork: git.DirWork(), WorkTotals: git.WorkTotals(),
+			})
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout())
+			fmt.Fprintln(cmd.OutOrStdout(),
+				"does concentration predict fragility, which is the actual claim:")
+			sur.Report(cmd.OutOrStdout())
 			return nil
 		},
 	}
