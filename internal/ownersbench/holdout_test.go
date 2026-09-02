@@ -108,6 +108,7 @@ func TestRunHoldoutHidesTheFuture(t *testing.T) {
 	}
 	if area == nil {
 		t.Fatalf("area was not judged; dirs = %+v", res.Dirs)
+		return
 	}
 	for _, n := range area.Actual {
 		if connector.IsAutomationName(n) {
