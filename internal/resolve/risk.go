@@ -43,14 +43,21 @@ type TopicRisk struct {
 	// subject held by a single person is equally concentrated, so without this
 	// the report leads with whichever of them happens to sort first by name.
 	Weight float64 `json:"weight"`
+	// Lead is the person the subject rests on, and LeadID their identifier.
+	// It is deliberately not Experts[0]: share measures concentration, and by
+	// share the few people who touch a whole code base out-hold the owner of
+	// nearly every subject at once. Measured on kubernetes, reading Experts[0]
+	// as the owner named the same five people for half of all subjects; the
+	// breadth-discounted lead cut that in half and doubled agreement with the
+	// project's own OWNERS files. Empty when nobody has done work on the
+	// subject beyond being assigned it.
+	Lead string `json:"lead,omitempty"`
+	// LeadID is the lead's canonical identifier.
+	LeadID string `json:"leadId,omitempty"`
 	// Experts are the people holding the topic, by share of it, largest first.
 	//
 	// Share of a subject is the right measure for concentration and the wrong
-	// one for who leads it. The few people who touch a whole code base hold a
-	// large share of nearly every part of it, so Experts[0] is not the owner:
-	// reading it that way sent an offboarding report to name one subject where
-	// somebody led nine, and handed ownership of half a project to a passer-by.
-	// Use leads for that.
+	// one for who leads it; Lead is who the subject rests on.
 	Experts []RiskExpert `json:"experts"`
 	// Includes are the other names this same body of knowledge goes by, folded
 	// in so one subject is not reported as several risks.
@@ -94,6 +101,7 @@ func Risk(ix *index.Index, limit int) []TopicRisk {
 			}
 		}
 	}
+	lead := leads(ix)
 	var out []TopicRisk
 	for topic, people := range byTopic {
 		var total float64
@@ -139,9 +147,14 @@ func Risk(ix *index.Index, limit int) []TopicRisk {
 			includes = append(includes, a)
 		}
 		sort.Strings(includes)
+		leadName, leadID := "", ""
+		if who := lead[model.ID(topic)]; who != "" {
+			leadName, leadID = personName(ix, who), string(who)
+		}
 		out = append(out, TopicRisk{
 			Topic: topic, Level: concentrated, Concentration: experts[0].Share, BusFactor: bus,
 			Weight: total, Experts: experts, Includes: includes,
+			Lead: leadName, LeadID: leadID,
 		})
 	}
 	demoteSlightSubjects(out)
@@ -240,9 +253,8 @@ func Departure(ix *index.Index, query string) DepartureImpact {
 	// who touch everything out-weigh every owner at once, and reading departure
 	// off that showed a maintainer losing one subject where they really lead
 	// nine. See leadOf.
-	lead := leads(ix)
 	for _, tr := range Risk(ix, 0) {
-		if len(tr.Experts) == 0 || lead[model.ID(tr.Topic)] != pid {
+		if len(tr.Experts) == 0 || model.ID(tr.LeadID) != pid {
 			continue
 		}
 		if len(tr.Experts) == 1 {

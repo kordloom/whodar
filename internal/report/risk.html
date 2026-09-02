@@ -189,6 +189,7 @@ footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 
 				<th data-sort="rank">Level <span class="arrow">&#9662;</span></th>
 				<th data-sort="num">Bus factor <span class="arrow">&#9662;</span></th>
 				<th data-sort="num">Top expert holds <span class="arrow">&#9662;</span></th>
+				<th data-sort="text">Rests on <span class="arrow">&#9662;</span></th>
 				<th data-sort="text">Who holds it <span class="arrow">&#9662;</span></th>
 				<th>Also covers</th>
 			</tr>
@@ -200,6 +201,7 @@ footer { color: var(--muted); font-size: 14px; padding: 0 32px 40px; max-width: 
 				<td><span class="pill {{ .Level }}" data-rank="{{ if eq .Level "critical" }}3{{ else if eq .Level "elevated" }}2{{ else }}1{{ end }}">{{ .Level }}</span></td>
 				<td class="num">{{ .BusFactor }}</td>
 				<td class="num">{{ pct .Concentration }}</td>
+				<td>{{ if .Lead }}{{ .Lead }}{{ else }}&mdash;{{ end }}</td>
 				<td>{{ range $i, $e := .Experts }}{{ if $i }}, {{ end }}{{ $e.Name }} ({{ pct $e.Share }}{{ if $e.Quiet }}, not lately{{ end }}){{ end }}</td>
 				<td class="also">{{ join .Includes }}</td>
 			</tr>

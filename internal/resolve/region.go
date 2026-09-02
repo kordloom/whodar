@@ -110,7 +110,31 @@ func Regions(ix *index.Index, limit int) []Region {
 // assigned them.
 func leads(ix *index.Index) map[model.ID]model.ID {
 	out := make(map[model.ID]model.ID)
-	best := make(map[model.ID]float64)
+	for tid, ranked := range Leaders(ix, 1) {
+		out[tid] = ranked[0].id
+	}
+	return out
+}
+
+// leader is one person's standing on one subject under the lead score.
+type leader struct {
+	// id is the person's canonical identifier.
+	id model.ID
+	// Name is their display name.
+	Name string
+	// score is work on the subject discounted by the square root of all work.
+	score float64
+}
+
+// ID returns the leader's canonical identifier as a string.
+func (l leader) ID() string { return string(l.id) }
+
+// Leaders returns, for every salient subject, the k people it most rests on
+// under the same breadth-discounted score leads uses. It exists as its own
+// entry point so a benchmark judging the ownership claim scores exactly the
+// formula the product ships, rather than a copy that drifts.
+func Leaders(ix *index.Index, k int) map[model.ID][]leader {
+	out := make(map[model.ID][]leader)
 	for id, p := range ix.Graph.People {
 		var total float64
 		for tid, w := range p.Topics {
@@ -128,11 +152,32 @@ func leads(ix *index.Index) map[model.ID]model.ID {
 			if here <= 0 || !ix.Graph.Topics[tid].Salient() {
 				continue
 			}
-			score := here / root
-			if score > best[tid] || (score == best[tid] && canon < out[tid]) {
-				best[tid], out[tid] = score, canon
+			out[tid] = append(out[tid], leader{id: canon, score: here / root})
+		}
+	}
+	for tid, ranked := range out {
+		sort.Slice(ranked, func(i, j int) bool {
+			if ranked[i].score != ranked[j].score {
+				return ranked[i].score > ranked[j].score
+			}
+			return ranked[i].id < ranked[j].id
+		})
+		// One person can appear under several uncanonicalized identities that
+		// resolve to one canonical id; keep the first of each.
+		kept := ranked[:0]
+		seen := make(map[model.ID]bool)
+		for _, l := range ranked {
+			if seen[l.id] {
+				continue
+			}
+			seen[l.id] = true
+			l.Name = personName(ix, l.id)
+			kept = append(kept, l)
+			if len(kept) == k {
+				break
 			}
 		}
+		out[tid] = kept
 	}
 	return out
 }

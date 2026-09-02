@@ -78,7 +78,19 @@ func Exposures(risks []resolve.TopicRisk) []Exposure {
 		if len(r.Experts) == 0 {
 			continue
 		}
+		// The lead is who the subject rests on; the share ranking is who has
+		// touched it. Attributing exposure by share handed half a real
+		// project's subjects to its five widest-ranging committers.
 		top := r.Experts[0]
+		if r.Lead != "" {
+			top = resolve.RiskExpert{ID: r.LeadID, Name: r.Lead}
+			for _, e := range r.Experts {
+				if e.ID == r.LeadID {
+					top = e
+					break
+				}
+			}
+		}
 		if len(r.Experts) == 1 {
 			ex := at(top)
 			ex.Sole = append(ex.Sole, r.Topic)
