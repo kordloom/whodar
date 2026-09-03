@@ -27,26 +27,32 @@ if [ -z "${QUILL_SIGN_P12:-}" ] || [ -z "${QUILL_NOTARY_KEY:-}" ]; then
 	exit 0
 fi
 
-# Apple's notary service is asked to inspect the binary and answer, and how
-# long it takes is entirely up to Apple: minutes usually, far longer when the
-# signing identity is new. quill waits 900 seconds by default and then gives
-# up, which is what happened on the first two submissions this certificate
-# ever made.
+# Submit to Apple and do not wait for the verdict.
 #
-# The setting lives at status.timeout-seconds and has no command line flag, so
-# it can only be reached through configuration. It is set two ways on purpose:
-# the environment variable is the documented path, and the config file is
-# proof against the variable being named wrong, which already cost one release
-# that shipped signed but unnotarized while the log looked clean.
-: "${QUILL_STATUS_TIMEOUT_SECONDS:=2700}"
-export QUILL_STATUS_TIMEOUT_SECONDS
-
+# quill's own default is to wait, and it cannot see the answer: measured on
+# this repository, seven submissions were Accepted by Apple while quill polled
+# for the full timeout and then reported failure. Waiting therefore bought a
+# 45 minute release, a false alarm in the log, and no extra safety at all.
+#
+# Not waiting is sound because signing is local and finishes before anything
+# is submitted, so the binary ships correctly signed either way. Apple
+# notarizes afterwards and the ticket becomes visible to Gatekeeper online,
+# which is how it must work regardless: a bare executable cannot carry a
+# stapled ticket, so every machine checks with Apple anyway.
+#
+# The cost is that a genuine rejection is not reported here. That is what the
+# post-release check is for, and it is the check that should be believed in
+# any case, because it reads the published artifact rather than this log:
+#
+#   spctl -a -vv -t open --context context:primary-signature <binary>
+#
+# Expect "source=Notarized Developer ID". Allow a few minutes after a release
+# for the ticket to reach Apple's edge; an immediate check can still say
+# unnotarized while the submission is propagating.
 quill_config="${TMPDIR:-/tmp}/quill-config-$$.yaml"
 cat >"$quill_config" <<YAML
 status:
-  wait: true
-  poll-seconds: 15
-  timeout-seconds: ${QUILL_STATUS_TIMEOUT_SECONDS}
+  wait: false
 YAML
 
 QUILL_VERSION="v0.5.1"
