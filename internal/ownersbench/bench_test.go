@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/kordloom/whodar/internal/connector"
@@ -36,8 +37,36 @@ func runGit(t *testing.T, dir string, env []string, args ...string) {
 	var errb bytes.Buffer
 	cmd.Stderr = &errb
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, errb.String())
+		t.Fatalf("git %s: %v\n%s%s", strings.Join(args, " "), err, errb.String(),
+			gitFailureState(dir, home))
 	}
+}
+
+// gitFailureState describes the world at the moment a git command failed, so
+// a failure that only ever happens on someone else's machine is diagnosable
+// from its output alone. A previous flake in CI said only "unable to create
+// temporary file" and cost a long hunt that never reproduced; everything
+// gathered here is a thing that hunt wanted to know and could not get.
+func gitFailureState(dir, home string) string {
+	var b strings.Builder
+	b.WriteString("\n--- state when git failed ---\n")
+	for _, p := range []string{dir, filepath.Join(dir, ".git"),
+		filepath.Join(dir, ".git", "objects"), home, os.TempDir()} {
+		fi, err := os.Stat(p)
+		switch {
+		case err != nil:
+			fmt.Fprintf(&b, "  %-40s MISSING (%v)\n", p, err)
+		default:
+			fmt.Fprintf(&b, "  %-40s mode %v\n", p, fi.Mode())
+		}
+	}
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(dir, &st); err == nil {
+		fmt.Fprintf(&b, "  free space: %d MB, free inodes: %d\n",
+			int64(st.Bavail)*int64(st.Bsize)/(1<<20), st.Ffree)
+	}
+	fmt.Fprintf(&b, "  TMPDIR=%q HOME=%q\n", os.Getenv("TMPDIR"), os.Getenv("HOME"))
+	return b.String()
 }
 
 // author fixes one commit's identity and dates.
@@ -117,16 +146,25 @@ func newBenchRepo(t *testing.T) string {
 	}
 	// Two more regulars outrank the quiet owner by touch count, so the top
 	// three committers of search never include the owner.
-	for n, f := range map[string]string{"Reg One": "cache.go", "Reg Two": "query.go"} {
-		reg := func() []string { return author(n, strings.ToLower(n)+"@x.com", next()) }
+	// A slice, not a map: Go randomizes map iteration, so ranging one here
+	// built a different repository on every run and made the cohort split
+	// this test asserts depend on the order the runtime happened to pick.
+	for _, reg := range []struct{ name, file string }{
+		{"Reg One", "cache.go"}, {"Reg Two", "query.go"},
+	} {
+		n, f := reg.name, reg.file
+		who := func() []string {
+			// The mail local part must not carry the space in the name.
+			return author(n, strings.ReplaceAll(strings.ToLower(n), " ", ".")+"@x.com", next())
+		}
 		for range 8 {
 			write("search/"+f, f+next())
-			commit(reg(), "search upkeep", "search/"+f)
+			commit(who(), "search upkeep", "search/"+f)
 		}
 		for _, other := range []string{"infra/tooling.go", "platform/jobs.go"} {
 			for range 6 {
 				write(other, n+other+next())
-				commit(reg(), "elsewhere", other)
+				commit(who(), "elsewhere", other)
 			}
 		}
 	}
