@@ -27,6 +27,15 @@ if [ -z "${QUILL_SIGN_P12:-}" ] || [ -z "${QUILL_NOTARY_KEY:-}" ]; then
 	exit 0
 fi
 
+# Apple's notary service is asked to inspect the binary and answer, and how
+# long it takes is entirely up to Apple: minutes usually, longer when the
+# signing identity is new or the service is busy. quill's own default gave up
+# after about fifteen minutes on the first submission this certificate ever
+# made, so allow considerably more. Overridable, and only a ceiling: a fast
+# notarization still returns as soon as Apple answers.
+: "${QUILL_NOTARY_TIMEOUT_SECONDS:=2700}"
+export QUILL_NOTARY_TIMEOUT_SECONDS
+
 QUILL_VERSION="v0.5.1"
 quill_bin="$(command -v quill 2>/dev/null || true)"
 if [ -z "$quill_bin" ] || [ ! -x "$quill_bin" ]; then
