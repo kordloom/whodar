@@ -26,9 +26,21 @@ if [ -z "${QUILL_SIGN_P12:-}" ] || [ -z "${QUILL_NOTARY_KEY:-}" ]; then
 fi
 
 QUILL_VERSION="v0.5.1"
-if ! command -v quill >/dev/null 2>&1; then
-	echo "sign-darwin: installing quill $QUILL_VERSION" >&2
-	curl -sSfL https://get.anchore.io/quill | sh -s -- -b /usr/local/bin "$QUILL_VERSION"
+quill_bin="$(command -v quill 2>/dev/null || true)"
+if [ -z "$quill_bin" ] || [ ! -x "$quill_bin" ]; then
+	# Install into a private directory under the temp area rather than
+	# /usr/local/bin. A CI runner is not root, so the installer there writes a
+	# file it cannot make executable and the hook dies with "Permission
+	# denied" after the binaries are already built. A private directory also
+	# means the two darwin builds, which goreleaser runs at the same moment,
+	# cannot install over each other.
+	bindir="${TMPDIR:-/tmp}/quill-$$"
+	mkdir -p "$bindir"
+	echo "sign-darwin: installing quill $QUILL_VERSION into $bindir" >&2
+	curl -sSfL https://get.anchore.io/quill | sh -s -- -b "$bindir" "$QUILL_VERSION" >&2
+	quill_bin="$bindir/quill"
+	chmod +x "$quill_bin"
 fi
 
-quill sign-and-notarize "$path"
+# Invoked by path, so signing never depends on what happens to be on PATH.
+"$quill_bin" sign-and-notarize "$path"
