@@ -2,9 +2,11 @@
 # Sign and notarize a macOS binary with quill, when the Apple material exists.
 #
 # goreleaser calls this for every built binary. Non-darwin binaries pass
-# through untouched, and so does everything else until the three Apple secrets
-# are configured, so a release without them is byte-identical to one before
-# this hook existed. With them set, Gatekeeper accepts the shipped binary with
+# through untouched, and so does everything else until the Apple secrets are
+# configured, so a release without them is byte-identical to one before this
+# hook existed. Turning signing on cannot make a release worse either: a
+# failure inside signing is reported loudly and the binary ships unsigned,
+# because a release with no artifacts is worse than one with unsigned ones. With them set, Gatekeeper accepts the shipped binary with
 # no quarantine dance: signed with the Developer ID certificate, notarized by
 # Apple, verified offline by cosign as before.
 #
@@ -43,4 +45,23 @@ if [ -z "$quill_bin" ] || [ ! -x "$quill_bin" ]; then
 fi
 
 # Invoked by path, so signing never depends on what happens to be on PATH.
-"$quill_bin" sign-and-notarize "$path"
+#
+# A signing failure must never take the release with it. The whole point of
+# this hook is that turning signing on cannot make a release worse than it was
+# without it, and a release that ships no binaries at all is far worse than one
+# that ships unsigned binaries. Apple's notary service goes down, tokens
+# expire, and quill can fail for reasons nobody here controls; none of those
+# are reasons to leave users with nothing to install. So the failure is loud
+# and the release continues.
+#
+# Loud matters: this is the only signal that a release went out unsigned, and
+# it is why every release is verified against the published artifact rather
+# than against this log.
+if ! "$quill_bin" sign-and-notarize "$path" >&2; then
+	echo "sign-darwin: ============================================" >&2
+	echo "sign-darwin: SIGNING FAILED, SHIPPING UNSIGNED: $path" >&2
+	echo "sign-darwin: The release continues on purpose. Verify the" >&2
+	echo "sign-darwin: published artifact and re-cut once this is fixed." >&2
+	echo "sign-darwin: ============================================" >&2
+fi
+exit 0
