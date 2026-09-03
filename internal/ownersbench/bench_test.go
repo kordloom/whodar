@@ -15,11 +15,23 @@ import (
 )
 
 // runGit runs one git command in dir, failing the test on error.
+//
+// git is given a private HOME and temp area beside the repository, so nothing
+// about the machine running the tests reaches it. Without that, these
+// fixtures failed intermittently in CI with "unable to create temporary
+// file" while never reproducing locally, which is the shape of a test reading
+// ambient state rather than its own.
 func runGit(t *testing.T, dir string, env []string, args ...string) {
 	t.Helper()
+	home := dir + "-githome"
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatalf("git home: %v", err)
+	}
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	cmd.Env = append(os.Environ(),
+		"HOME="+home, "TMPDIR="+home,
+		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
 	cmd.Env = append(cmd.Env, env...)
 	var errb bytes.Buffer
 	cmd.Stderr = &errb
@@ -140,7 +152,10 @@ func newBenchRepo(t *testing.T) string {
 
 // TestLoadTruth covers alias expansion and group dropping.
 func TestLoadTruth(t *testing.T) {
-	t.Parallel()
+	// Deliberately not parallel: this fixture builds a hundred-commit
+	// repository with real git, and four of those running at once under the
+	// race detector is enough concurrent git to make CI flaky. They finish in
+	// seconds serially.
 	dir := newBenchRepo(t)
 	truth, err := LoadTruth(dir)
 	if err != nil {
@@ -162,7 +177,10 @@ func TestLoadTruth(t *testing.T) {
 // the cohort split to behave: billing is cohort A, search is cohort C, and
 // the lead-scored index finds the quiet owner where commit counting cannot.
 func TestRunSeparatesCohorts(t *testing.T) {
-	t.Parallel()
+	// Deliberately not parallel: this fixture builds a hundred-commit
+	// repository with real git, and four of those running at once under the
+	// race detector is enough concurrent git to make CI flaky. They finish in
+	// seconds serially.
 	dir := newBenchRepo(t)
 
 	git := connector.NewGitHistory(connector.GitOptions{

@@ -59,7 +59,10 @@ func newSurvivalRepo(t *testing.T) string {
 // makes: a place the record shows resting on one person falls silent when
 // that person stops, while a covered place survives losing its leader.
 func TestRunSurvivalSeparatesFragility(t *testing.T) {
-	t.Parallel()
+	// Deliberately not parallel: this fixture builds a hundred-commit
+	// repository with real git, and four of those running at once under the
+	// race detector is enough concurrent git to make CI flaky. They finish in
+	// seconds serially.
 	dir := newSurvivalRepo(t)
 	git := connector.NewGitHistory(connector.GitOptions{
 		Paths: []string{dir}, SinceDays: 1095, UntilDays: 365,

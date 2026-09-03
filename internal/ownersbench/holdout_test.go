@@ -71,7 +71,10 @@ func relAuthor(name, email string, daysAgo int) []string {
 // properties: the index sees nothing after the cutoff, so a prediction cannot
 // be made from the answer, and automation never appears as truth.
 func TestRunHoldoutHidesTheFuture(t *testing.T) {
-	t.Parallel()
+	// Deliberately not parallel: this fixture builds a hundred-commit
+	// repository with real git, and four of those running at once under the
+	// race detector is enough concurrent git to make CI flaky. They finish in
+	// seconds serially.
 	dir := newHoldoutRepo(t)
 
 	git := connector.NewGitHistory(connector.GitOptions{
