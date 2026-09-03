@@ -74,8 +74,12 @@ impact for the most load-bearing people, and a LoomSeal bundle that anyone can
 verify offline. The seal is the point: a board or an acquirer can confirm the
 findings came from a licensed install and have not been edited since.
 
-**From $7,500 per target**, scoped by the number of repositories and sources
-rather than by headcount. Five business days.
+**From $7,500 per company assessed**, priced by how much code and how many
+sources there are rather than by headcount. Five business days.
+
+Running whodar on your own organization is free at any size, so there is no
+enterprise tier: both paid things here are about somebody else's company,
+having us assess one or licensing you to assess your clients'.
 
 ## Partner License
 
