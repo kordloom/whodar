@@ -601,9 +601,12 @@ always wins as the display identifier. See <code>examples/aliases.json</code>.</
 <p>Most of it needs no alias file. Indexing infers the merges it can defend and
 records the evidence for each one, which <code>whodar identity</code> prints: a handle
 matching exactly one person's name or mailbox, a handle matching a domain only
-one person writes from, one distinctive mailbox name at two domains, and the
-case where somebody commits from a GitHub noreply address under their real
-name and from an ordinary mailbox signing with their login. Anything a rule
+one person writes from, one distinctive mailbox name at two domains, the case
+where somebody commits from a GitHub noreply address under their real name
+and from an ordinary mailbox signing with their login, and two records of
+the same name whose mailboxes spell it differently. That last one refuses
+mailboxes that differ only by a number, since a company tells two
+same-named colleagues apart exactly that way. Anything a rule
 cannot pin to exactly one person is left alone and listed as ambiguous, since
 a wrong merge is far more expensive than a missed one, and the alias file is
 the override for those.</p>
