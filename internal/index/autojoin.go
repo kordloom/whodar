@@ -448,6 +448,7 @@ func (ix *Index) AutoJoin() JoinResult {
 	joins = append(joins, sameNameJoins(g, r)...)
 	joins = append(joins, sameSurnameJoins(g, r)...)
 	joins = append(joins, sameLocalJoins(g, r)...)
+	joins = append(joins, loginNameJoins(g, r)...)
 	sort.Strings(blocked)
 	ix.joins = pruneJoins(mergeJoins(ix.joins, joins), ix)
 	return JoinResult{Joined: len(joins), Joins: joins, Ambiguous: blocked}
@@ -915,4 +916,109 @@ func flatten(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// loginNameJoins merges the person who signs some commits with their GitHub
+// login as a display name and others from an ordinary mailbox.
+//
+// It is a gap the handle pass cannot reach. That pass resolves people who are
+// nothing but a handle, and a GitHub noreply address is not one: the build
+// unions it with its own login immediately, so by the time the passes run
+// there is no handle-only record left to match. What remains is two full
+// people, one holding the login and one whose whole display name IS that
+// login, and no rule compared them. Both were keyed under the same string and
+// the key was never read.
+//
+// The evidence is strong because a login is chosen and unique on the very
+// platform the commits came through, so a whole display name equal to one is
+// not the coincidence that a shared given name is. The guards are uniqueness
+// on both sides: exactly one person holds the login and exactly one other is
+// named it. Anything ambiguous is left alone rather than corroborated, since a
+// wrongly merged pair is the expensive mistake here and the alias file remains
+// the override.
+// loginNameReason names the evidence for a login-and-display-name merge.
+const loginNameReason = "signs commits with the GitHub login their other address holds"
+
+func loginNameJoins(g *model.Graph, r *identity.Resolver) []Join {
+	// Every login each canonical person holds, from a noreply address or from
+	// a github identity they were already unioned with.
+	holders := make(map[string]map[model.ID]bool)
+	named := make(map[string]map[model.ID]bool)
+	note := func(m map[string]map[model.ID]bool, key string, id model.ID) {
+		if len(key) < minHandleLen {
+			return
+		}
+		set := m[key]
+		if set == nil {
+			set = make(map[model.ID]bool)
+			m[key] = set
+		}
+		set[r.Canonical(id)] = true
+	}
+	for id, p := range g.People {
+		c := r.Canonical(id)
+		if login, ok := util.GitHubNoreplyLogin(p.Email); ok {
+			note(holders, flatten(login), c)
+		}
+		for _, alt := range p.Identities {
+			if source, handle, ok := strings.Cut(string(alt), ":"); ok && source == "github" {
+				note(holders, flatten(handle), c)
+			}
+			if login, ok := util.GitHubNoreplyLogin(string(alt)); ok {
+				note(holders, flatten(login), c)
+			}
+		}
+		// Only a single-word display name can be a login. A person with a
+		// spaced full name is signing as themselves, and reading it as a
+		// handle would let "Kim Doe" claim the login "kimdoe" on nothing but
+		// the spaces being removed.
+		if name := strings.TrimSpace(p.Name); name != "" && !strings.ContainsAny(name, " \t") {
+			note(named, flatten(name), c)
+		}
+	}
+
+	logins := make([]string, 0, len(holders))
+	for login := range holders {
+		logins = append(logins, login)
+	}
+	sort.Strings(logins)
+
+	var out []Join
+	for _, login := range logins {
+		hs, ns := holders[login], named[login]
+		if len(hs) != 1 || len(ns) == 0 {
+			continue
+		}
+		var holder model.ID
+		for id := range hs {
+			holder = id
+		}
+		// The holder usually carries the login as its own name too, which is
+		// not a second person; only the others are candidates.
+		var cands []model.ID
+		for id := range ns {
+			if id != holder {
+				cands = append(cands, id)
+			}
+		}
+		if len(cands) != 1 {
+			continue
+		}
+		other := cands[0]
+		if r.Canonical(other) == r.Canonical(holder) {
+			continue
+		}
+		r.Union(holder, other)
+		target := r.Canonical(holder)
+		alias := other
+		if target == other {
+			alias = holder
+		}
+		out = append(out, Join{
+			Alias: alias, Canonical: target,
+			Confidence: confUniqueName,
+			Reason:     loginNameReason,
+		})
+	}
+	return out
 }
