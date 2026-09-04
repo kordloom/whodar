@@ -59,6 +59,11 @@ type webConfig struct {
 	recallMe string
 	// fbStrength is how hard votes move ranking.
 	fbStrength string
+	// places are the directories the indexed work rests on. They are supplied
+	// by whoever built the index, because the tally comes from the git
+	// connector rather than from the graph, and are empty when no repository
+	// was indexed.
+	places []resolve.Place
 	// public serves open to any caller with no token, even off loopback. It is
 	// meant only for the demo, whose index and recall are sample data with
 	// nothing private to protect.
@@ -207,6 +212,7 @@ func serveWeb(cmd *cobra.Command, opts *options, ix *index.Index, store *feedbac
 		Search: func(q string, limit int) []resolve.SearchResult { return resolve.Search(ix, q, limit) },
 		Exposure: func() web.Exposure {
 			return web.Exposure{
+				Places:  cfg.places,
 				Risk:    resolve.Risk(ix, 0),
 				Drift:   resolve.Ownership(ix).Drift,
 				Regions: resolve.Regions(ix, regionsShown),

@@ -112,7 +112,7 @@
 					<a class="ghost big" href="https://demo.whodar.dev/?story=1">&#9658; Take the 2-minute tour</a>
 					<a class="ghost big" href="https://demo.whodar.dev">Open the live demo</a>
 				</div>
-				<p class="hero-note">No setup required: <code>whodar demo</code></p>
+				<p class="hero-note">Or run it on your own code, no setup: <code>whodar demo --repo .</code></p>
 			</div>
 
 			<div class="hero-shot reveal">
@@ -612,8 +612,8 @@ docker run -p 8765:8765 <span class="o">-e WHODAR_SERVE_TOKEN=secret</span> \
 						<p>Ask from your terminal. Answers are JSON on stdout, so you can pipe them into anything.</p>
 						<div class="code">
 							<button class="copy" aria-label="Copy">Copy</button>
-							<pre><code><span class="c"># try it with no setup</span>
-whodar demo
+							<pre><code><span class="c"># run it on a repo you already have</span>
+whodar demo --repo .
 
 <span class="c"># set up any source with a guided wizard</span>
 whodar connect

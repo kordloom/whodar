@@ -1205,12 +1205,18 @@ no votes and shows no buttons. Connections are bounded (30s read, 90s
 write, 2min idle) so slow or stalled clients cannot pile up on a shared
 box.</p>
 <h2 id="whodar-demo">whodar demo</h2>
-<p>Explores whodar on a simulated company: all eight sources are built in
-process and served in the web UI, with no credentials and nothing fetched
-from the network. Sample data only; it is discarded when the demo stops.</p>
-<pre><code>whodar demo [--big] [--save-index DIR]
+<p>Serves the web UI over an index built in process, with no credentials and
+nothing fetched from the network.</p>
+<pre><code>whodar demo [--repo DIR] [--big] [--save-index DIR]
 </code></pre>
-<p>Takes the same flags as <code>serve</code>, plus two of its own.</p>
+<p>With <code>--repo</code> it reads that repository's git history and opens on the exposure
+view, so the first screen names the directories the work rests on and the ones
+resting on a single person. Every row can be checked against the same history
+with <code>git log</code>, which is what makes this the version worth showing somebody.</p>
+<p>Without <code>--repo</code> it builds a simulated company across all eight sources, which
+covers the conversation and ticket sources a git-only run has nothing to say
+about. Sample data only; it is discarded when the demo stops.</p>
+<p>Takes the same flags as <code>serve</code>, plus four of its own.</p>
 <table>
 <thead>
 <tr>
@@ -1219,6 +1225,14 @@ from the network. Sample data only; it is discarded when the demo stops.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><code>--repo</code></td>
+<td>Read a real repository instead of the simulation. Repeatable. Reads git only, so the recall view stays off: git records what changed, not what was said.</td>
+</tr>
+<tr>
+<td><code>--max-commits</code></td>
+<td>Commits to read per repository with <code>--repo</code>, 4000 by default, which keeps a large repository starting in seconds.</td>
+</tr>
 <tr>
 <td><code>--big</code></td>
 <td>Simulate a company of 200 people rather than the small sample, which is what to look at to judge how whodar reads at a real size.</td>

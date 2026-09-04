@@ -82,10 +82,20 @@ the bundle itself is intact. The canonical keys live at
 
 ## Quickstart
 
-No data yet? Explore a simulated company, no credentials needed, and take the
-two-minute guided tour from the sidebar:
+Point it at a repository you already have. It reads that repository's git
+history and opens on what it found: which directories the work rests on, and
+which of them rest on one person. Nothing is fetched and no credentials are
+needed.
 
-    whodar demo
+    whodar demo --repo .
+
+Every name it gives you is checkable against the same history:
+
+    git log --format='%an' -- path/it/named | sort | uniq -c | sort -rn
+
+Without `--repo` it builds a simulated company across all eight sources
+instead, which shows the parts a git-only run cannot, and there is a
+two-minute guided tour in the sidebar.
 
 Then index something real:
 

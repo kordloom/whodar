@@ -65,14 +65,29 @@ proves your archive matches it. Homebrew and `go install` need no manual step.
 
 ## Try it in sixty seconds
 
-The fastest look is the demo: a simulated company indexed across all eight
-sources and served in the web UI, no credentials needed.
+The fastest look is the demo, run against a repository you already have:
+
+    whodar demo --repo .
+
+It reads that repository's git history and opens on the exposure view: each
+directory with enough work to claim about, the people that work rests on, and
+the ones where a single person covers most of it. Nothing is fetched from the
+network and nothing is written outside a temporary directory.
+
+Check any row it gives you against the history it was counted from:
+
+    git log --format='%an' -- path/it/named | sort | uniq -c | sort -rn
+
+That is the point of running it on your own code. A simulated company can show
+more sources, but you cannot check it against anything.
+
+If you would rather see those other sources, leave `--repo` off:
 
     whodar demo
 
-It opens a browser on an answered question. Click a name for details, try
-"who owns terraform", vote on a result. Sample data only; it is discarded
-when the demo stops.
+That builds a simulated company across all eight sources and opens on an
+answered question. Click a name for details, try "who owns terraform", vote on
+a result. Sample data only; it is discarded when the demo stops.
 
 For the command-line loop, the repository ships a small example org chart:
 
@@ -549,6 +564,16 @@ The mapping is saved in the index, so later runs keep joining without the flag.
 Joined identifiers appear in answers under `identities`, and a person's email
 always wins as the display identifier. See `examples/aliases.json`.
 
+Most of it needs no alias file. Indexing infers the merges it can defend and
+records the evidence for each one, which `whodar identity` prints: a handle
+matching exactly one person's name or mailbox, a handle matching a domain only
+one person writes from, one distinctive mailbox name at two domains, and the
+case where somebody commits from a GitHub noreply address under their real
+name and from an ordinary mailbox signing with their login. Anything a rule
+cannot pin to exactly one person is left alone and listed as ambiguous, since
+a wrong merge is far more expensive than a missed one, and the alias file is
+the override for those.
+
 ## Recent activity counts more
 
 Activity ages. Someone who owned a topic three years ago is usually the wrong
@@ -609,7 +634,9 @@ whodar.dev/verify.
 - `whodar index --source pagerduty` indexes PagerDuty services and on-call.
 - `whodar index --source git --repo-path DIR [--git-since-days N] [--max-commits N]`
   indexes local git history.
-- `whodar demo` explores a simulated company in the web UI, no credentials.
+- `whodar demo --repo .` runs the web UI over a repository you already have and
+  opens on what rests on one person; without `--repo` it explores a simulated
+  company across all eight sources. Either way, no credentials.
 - `whodar connect [source]` walks through setting up a source's credentials, and
   `whodar connect --status` reports what is configured.
 - `whodar index ... --merge` adds the source to the existing index instead of replacing it.

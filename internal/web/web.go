@@ -484,6 +484,11 @@ func modesHandler(modes ModesFunc) http.HandlerFunc {
 // concentrated in too few people, and the areas whose declared owner is not the
 // one doing the work.
 type Exposure struct {
+	// Places are the directories the work rests on, strongest holder first.
+	// A place is a stronger claim than a topic because it is checkable: the
+	// reader can run git log against the same directory and see the same
+	// names. It is empty unless a repository was indexed.
+	Places []resolve.Place `json:"places,omitempty"`
 	// Risk is knowledge concentration per topic, most exposed first.
 	Risk []resolve.TopicRisk `json:"risk"`
 	// Drift is where declared ownership and real expertise disagree.

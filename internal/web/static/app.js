@@ -1379,6 +1379,7 @@ async function renderExposure() {
   }
   if (currentView !== "exposure") return;
 
+  const places = data.places || [];
   const risk = data.risk || [];
   const drift = data.drift || [];
   const regions = data.regions || [];
@@ -1386,6 +1387,7 @@ async function renderExposure() {
   const crit = risk.filter((r) => r.level === "critical").length;
   const elev = risk.filter((r) => r.level === "elevated").length;
   expStatus.textContent =
+    (places.length ? places.length + " systems \u00b7 " : "") +
     risk.length + " topics scored" + (data.evaluation ? " \u00b7 evaluation, unlicensed" : "");
 
   // The four numbers first, each a way into the section that explains it. A
@@ -1405,6 +1407,16 @@ async function renderExposure() {
       });
       return c;
     };
+    // Places lead when there are any: a directory is checkable against the
+    // repository the reader already has, and a topic is not.
+    if (places.length) {
+      const sole = places.filter((p) => (p.bus || 0) <= 1).length;
+      // No place resting on one person is a good result, so it is not drawn
+      // in the alarming color: a red zero reads as a broken counter.
+      cards.appendChild(stat(sole,
+        sole === 1 ? "system on one person" : "systems on one person",
+        sole ? "crit" : "warn", "exp-sec-places"));
+    }
     cards.appendChild(stat(crit, crit === 1 ? "critical subject" : "critical subjects",
       "crit", "exp-sec-risk"));
     cards.appendChild(stat(elev, "elevated", "elev", "exp-sec-risk"));
@@ -1415,6 +1427,18 @@ async function renderExposure() {
       spans.length === 1 ? "one-person connection" : "one-person connections",
       "warn", "exp-sec-spans"));
     cards.appendChild(stat(drift.length, "ownership drifted", "drift", "exp-sec-drift"));
+  }
+
+  // The places section hides entirely when no repository was indexed, rather
+  // than showing an empty list: there is no finding to be missing.
+  const expPlaces = document.getElementById("exp-places");
+  const placeHead = document.getElementById("exp-sec-places");
+  const placeNote = document.getElementById("exp-note-places");
+  if (expPlaces) {
+    expPlaces.replaceChildren();
+    if (placeHead) placeHead.hidden = !places.length;
+    if (placeNote) placeNote.hidden = !places.length;
+    for (const p of places) expPlaces.appendChild(placeCard(p));
   }
 
   if (expRegions) {
@@ -1430,6 +1454,11 @@ async function renderExposure() {
   if (expStatus && expStatus.parentElement && !expStatus.parentElement.querySelector(".exp-export")) {
     const b = exportButton("Export findings", () => {
       const out = [];
+      for (const p of places) {
+        out.push(["System", p.dir, (p.bus || 0) <= 1 ? "sole" : "", p.bus,
+          (p.holders || []).map((h) =>
+            h.name + " " + Math.round(100 * (h.share || 0)) + "%").join("; ")]);
+      }
       for (const r of risk) {
         out.push(["Concentration", r.topic, r.level || "", r.busFactor,
           (r.experts || []).map((e) => e.name + " " + Math.round((e.share || 0) * 100) + "%").join("; ")]);
@@ -1568,6 +1597,31 @@ async function checkDeparture(who) {
 // regionCard draws one joined body of work and who it rests on. The subjects
 // are listed in full rather than counted, because the point of the finding is
 // how much one person would take with them.
+// placeCard draws one directory and the people its work rests on. Share is
+// each holder's part of the directory's credited work, so a single holder at
+// a high share is the finding: one person, nobody behind them.
+function placeCard(p) {
+  const holders = p.holders || [];
+  const sole = (p.bus || 0) <= 1;
+  const card = el("div", "exp-card " + (sole ? "exp-critical" : "exp-elevated"));
+  const head = el("div", "exp-card-head");
+  head.appendChild(el("span", "exp-topic", p.dir));
+  head.appendChild(el("span", "exp-bus",
+    sole ? "rests on one person" : p.bus + " of " + p.people + " cover it"));
+  head.appendChild(copyButton(() =>
+    p.dir + " rests on " + holders.map((h) => h.name).join(", ")));
+  card.appendChild(head);
+  const line = el("p", "exp-also");
+  holders.forEach((h, i) => {
+    if (i) line.appendChild(document.createTextNode(", "));
+    line.appendChild(personLink(h.name, h.id));
+    const share = Math.round(100 * (h.share || 0));
+    if (share) line.appendChild(document.createTextNode(" " + share + "%"));
+  });
+  card.appendChild(line);
+  return card;
+}
+
 function regionCard(r) {
   const topics = r.topics || [];
   const card = el("div", "exp-card exp-critical");

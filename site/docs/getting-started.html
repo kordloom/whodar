@@ -142,13 +142,24 @@ shasum -a 256 -c checksums.txt --ignore-missing
 <p>The first command proves the checksum file is the one we signed; the second
 proves your archive matches it. Homebrew and <code>go install</code> need no manual step.</p>
 <h2 id="try-it-in-sixty-seconds">Try it in sixty seconds</h2>
-<p>The fastest look is the demo: a simulated company indexed across all eight
-sources and served in the web UI, no credentials needed.</p>
+<p>The fastest look is the demo, run against a repository you already have:</p>
+<pre><code>whodar demo --repo .
+</code></pre>
+<p>It reads that repository's git history and opens on the exposure view: each
+directory with enough work to claim about, the people that work rests on, and
+the ones where a single person covers most of it. Nothing is fetched from the
+network and nothing is written outside a temporary directory.</p>
+<p>Check any row it gives you against the history it was counted from:</p>
+<pre><code>git log --format='%an' -- path/it/named | sort | uniq -c | sort -rn
+</code></pre>
+<p>That is the point of running it on your own code. A simulated company can show
+more sources, but you cannot check it against anything.</p>
+<p>If you would rather see those other sources, leave <code>--repo</code> off:</p>
 <pre><code>whodar demo
 </code></pre>
-<p>It opens a browser on an answered question. Click a name for details, try
-&quot;who owns terraform&quot;, vote on a result. Sample data only; it is discarded
-when the demo stops.</p>
+<p>That builds a simulated company across all eight sources and opens on an
+answered question. Click a name for details, try &quot;who owns terraform&quot;, vote on
+a result. Sample data only; it is discarded when the demo stops.</p>
 <p>For the command-line loop, the repository ships a small example org chart:</p>
 <pre><code>whodar index --source org-csv --file examples/people.csv
 whodar ask --pretty &quot;who do I talk to about billing retries&quot;
@@ -587,6 +598,15 @@ indexed before the file existed:</p>
 <p>The mapping is saved in the index, so later runs keep joining without the flag.
 Joined identifiers appear in answers under <code>identities</code>, and a person's email
 always wins as the display identifier. See <code>examples/aliases.json</code>.</p>
+<p>Most of it needs no alias file. Indexing infers the merges it can defend and
+records the evidence for each one, which <code>whodar identity</code> prints: a handle
+matching exactly one person's name or mailbox, a handle matching a domain only
+one person writes from, one distinctive mailbox name at two domains, and the
+case where somebody commits from a GitHub noreply address under their real
+name and from an ordinary mailbox signing with their login. Anything a rule
+cannot pin to exactly one person is left alone and listed as ambiguous, since
+a wrong merge is far more expensive than a missed one, and the alias file is
+the override for those.</p>
 <h2 id="recent-activity-counts-more">Recent activity counts more</h2>
 <p>Activity ages. Someone who owned a topic three years ago is usually the wrong
 person to ask today, so dated records decay: a record loses half its weight per
@@ -674,7 +694,9 @@ builds the index from Slack.</li>
 <li><code>whodar index --source pagerduty</code> indexes PagerDuty services and on-call.</li>
 <li><code>whodar index --source git --repo-path DIR [--git-since-days N] [--max-commits N]</code>
 indexes local git history.</li>
-<li><code>whodar demo</code> explores a simulated company in the web UI, no credentials.</li>
+<li><code>whodar demo --repo .</code> runs the web UI over a repository you already have and
+opens on what rests on one person; without <code>--repo</code> it explores a simulated
+company across all eight sources. Either way, no credentials.</li>
 <li><code>whodar connect [source]</code> walks through setting up a source's credentials, and
 <code>whodar connect --status</code> reports what is configured.</li>
 <li><code>whodar index ... --merge</code> adds the source to the existing index instead of replacing it.</li>

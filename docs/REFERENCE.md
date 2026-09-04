@@ -663,18 +663,28 @@ box.
 
 ## whodar demo
 
-Explores whodar on a simulated company: all eight sources are built in
-process and served in the web UI, with no credentials and nothing fetched
-from the network. Sample data only; it is discarded when the demo stops.
+Serves the web UI over an index built in process, with no credentials and
+nothing fetched from the network.
 
-    whodar demo [--big] [--save-index DIR]
+    whodar demo [--repo DIR] [--big] [--save-index DIR]
 
-Takes the same flags as `serve`, plus two of its own.
+With `--repo` it reads that repository's git history and opens on the exposure
+view, so the first screen names the directories the work rests on and the ones
+resting on a single person. Every row can be checked against the same history
+with `git log`, which is what makes this the version worth showing somebody.
 
-| Flag           | What it does                                                        |
-| -------------- | ------------------------------------------------------------------- |
-| `--big`        | Simulate a company of 200 people rather than the small sample, which is what to look at to judge how whodar reads at a real size. |
-| `--save-index` | Write the simulated company to a directory as a real index and exit, so the other commands can be run against it. |
+Without `--repo` it builds a simulated company across all eight sources, which
+covers the conversation and ticket sources a git-only run has nothing to say
+about. Sample data only; it is discarded when the demo stops.
+
+Takes the same flags as `serve`, plus four of its own.
+
+| Flag            | What it does                                                       |
+| --------------- | ------------------------------------------------------------------ |
+| `--repo`        | Read a real repository instead of the simulation. Repeatable. Reads git only, so the recall view stays off: git records what changed, not what was said. |
+| `--max-commits` | Commits to read per repository with `--repo`, 4000 by default, which keeps a large repository starting in seconds. |
+| `--big`         | Simulate a company of 200 people rather than the small sample, which is what to look at to judge how whodar reads at a real size. |
+| `--save-index`  | Write the simulated company to a directory as a real index and exit, so the other commands can be run against it. |
 
 ## whodar mcp
 

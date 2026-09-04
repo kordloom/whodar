@@ -92,3 +92,96 @@ func TestAddReviewCredit(t *testing.T) {
 		t.Error("existing commit work was disturbed")
 	}
 }
+
+// TestPlaceLeadsSharesAndBus verifies the two numbers the risk view reads.
+// Shares must be worked out against the discounted holder total rather than
+// against Work, which counts commits before the breadth discount and would
+// make the ratio meaningless; and the bus factor must count holders beyond the
+// ones the list is cut to, or a dominant place and a crowded one look alike.
+func TestPlaceLeadsSharesAndBus(t *testing.T) {
+	t.Parallel()
+	ix := index.New()
+	recs := []connector.Record{
+		{Kind: connector.KindPerson, Name: "Sole", Email: "sole@x.com",
+			Topics: []string{"held"}, Source: "git"},
+	}
+	crowdWork := map[string]float64{}
+	for _, n := range []string{"a", "b", "c", "d", "e"} {
+		recs = append(recs, connector.Record{Kind: connector.KindPerson, Name: n,
+			Email: n + "@x.com", Topics: []string{"crowd"}, Source: "git"})
+		crowdWork[n+"@x.com"] = 20
+	}
+	ix.Build(recs)
+	ix.Canonicalize()
+
+	dirWork := map[string]map[string]float64{
+		"held":  {"sole@x.com": 95, "a@x.com": 5},
+		"crowd": crowdWork,
+	}
+	totals := map[string]float64{"sole@x.com": 100}
+	for e, w := range crowdWork {
+		totals[e] = w
+	}
+	totals["a@x.com"] = 25
+
+	byDir := map[string]Place{}
+	for _, p := range PlaceLeads(ix, dirWork, totals, 10, 3) {
+		byDir[p.Dir] = p
+	}
+
+	held, ok := byDir["held"]
+	if !ok {
+		t.Fatal("held is missing")
+	}
+	if held.Bus != 1 {
+		t.Errorf("held bus = %d, want 1: one person covers the concentration cut", held.Bus)
+	}
+	if held.People != 2 {
+		t.Errorf("held people = %d, want 2", held.People)
+	}
+	if s := held.Holders[0].Share; s < 0.9 || s > 1 {
+		t.Errorf("held top share = %.3f, want most of it; Work is %.0f, so dividing by "+
+			"Work instead of the discounted total would not give this", s, held.Work)
+	}
+
+	crowd, ok := byDir["crowd"]
+	if !ok {
+		t.Fatal("crowd is missing")
+	}
+	if crowd.Bus <= 1 {
+		t.Errorf("crowd bus = %d, want more than one: five equal holders is not a "+
+			"place resting on one person", crowd.Bus)
+	}
+	if len(crowd.Holders) != 3 {
+		t.Errorf("crowd holders = %d, want the list cut to 3", len(crowd.Holders))
+	}
+	if crowd.People != 5 {
+		t.Errorf("crowd people = %d, want 5 counted before the cut", crowd.People)
+	}
+}
+
+// TestMostFragileRanksExposureNotSize verifies the risk view's ordering. Size
+// ranking puts the directories everybody has touched on top, which is exactly
+// where a finding cannot be, so fewest holders must win over most work.
+func TestMostFragileRanksExposureNotSize(t *testing.T) {
+	t.Parallel()
+	in := []Place{
+		{Dir: "huge", Work: 1000, Bus: 40},
+		{Dir: "fragile-small", Work: 20, Bus: 1},
+		{Dir: "fragile-big", Work: 300, Bus: 1},
+		{Dir: "middling", Work: 100, Bus: 5},
+	}
+	got := MostFragile(in, 3)
+	want := []string{"fragile-big", "fragile-small", "middling"}
+	if len(got) != len(want) {
+		t.Fatalf("got %d places, want %d", len(got), len(want))
+	}
+	for i, w := range want {
+		if got[i].Dir != w {
+			t.Errorf("place %d = %s, want %s (bus ascending, then busiest)", i, got[i].Dir, w)
+		}
+	}
+	if in[0].Dir != "huge" {
+		t.Error("MostFragile reordered its input; callers share the slice with the deliverable")
+	}
+}

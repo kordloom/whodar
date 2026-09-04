@@ -25,6 +25,9 @@ type PlaceHolder struct {
 	Name string `json:"name"`
 	// Work is their commit-and-credit count in the place.
 	Work float64 `json:"work"`
+	// Share is their part of the place's credited work, over every holder and
+	// not only the ones listed, so the listed shares need not sum to one.
+	Share float64 `json:"share"`
 }
 
 // Place is one directory and the people its work rests on.
@@ -33,6 +36,14 @@ type Place struct {
 	Dir string `json:"dir"`
 	// Work is the total credited work under it.
 	Work float64 `json:"work"`
+	// People is how many have worked there at all, before the list of holders
+	// is cut down, so a place with one holder listed out of twenty is not read
+	// as a place resting on one person.
+	People int `json:"people"`
+	// Bus is how many of them it takes to cover the concentration cut, by the
+	// same rule the topic findings use. One means the place rests on one
+	// person whatever the head count says.
+	Bus int `json:"bus"`
 	// Holders are the people it rests on, strongest first.
 	Holders []PlaceHolder `json:"holders"`
 }
@@ -43,6 +54,30 @@ type Place struct {
 // projects where approval is decoupled from authorship it is the only
 // evidence the record carries about the people who approve.
 const reviewWeight = 0.5
+
+// MostFragile reorders places by how exposed they are rather than how large,
+// and keeps the first n.
+//
+// PlaceLeads ranks by volume, which is right for a deliverable listing the
+// systems a business runs on. It is wrong for a risk view: the largest
+// directories are the ones most people have touched, so ranking by size sorts
+// the least concentrated work to the top and buries every finding underneath
+// it. Fewest holders first, and among equally held places the busiest, so what
+// leads is the place one person holds and everybody depends on.
+func MostFragile(places []Place, n int) []Place {
+	out := make([]Place, len(places))
+	copy(out, places)
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Bus != out[j].Bus {
+			return out[i].Bus < out[j].Bus
+		}
+		return out[i].Work > out[j].Work
+	})
+	if n > 0 && len(out) > n {
+		out = out[:n]
+	}
+	return out
+}
 
 // AddReviewCredit folds review participation into a place tally: everyone who
 // took part in a pull request is credited, at review weight, with the
@@ -130,10 +165,32 @@ func PlaceLeads(
 			}
 			return holders[i].Name < holders[j].Name
 		})
+		// Shares are worked out against the discounted total over every
+		// holder, before the list is cut to k. Dividing by Work instead would
+		// mix the two scales: Work counts commits, holder work counts commits
+		// after the breadth discount, and the ratio would mean nothing.
+		var held float64
+		for _, h := range holders {
+			held += h.Work
+		}
+		bus := 0
+		var cum float64
+		for i := range holders {
+			if held > 0 {
+				holders[i].Share = holders[i].Work / held
+			}
+			if cum < concentrationCut {
+				cum += holders[i].Share
+				bus++
+			}
+		}
+		people := len(holders)
 		if len(holders) > k {
 			holders = holders[:k]
 		}
-		out = append(out, Place{Dir: dir, Work: total, Holders: holders})
+		out = append(out, Place{
+			Dir: dir, Work: total, People: people, Bus: bus, Holders: holders,
+		})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Work != out[j].Work {
